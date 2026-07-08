@@ -70,6 +70,50 @@ photos themselves pass):
   opaque texture must commit each texel to one material where the photo shows
   semi-transparent wisps
 
+## Generation Time and Mesh Density (2026-07-08)
+
+Aggregated from every bundle `metadata.json` in the validation tree (87
+checked runs, Apple M5 Max `mps` profile; regenerate with
+`python scripts/generation_stats.py`):
+
+| backend / task | n | total (median [min-max]) | vertices (median) | faces (median) |
+| --- | --- | --- | --- | --- |
+| hunyuan3d21-local / i23d | 9 | 766 s [481-2152] | 59,900 | 120,000 |
+| hunyuan3d21-local / t23d | 4 | 553 s [513-645] | 80,000 | 160,000 |
+| step1x-local / i23d | 19 | 95 s [39-154] | 129,882 | 164,044 |
+| step1x-local / t23d | 11 | 75 s [35-111] | 96,149 | 188,108 |
+| triposr / i23d | 36 | 22 s [2-243] | 47,418 | 87,434 |
+| triposr / t23d | 8 | 27 s [10-62] | 36,434 | 67,797 |
+
+Reading the ranges honestly:
+
+- `t23d` adds a composed image-generation stage (median 8-12 s through
+  `mlx-gen` on this host) on top of the `i23d` path.
+- TripoSR's 2 s minimum is the vertex-color fast path; the 243 s maximum is
+  the portrait mirror-symmetry case, dominated by the texture bake — these
+  historical numbers predate the bake performance program below, which cut
+  the dominant bake stages (owl asset bake 258 s -> 88 s).
+- Hunyuan totals are dominated by diffusion inference (median ~700 s at the
+  30-50 step settings used in the proofs); Step1X is geometry-only (no
+  texture stage).
+
+### What controls time and density, and where it is exposed
+
+| backend | density control (default) | time control (default) | Python kwarg | CLI flag |
+| --- | --- | --- | --- | --- |
+| triposr | `mc_resolution` (256); `cleanup` profile also reduces faces (raw->clean rocket: 26.9k -> 18.0k) | `mc_resolution`, `texture_mode`, `texture_resolution` (2048) | yes | `--mc-resolution`, `--cleanup`, `--texture-mode`, `--texture-resolution` |
+| hunyuan3d21 | `octree_resolution` (384), `max_facenum` (120,000) | `num_inference_steps` (50; proofs used 30), `guidance_scale` (5.0) | yes | steps/guidance only — `--octree-resolution` / `--max-facenum` are **not** CLI-exposed yet |
+| step1x | `octree_resolution` (128 on `mps`, 384 elsewhere), `max_facenum` (device-tuned) | `num_inference_steps` | yes | steps only — octree/facenum are **not** CLI-exposed yet |
+
+All three backends also honor owner-config/env equivalents
+(`scene3d_<backend>_octree_resolution`, `ABSTRACT3D_*`). The observed face
+medians match the caps: Hunyuan meshes sit exactly at `max_facenum`
+(120k/160k depending on run configuration), TripoSR at what `mc_resolution
+256` plus cleanup yields (~87k). So density is controllable today from
+Python and config; the CLI gap (octree/facenum flags) is tracked as a
+known exposure defect — kwargs pass through `Scene3DManager.i23d(...)`
+unvalidated, per the v0.2.0 review finding on silent kwargs.
+
 ## Bake Performance Program (2026-07-08, outputs bit-identical)
 
 The certified texture pipeline was profiled stage-by-stage and optimized
@@ -99,6 +143,14 @@ asset):
 - honest scope: mesh inference (the 7-13 min Hunyuan stage) is untouched;
   these gains apply to the texture stage of every `i23d`/`t23d` textured
   generation and to `abstract3d.bundle.rebake_bundle`
+- viewer verification ran two ways: the MeshVault app
+  (`meshvault_rebaked_owl.png`) and the MeshVault MCP server driven
+  headless over stdio JSON-RPC — `load_model` + `screenshot` on the
+  rebaked GLB, no browser session
+  (`meshvault_mcp_headless_owl.png`; server v1.28.1 also exposes
+  `describe_scene`, `compare_models`, and the full viewer command API,
+  which is the natural substrate for agent-driven generate -> inspect ->
+  critique loops)
 
 ## Generated Reference Views (2026-07-08)
 

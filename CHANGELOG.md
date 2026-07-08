@@ -21,6 +21,20 @@
   sampler + externally-wrapped stage functions), used by the harness;
   profiled runs stay bit-identical because nothing touches array state.
 
+### Added (generation statistics + headless MeshVault verification)
+
+- `scripts/generation_stats.py` aggregates wall time, stage times, and mesh
+  density (vertices/faces) from every bundle `metadata.json`; the summary
+  table and the time/density control matrix (what governs mesh size per
+  backend, defaults, and Python-vs-CLI exposure) are published in
+  `docs/benchmarks.md`. Known exposure gap recorded: `octree_resolution` /
+  `max_facenum` are honored as Python kwargs and config keys but have no
+  CLI flags yet.
+- The rebaked assets were verified through the MeshVault MCP server driven
+  headless over stdio JSON-RPC (`load_model` + `screenshot`), in addition
+  to the interactive app check; proof render in
+  `artifacts/validation/bake-performance-program/`.
+
 ### Changed (bake performance program — outputs bit-identical)
 
 All optimizations below reproduce the certified texture hashes bit-exactly
