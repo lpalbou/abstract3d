@@ -1,0 +1,63 @@
+{
+  "cases": [
+    {
+      "background_removal_policy": null,
+      "background_removed": true,
+      "case_id": "teapot_i23d_same_source",
+      "face_count": 164044,
+      "guidance_scale": null,
+      "num_inference_steps": 8,
+      "octree_resolution": 128,
+      "task": "image_to_scene3d",
+      "timings_s": {
+        "inference": 125.6824,
+        "load": 13.4889,
+        "mesh": null,
+        "preprocess": null,
+        "source_image_generation": null,
+        "total": 125.6824
+      },
+      "vertex_count": 94913
+    },
+    {
+      "background_removal_policy": null,
+      "background_removed": true,
+      "case_id": "espresso_i23d_guidance3",
+      "face_count": 200000,
+      "guidance_scale": null,
+      "num_inference_steps": 8,
+      "octree_resolution": 128,
+      "task": "image_to_scene3d",
+      "timings_s": {
+        "inference": 97.3601,
+        "load": 10.1175,
+        "mesh": null,
+        "preprocess": null,
+        "source_image_generation": null,
+        "total": 97.3601
+      },
+      "vertex_count": 166652
+    },
+    {
+      "background_removal_policy": "auto_generated_image",
+      "background_removed": true,
+      "case_id": "teapot_t23d_mlx_cache_fix",
+      "face_count": 200000,
+      "guidance_scale": 3.0,
+      "num_inference_steps": 8,
+      "octree_resolution": 128,
+      "task": "text_to_scene3d",
+      "timings_s": {
+        "inference": 52.8633,
+        "load": 9.088,
+        "mesh": null,
+        "preprocess": 1.0144,
+        "source_image_generation": 4.0234,
+        "total": 57.9011
+      },
+      "vertex_count": 201446
+    }
+  ],
+  "not_validated_for_promotion": true,
+  "status": "recovery_diagnostics"
+}

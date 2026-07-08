@@ -1,0 +1,138 @@
+{
+  "appearance_mode": "uv_basecolor",
+  "backend_id": "abstract3d:hunyuan3d21-local",
+  "background_removed": true,
+  "bundle_dir": "/Users/albou/abstract3d/artifacts/validation/final-proof/hunyuan-owl",
+  "contact_sheet_path": "/Users/albou/abstract3d/artifacts/validation/final-proof/hunyuan-owl/contact_sheet.png",
+  "content_type": "model/gltf-binary",
+  "device": "mps",
+  "dtype": "float16",
+  "export_axis_canonicalization": [
+    "yup_front_z_to_zup_front_x"
+  ],
+  "face_count": 120000,
+  "format": "glb",
+  "guidance_scale": 5.0,
+  "license": "tencent-hunyuan-community",
+  "license_note": "Tencent Hunyuan 3D 2.1 Community License: territory-restricted (excludes the European Union, United Kingdom, and South Korea), with additional terms for large-scale commercial deployments.",
+  "material_count": 1,
+  "memory": {
+    "mps_allocated_bytes": 7365761536,
+    "rss_bytes": 11006099456
+  },
+  "metadata_path": "/Users/albou/abstract3d/artifacts/validation/final-proof/hunyuan-owl/metadata.json",
+  "model_id": "tencent/Hunyuan3D-2.1/hunyuan3d-dit-v2-1",
+  "notes": [
+    "Hunyuan3D-2.1 official shape stage (flow-matching DiT + shape VAE + marching cubes).",
+    "Tencent Hunyuan 3D 2.1 Community License: territory-restricted (excludes the European Union, United Kingdom, and South Korea), with additional terms for large-scale commercial deployments."
+  ],
+  "num_chunks": 32768,
+  "num_inference_steps": 30,
+  "octree_resolution": 384,
+  "output_bytes": 5781784,
+  "postprocess_cleanup": [
+    "keep_significant_components:2->1@15944",
+    "remove_degenerate_faces",
+    "quadric_decimation:120000",
+    "merge_vertices",
+    "fix_normals"
+  ],
+  "postprocess_warnings": [],
+  "preview_path": "/Users/albou/abstract3d/artifacts/validation/final-proof/hunyuan-owl/preview.png",
+  "preview_renderer": "moderngl",
+  "provider": "abstract3d:hunyuan3d21-local",
+  "seed": 7,
+  "source_image_path": "/Users/albou/abstract3d/artifacts/validation/final-proof/hunyuan-owl/input.png",
+  "source_snapshot": "82920d643c0dc2f7bfd7255f45f62d386edfe60c",
+  "task": "text_to_scene3d",
+  "texture_artifacts": {
+    "adr": "zero-defect cycle 3 (film-band gradient repaint, trace-deposit commit, strand comb, projector-frame registration, relative-margin pose gate)",
+    "camera_distance": 3.0,
+    "compositing": {
+      "applied": false,
+      "mode": "legacy",
+      "requested": "auto"
+    },
+    "delight": {
+      "applied": false
+    },
+    "export_frame": "gltf_yup_front_pz (canonical->glTF axis permutation baked at export; geometry.glb remains canonical for rebakes)",
+    "fill_floor": {
+      "applied": true,
+      "consensus_texels": 7146,
+      "evidence_exempt_components": 34,
+      "lifted_texels": 27516,
+      "mean_lift": 0.5254,
+      "p99_lift": 1.4
+    },
+    "geometry_glb_path": "/Users/albou/abstract3d/artifacts/validation/final-proof/hunyuan-owl/geometry.glb",
+    "obj_sidecars": [
+      "material_0.png",
+      "scene.mtl"
+    ],
+    "observed_coverage_ratio": 0.301,
+    "observed_view_stats": [
+      {
+        "azimuth_deg": 0.0,
+        "coverage_ratio": 0.2923,
+        "elevation_deg": 0.0,
+        "index": 1,
+        "label": "front"
+      }
+    ],
+    "outlier_filter": {
+      "dropped_texels": 1388
+    },
+    "projection_mode": "projection_only_plus_symmetry_plus_fill3d",
+    "reference_view_count": 0,
+    "seam_leveling": {
+      "applied": false
+    },
+    "source_pose": {
+      "azimuth_deg": 0.0,
+      "elevation_deg": 0.0,
+      "estimated": false,
+      "method": "gradient_ncc",
+      "score": 0.0528,
+      "silhouette_iou": 0.0
+    },
+    "symmetry_completion": {
+      "applied": true,
+      "coverage_ratio": 0.0097,
+      "geometry_symmetry_score": 0.9789,
+      "mode": "mirror_symmetry"
+    },
+    "texture_completion": "mirror_symmetry",
+    "texture_padding": 8,
+    "texture_path": "/Users/albou/abstract3d/artifacts/validation/final-proof/hunyuan-owl/texture.png",
+    "texture_refresh": {
+      "date": "2026-07-05",
+      "reason": "zero-defect cycle 2: fill luminance floor + mirror completion + calibrated fill detail (see CHANGELOG 0.2.0)"
+    },
+    "unseen_fill_mode": "mesh_harmonic",
+    "uv_preview_path": "/Users/albou/abstract3d/artifacts/validation/final-proof/hunyuan-owl/uv_preview.png",
+    "uv_vertex_count": 68270,
+    "vertex_mapping_count": 68270,
+    "view_consistency": []
+  },
+  "texture_completion": "mirror_symmetry",
+  "texture_mode": "baked_basecolor",
+  "texture_resolution": 2048,
+  "timings_s": {
+    "inference": 428.1538,
+    "load": 13.5824,
+    "mesh": 7.6826,
+    "preprocess": 1.58,
+    "source_image_generation": 8.6854,
+    "texture": 66.4527,
+    "total": 512.5545
+  },
+  "topology": {
+    "body_count": 1,
+    "euler_number": 2,
+    "is_watertight": true
+  },
+  "uv_present": true,
+  "vertex_count": 60002,
+  "volume_decoder": "adaptive"
+}

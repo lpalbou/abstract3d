@@ -1,0 +1,36 @@
+{
+  "avg_faces": 104932.5,
+  "avg_inference_s": 55.1116,
+  "avg_mesh_s": 38.4166,
+  "avg_mps_allocated_gib": 0.0008,
+  "avg_preprocess_s": 6.2733,
+  "avg_rss_gib": 3.2993,
+  "avg_t23d_image_s": 4.1172,
+  "avg_total_s": 101.8601,
+  "avg_vertices": 57146.0,
+  "backend": "step1x",
+  "cases": 4,
+  "device": "mps",
+  "generated_inputs": [
+    {
+      "bytes": 437739,
+      "generation_s": 4.4607,
+      "height": 768,
+      "path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/iter-v17-full-dynamic-fixed/inputs/01_input.png",
+      "prompt": "a studio product photo of a red espresso machine with rounded corners",
+      "width": 768
+    },
+    {
+      "bytes": 755486,
+      "generation_s": 3.0806,
+      "height": 768,
+      "path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/iter-v17-full-dynamic-fixed/inputs/02_input.png",
+      "prompt": "a studio product photo of a carved wooden owl figurine",
+      "width": 768
+    }
+  ],
+  "i23d_cases": 2,
+  "image_model": "AbstractFramework/flux.2-klein-4b-8bit",
+  "mc_resolution": 128,
+  "t23d_cases": 2
+}

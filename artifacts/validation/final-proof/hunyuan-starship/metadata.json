@@ -1,0 +1,65 @@
+{
+  "texture_artifacts": {
+    "camera_distance": 3.0,
+    "compositing": {
+      "applied": false,
+      "mode": "legacy",
+      "requested": "auto"
+    },
+    "delight": {
+      "applied": false
+    },
+    "export_frame": "gltf_yup_front_pz (canonical->glTF axis permutation baked at export; geometry.glb remains canonical for rebakes)",
+    "fill_floor": {
+      "applied": true,
+      "consensus_texels": 2784,
+      "evidence_exempt_components": 31,
+      "lifted_texels": 113070,
+      "mean_lift": 0.173,
+      "p99_lift": 1.4
+    },
+    "observed_coverage_ratio": 0.2078,
+    "observed_view_stats": [
+      {
+        "azimuth_deg": 30.0,
+        "coverage_ratio": 0.1862,
+        "elevation_deg": 15.0,
+        "index": 1,
+        "label": "front"
+      }
+    ],
+    "outlier_filter": {
+      "dropped_texels": 291
+    },
+    "projection_mode": "projection_only_plus_symmetry_plus_fill3d",
+    "seam_leveling": {
+      "applied": false
+    },
+    "source_pose": {
+      "azimuth_deg": 30.0,
+      "elevation_deg": 15.0,
+      "estimated": false,
+      "method": "override",
+      "score": null,
+      "silhouette_iou": 0.0
+    },
+    "source_registration": {
+      "frame_center_dx_px": 54.24,
+      "frame_center_dy_px": -27.94,
+      "frame_size": 1024,
+      "method": "mesh_bbox_center"
+    },
+    "symmetry_completion": {
+      "applied": true,
+      "coverage_ratio": 0.0224,
+      "geometry_symmetry_score": 0.9826,
+      "mode": "mirror_symmetry"
+    },
+    "texture_completion": "mirror_symmetry",
+    "texture_padding": 8,
+    "unseen_fill_mode": "mesh_harmonic",
+    "uv_vertex_count": 75248,
+    "vertex_mapping_count": 75248,
+    "view_consistency": []
+  }
+}

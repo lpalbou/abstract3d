@@ -1,0 +1,318 @@
+[
+  {
+    "backend_id": "abstract3d:step1x-local",
+    "background_removal_policy": "auto_generated_image",
+    "background_removed": true,
+    "bundle_dir": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-step1x-label/01_t23d",
+    "case_id": "01_t23d",
+    "cleanup_mode": "label_geometry_cleanup_disabled_on_mps",
+    "composed_text_to_scene3d": true,
+    "contact_sheet_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-step1x-label/01_t23d/contact_sheet.png",
+    "content_type": "model/gltf-binary",
+    "device": "mps",
+    "dtype": "float32",
+    "face_count": 200000,
+    "foreground_ratio": 0.95,
+    "format": "glb",
+    "geometry_only": true,
+    "geometry_subfolder": "Step1X-3D-Geometry-Label-1300m",
+    "guidance_scale": 3.0,
+    "label_condition": {
+      "geometry_type": "smooth",
+      "pose": "unknown",
+      "symmetry": "asymmetry"
+    },
+    "max_facenum": 200000,
+    "memory": {
+      "mps_allocated_bytes": 8015530496,
+      "rss_bytes": 9741762560
+    },
+    "metadata_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-step1x-label/01_t23d/metadata.json",
+    "mode": "t23d",
+    "model_id": "stepfun-ai/Step1X-3D",
+    "model_revision": "bf7084495b3a72222f36549b7942948aa4d9daa7",
+    "native_text_to_scene3d": false,
+    "notes": [
+      "Apple MPS uses float32 for stability in the current local runtime.",
+      "Apple MPS uses a lower default guidance scale than upstream to reduce local instability.",
+      "The Step1X label-geometry checkpoint is supported locally and uses auto labels unless overridden explicitly.",
+      "The Step1X label-geometry path disables upstream in-pipeline cleanup on Apple MPS because that stage is not stable enough locally.",
+      "The Step1X label-geometry path also performs surface extraction on CPU on Apple MPS to avoid local accelerator failures in marching-cubes extraction.",
+      "The supported Step1X path in abstract3d is geometry-only; texture remains out of scope.",
+      "The Apple MPS label-geometry path applies deterministic CPU mesh cleanup after extraction."
+    ],
+    "num_inference_steps": 8,
+    "octree_resolution": 128,
+    "output_bytes": 5176768,
+    "patchset_version": "step1x-geometry-compat-v2",
+    "pipeline_cleanup": {
+      "do_reduce_face": false,
+      "do_remove_degenerate_face": false,
+      "do_remove_floater": false
+    },
+    "postprocess_cleanup": [
+      "remove_floater",
+      "reduce_face:200000",
+      "shade_smooth"
+    ],
+    "postprocess_warnings": [],
+    "preview_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-step1x-label/01_t23d/preview.png",
+    "provider": "abstract3d:step1x-local",
+    "source_dir": "/Users/albou/.cache/abstract3d/vendor/step1x/cb5ac944709c6c913109070c7b90c3447f57f3d4",
+    "source_image_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-step1x-label/01_t23d/input.png",
+    "source_snapshot": "cb5ac944709c6c913109070c7b90c3447f57f3d4",
+    "surface_cleanup": {
+      "do_reduce_face": true,
+      "do_remove_degenerate_face": false,
+      "do_remove_floater": true
+    },
+    "surface_extract_device": "cpu",
+    "task": "text_to_scene3d",
+    "timings_s": {
+      "inference": 25.6641,
+      "load": 9.74,
+      "mesh": 16.57,
+      "preprocess": 1.0736,
+      "source_image_generation": 3.3999,
+      "total": 46.7076
+    },
+    "vertex_count": 122938
+  },
+  {
+    "backend_id": "abstract3d:step1x-local",
+    "background_removal_policy": "auto_generated_image",
+    "background_removed": true,
+    "bundle_dir": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-step1x-label/02_t23d",
+    "case_id": "02_t23d",
+    "cleanup_mode": "label_geometry_cleanup_disabled_on_mps",
+    "composed_text_to_scene3d": true,
+    "contact_sheet_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-step1x-label/02_t23d/contact_sheet.png",
+    "content_type": "model/gltf-binary",
+    "device": "mps",
+    "dtype": "float32",
+    "face_count": 191344,
+    "foreground_ratio": 0.95,
+    "format": "glb",
+    "geometry_only": true,
+    "geometry_subfolder": "Step1X-3D-Geometry-Label-1300m",
+    "guidance_scale": 3.0,
+    "label_condition": {
+      "geometry_type": "normal",
+      "pose": "unknown",
+      "symmetry": "asymmetry"
+    },
+    "max_facenum": 200000,
+    "memory": {
+      "mps_allocated_bytes": 8015446272,
+      "rss_bytes": 13177896960
+    },
+    "metadata_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-step1x-label/02_t23d/metadata.json",
+    "mode": "t23d",
+    "model_id": "stepfun-ai/Step1X-3D",
+    "model_revision": "bf7084495b3a72222f36549b7942948aa4d9daa7",
+    "native_text_to_scene3d": false,
+    "notes": [
+      "Apple MPS uses float32 for stability in the current local runtime.",
+      "Apple MPS uses a lower default guidance scale than upstream to reduce local instability.",
+      "The Step1X label-geometry checkpoint is supported locally and uses auto labels unless overridden explicitly.",
+      "The Step1X label-geometry path disables upstream in-pipeline cleanup on Apple MPS because that stage is not stable enough locally.",
+      "The Step1X label-geometry path also performs surface extraction on CPU on Apple MPS to avoid local accelerator failures in marching-cubes extraction.",
+      "The supported Step1X path in abstract3d is geometry-only; texture remains out of scope.",
+      "The Apple MPS label-geometry path applies deterministic CPU mesh cleanup after extraction."
+    ],
+    "num_inference_steps": 8,
+    "octree_resolution": 128,
+    "output_bytes": 5089112,
+    "patchset_version": "step1x-geometry-compat-v2",
+    "pipeline_cleanup": {
+      "do_reduce_face": false,
+      "do_remove_degenerate_face": false,
+      "do_remove_floater": false
+    },
+    "postprocess_cleanup": [
+      "remove_floater",
+      "reduce_face:200000",
+      "shade_smooth"
+    ],
+    "postprocess_warnings": [],
+    "preview_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-step1x-label/02_t23d/preview.png",
+    "provider": "abstract3d:step1x-local",
+    "source_dir": "/Users/albou/.cache/abstract3d/vendor/step1x/cb5ac944709c6c913109070c7b90c3447f57f3d4",
+    "source_image_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-step1x-label/02_t23d/input.png",
+    "source_snapshot": "cb5ac944709c6c913109070c7b90c3447f57f3d4",
+    "surface_cleanup": {
+      "do_reduce_face": true,
+      "do_remove_degenerate_face": false,
+      "do_remove_floater": true
+    },
+    "surface_extract_device": "cpu",
+    "task": "text_to_scene3d",
+    "timings_s": {
+      "inference": 42.6911,
+      "load": 9.74,
+      "mesh": 20.2539,
+      "preprocess": 0.5109,
+      "source_image_generation": 6.4492,
+      "total": 69.9051
+    },
+    "vertex_count": 128969
+  },
+  {
+    "backend_id": "abstract3d:step1x-local",
+    "background_removal_policy": "auto_opaque_input",
+    "background_removed": true,
+    "bundle_dir": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-step1x-label/03_i23d",
+    "case_id": "03_i23d",
+    "cleanup_mode": "label_geometry_cleanup_disabled_on_mps",
+    "composed_text_to_scene3d": false,
+    "contact_sheet_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-step1x-label/03_i23d/contact_sheet.png",
+    "content_type": "model/gltf-binary",
+    "device": "mps",
+    "dtype": "float32",
+    "face_count": 200000,
+    "foreground_ratio": 0.95,
+    "format": "glb",
+    "geometry_only": true,
+    "geometry_subfolder": "Step1X-3D-Geometry-Label-1300m",
+    "guidance_scale": 3.0,
+    "label_condition": {
+      "geometry_type": "sharp",
+      "pose": "unknown",
+      "symmetry": "asymmetry"
+    },
+    "max_facenum": 200000,
+    "memory": {
+      "mps_allocated_bytes": 8015450624,
+      "rss_bytes": 8332247040
+    },
+    "metadata_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-step1x-label/03_i23d/metadata.json",
+    "mode": "i23d",
+    "model_id": "stepfun-ai/Step1X-3D",
+    "model_revision": "bf7084495b3a72222f36549b7942948aa4d9daa7",
+    "native_text_to_scene3d": false,
+    "notes": [
+      "Apple MPS uses float32 for stability in the current local runtime.",
+      "Apple MPS uses a lower default guidance scale than upstream to reduce local instability.",
+      "The Step1X label-geometry checkpoint is supported locally and uses auto labels unless overridden explicitly.",
+      "The Step1X label-geometry path disables upstream in-pipeline cleanup on Apple MPS because that stage is not stable enough locally.",
+      "The Step1X label-geometry path also performs surface extraction on CPU on Apple MPS to avoid local accelerator failures in marching-cubes extraction.",
+      "The supported Step1X path in abstract3d is geometry-only; texture remains out of scope.",
+      "The Apple MPS label-geometry path applies deterministic CPU mesh cleanup after extraction."
+    ],
+    "num_inference_steps": 8,
+    "octree_resolution": 128,
+    "output_bytes": 5593892,
+    "patchset_version": "step1x-geometry-compat-v2",
+    "pipeline_cleanup": {
+      "do_reduce_face": false,
+      "do_remove_degenerate_face": false,
+      "do_remove_floater": false
+    },
+    "postprocess_cleanup": [
+      "remove_floater",
+      "reduce_face:200000",
+      "shade_smooth"
+    ],
+    "postprocess_warnings": [],
+    "preview_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-step1x-label/03_i23d/preview.png",
+    "provider": "abstract3d:step1x-local",
+    "source_dir": "/Users/albou/.cache/abstract3d/vendor/step1x/cb5ac944709c6c913109070c7b90c3447f57f3d4",
+    "source_image_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-step1x-label/03_i23d/input.png",
+    "source_snapshot": "cb5ac944709c6c913109070c7b90c3447f57f3d4",
+    "surface_cleanup": {
+      "do_reduce_face": true,
+      "do_remove_degenerate_face": false,
+      "do_remove_floater": true
+    },
+    "surface_extract_device": "cpu",
+    "task": "image_to_scene3d",
+    "timings_s": {
+      "inference": 57.4348,
+      "load": 9.74,
+      "mesh": 28.821,
+      "preprocess": 1.382,
+      "source_image_generation": null,
+      "total": 87.6378
+    },
+    "vertex_count": 156416
+  },
+  {
+    "backend_id": "abstract3d:step1x-local",
+    "background_removal_policy": "auto_opaque_input",
+    "background_removed": true,
+    "bundle_dir": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-step1x-label/04_i23d",
+    "case_id": "04_i23d",
+    "cleanup_mode": "label_geometry_cleanup_disabled_on_mps",
+    "composed_text_to_scene3d": false,
+    "contact_sheet_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-step1x-label/04_i23d/contact_sheet.png",
+    "content_type": "model/gltf-binary",
+    "device": "mps",
+    "dtype": "float32",
+    "face_count": 200000,
+    "foreground_ratio": 0.95,
+    "format": "glb",
+    "geometry_only": true,
+    "geometry_subfolder": "Step1X-3D-Geometry-Label-1300m",
+    "guidance_scale": 3.0,
+    "label_condition": {
+      "geometry_type": "smooth",
+      "pose": "unknown",
+      "symmetry": "x"
+    },
+    "max_facenum": 200000,
+    "memory": {
+      "mps_allocated_bytes": 8015446272,
+      "rss_bytes": 8615542784
+    },
+    "metadata_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-step1x-label/04_i23d/metadata.json",
+    "mode": "i23d",
+    "model_id": "stepfun-ai/Step1X-3D",
+    "model_revision": "bf7084495b3a72222f36549b7942948aa4d9daa7",
+    "native_text_to_scene3d": false,
+    "notes": [
+      "Apple MPS uses float32 for stability in the current local runtime.",
+      "Apple MPS uses a lower default guidance scale than upstream to reduce local instability.",
+      "The Step1X label-geometry checkpoint is supported locally and uses auto labels unless overridden explicitly.",
+      "The Step1X label-geometry path disables upstream in-pipeline cleanup on Apple MPS because that stage is not stable enough locally.",
+      "The Step1X label-geometry path also performs surface extraction on CPU on Apple MPS to avoid local accelerator failures in marching-cubes extraction.",
+      "The supported Step1X path in abstract3d is geometry-only; texture remains out of scope.",
+      "The Apple MPS label-geometry path applies deterministic CPU mesh cleanup after extraction."
+    ],
+    "num_inference_steps": 8,
+    "octree_resolution": 128,
+    "output_bytes": 5263296,
+    "patchset_version": "step1x-geometry-compat-v2",
+    "pipeline_cleanup": {
+      "do_reduce_face": false,
+      "do_remove_degenerate_face": false,
+      "do_remove_floater": false
+    },
+    "postprocess_cleanup": [
+      "remove_floater",
+      "reduce_face:200000",
+      "shade_smooth"
+    ],
+    "postprocess_warnings": [],
+    "preview_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-step1x-label/04_i23d/preview.png",
+    "provider": "abstract3d:step1x-local",
+    "source_dir": "/Users/albou/.cache/abstract3d/vendor/step1x/cb5ac944709c6c913109070c7b90c3447f57f3d4",
+    "source_image_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-step1x-label/04_i23d/input.png",
+    "source_snapshot": "cb5ac944709c6c913109070c7b90c3447f57f3d4",
+    "surface_cleanup": {
+      "do_reduce_face": true,
+      "do_remove_degenerate_face": false,
+      "do_remove_floater": true
+    },
+    "surface_extract_device": "cpu",
+    "task": "image_to_scene3d",
+    "timings_s": {
+      "inference": 87.4531,
+      "load": 9.74,
+      "mesh": 35.3476,
+      "preprocess": 1.8586,
+      "source_image_generation": null,
+      "total": 124.6593
+    },
+    "vertex_count": 129882
+  }
+]

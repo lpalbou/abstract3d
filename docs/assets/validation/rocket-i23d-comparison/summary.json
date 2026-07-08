@@ -1,0 +1,106 @@
+{
+  "input_image": "/Users/albou/Desktop/rocket.png",
+  "step1x": {
+    "background_removed": true,
+    "bundle_dir": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/rocket-i23d/step1x-stable/01_i23d",
+    "contact_sheet": "/Users/albou/tmp/abstractframework/abstract3d/docs/assets/validation/rocket-i23d-comparison/step1x_contact_sheet.png",
+    "face_count": 127734,
+    "geometry_subfolder": "Step1X-3D-Geometry-Label-1300m",
+    "label_condition": {
+      "geometry_type": "sharp",
+      "symmetry": "x"
+    },
+    "memory": {
+      "mps_allocated_bytes": 1048576,
+      "mps_driver_allocated_bytes": 10256384,
+      "mps_recommended_max_bytes": 115448725504,
+      "rss_bytes": 1812037632
+    },
+    "model_id": "stepfun-ai/Step1X-3D",
+    "scene_glb": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/rocket-i23d/step1x-stable/01_i23d/scene.glb",
+    "timings_s": {
+      "inference": 50.2726,
+      "load": 2.9737,
+      "mesh": 43.5793,
+      "preprocess": 7.5948,
+      "source_image_generation": null,
+      "total": 101.4467
+    },
+    "vertex_count": 106117
+  },
+  "step1x_stronger_probes": {
+    "base_8step_3p0": {
+      "path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/rocket-i23d/step1x-base-stable/result.json",
+      "result": {
+        "case_id": "01_i23d",
+        "contact_sheet_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/rocket-i23d/step1x-base-stable/01_i23d/contact_sheet.png",
+        "error": "RuntimeError: MPS backend out of memory (MPS allocated: 9.42 GiB, other allocations: 38.33 GiB, max allowed: 48.00 GiB). Tried to allocate 1.74 GiB on private pool. Use PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0 to disable upper limit for memory allocations (may cause system failure).",
+        "face_count": null,
+        "input_image": "/Users/albou/Desktop/rocket.png",
+        "memory": {
+          "mps_allocated_bytes": null,
+          "rss_bytes": null
+        },
+        "mode": "i23d",
+        "prompt": "a single silver rocket with a pointed nose cone, metal body, three fins, hard-surface mechanical details, and a centered upright pose",
+        "status": "failed",
+        "timings_s": {
+          "inference": null,
+          "mesh": null,
+          "preprocess": null,
+          "source_image_generation": null,
+          "total": null
+        },
+        "vertex_count": null,
+        "wall_clock_s": 32.5549
+      }
+    },
+    "label_14step_4p5": {
+      "path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/rocket-i23d/step1x/result.json",
+      "result": {
+        "case_id": "01_i23d",
+        "contact_sheet_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/rocket-i23d/step1x/01_i23d/contact_sheet.png",
+        "error": "RuntimeError: MPS backend out of memory (MPS allocated: 11.11 GiB, other allocations: 35.49 GiB, max allowed: 48.00 GiB). Tried to allocate 1.61 GiB on private pool. Use PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0 to disable upper limit for memory allocations (may cause system failure).",
+        "face_count": null,
+        "input_image": "/Users/albou/Desktop/rocket.png",
+        "memory": {
+          "mps_allocated_bytes": null,
+          "rss_bytes": null
+        },
+        "mode": "i23d",
+        "prompt": "a single silver rocket with a pointed nose cone, metal body, three fins, hard-surface mechanical details, and a centered upright pose",
+        "status": "failed",
+        "timings_s": {
+          "inference": null,
+          "mesh": null,
+          "preprocess": null,
+          "source_image_generation": null,
+          "total": null
+        },
+        "vertex_count": null,
+        "wall_clock_s": 81.1505
+      }
+    }
+  },
+  "triposr": {
+    "background_removed": true,
+    "bundle_dir": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/rocket-i23d/triposr/01_i23d",
+    "contact_sheet": "/Users/albou/tmp/abstractframework/abstract3d/docs/assets/validation/rocket-i23d-comparison/triposr_contact_sheet.png",
+    "face_count": 6568,
+    "memory": {
+      "mps_allocated_bytes": 1680249088,
+      "rss_bytes": 3409313792
+    },
+    "model_id": "stabilityai/TripoSR",
+    "scene_glb": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/rocket-i23d/triposr/01_i23d/scene.glb",
+    "timings_s": {
+      "inference": 0.3576,
+      "load": 6.762,
+      "mesh": 1.2093,
+      "preprocess": 1.2803,
+      "source_image_generation": null,
+      "total": 2.8472
+    },
+    "vertex_count": 3293
+  }
+}

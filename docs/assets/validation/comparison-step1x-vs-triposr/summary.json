@@ -1,0 +1,28 @@
+{
+  "profiles": {
+    "step1x": {
+      "avg_faces": 342951.0,
+      "avg_inference_s": 42.5325,
+      "avg_mps_allocated_gib": 6.7512,
+      "avg_t23d_image_s": 10.4107,
+      "avg_total_s": 47.7379,
+      "avg_vertices": 228019.5
+    },
+    "triposr": {
+      "avg_faces": 21400.0,
+      "avg_inference_s": 0.4029,
+      "avg_mps_allocated_gib": 1.5649,
+      "avg_t23d_image_s": 7.5063,
+      "avg_total_s": 6.3624,
+      "avg_vertices": 10742.0
+    }
+  },
+  "ratios": {
+    "avg_faces_step1x_vs_triposr": 16.0257,
+    "avg_inference_s_step1x_vs_triposr": 105.5659,
+    "avg_mps_allocated_gib_step1x_vs_triposr": 4.3141,
+    "avg_t23d_image_s_step1x_vs_triposr": 1.3869,
+    "avg_total_s_step1x_vs_triposr": 7.5031,
+    "avg_vertices_step1x_vs_triposr": 21.2269
+  }
+}

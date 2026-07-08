@@ -1,0 +1,142 @@
+[
+  {
+    "backend_id": "abstract3d:triposr",
+    "background_removed": false,
+    "bundle_dir": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-triposr/01_t23d",
+    "case_id": "01_t23d",
+    "chunk_size": 2048,
+    "contact_sheet_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-triposr/01_t23d/contact_sheet.png",
+    "content_type": "model/gltf-binary",
+    "device": "mps",
+    "face_count": 23012,
+    "format": "glb",
+    "mc_resolution": 128,
+    "memory": {
+      "mps_allocated_bytes": 1680249088,
+      "rss_bytes": 16574136320
+    },
+    "metadata_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-triposr/01_t23d/metadata.json",
+    "mode": "t23d",
+    "model_id": "stabilityai/TripoSR",
+    "output_bytes": 462040,
+    "preview_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-triposr/01_t23d/preview.png",
+    "provider": "abstract3d:triposr",
+    "source_image_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-triposr/01_t23d/input.png",
+    "source_snapshot": "107cefdc244c39106fa830359024f6a2f1c78871",
+    "task": "text_to_scene3d",
+    "timings_s": {
+      "inference": 0.5091,
+      "load": 5.4285,
+      "mesh": 2.6728,
+      "preprocess": 0.0028,
+      "source_image_generation": 7.2816,
+      "total": 10.4663
+    },
+    "vertex_count": 11555
+  },
+  {
+    "backend_id": "abstract3d:triposr",
+    "background_removed": false,
+    "bundle_dir": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-triposr/02_t23d",
+    "case_id": "02_t23d",
+    "chunk_size": 2048,
+    "contact_sheet_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-triposr/02_t23d/contact_sheet.png",
+    "content_type": "model/gltf-binary",
+    "device": "mps",
+    "face_count": 15920,
+    "format": "glb",
+    "mc_resolution": 128,
+    "memory": {
+      "mps_allocated_bytes": 1680249088,
+      "rss_bytes": 20207534080
+    },
+    "metadata_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-triposr/02_t23d/metadata.json",
+    "mode": "t23d",
+    "model_id": "stabilityai/TripoSR",
+    "output_bytes": 320108,
+    "preview_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-triposr/02_t23d/preview.png",
+    "provider": "abstract3d:triposr",
+    "source_image_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-triposr/02_t23d/input.png",
+    "source_snapshot": "107cefdc244c39106fa830359024f6a2f1c78871",
+    "task": "text_to_scene3d",
+    "timings_s": {
+      "inference": 0.5099,
+      "load": 5.4285,
+      "mesh": 2.7622,
+      "preprocess": 0.0022,
+      "source_image_generation": 7.731,
+      "total": 11.0053
+    },
+    "vertex_count": 8003
+  },
+  {
+    "backend_id": "abstract3d:triposr",
+    "background_removed": false,
+    "bundle_dir": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-triposr/03_i23d",
+    "case_id": "03_i23d",
+    "chunk_size": 2048,
+    "contact_sheet_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-triposr/03_i23d/contact_sheet.png",
+    "content_type": "model/gltf-binary",
+    "device": "mps",
+    "face_count": 26800,
+    "format": "glb",
+    "mc_resolution": 128,
+    "memory": {
+      "mps_allocated_bytes": 1680249088,
+      "rss_bytes": 20252049408
+    },
+    "metadata_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-triposr/03_i23d/metadata.json",
+    "mode": "i23d",
+    "model_id": "stabilityai/TripoSR",
+    "output_bytes": 537784,
+    "preview_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-triposr/03_i23d/preview.png",
+    "provider": "abstract3d:triposr",
+    "source_image_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-triposr/03_i23d/input.png",
+    "source_snapshot": "107cefdc244c39106fa830359024f6a2f1c78871",
+    "task": "image_to_scene3d",
+    "timings_s": {
+      "inference": 0.2924,
+      "load": 5.4285,
+      "mesh": 1.6051,
+      "preprocess": 0.0061,
+      "source_image_generation": null,
+      "total": 1.9036
+    },
+    "vertex_count": 13448
+  },
+  {
+    "backend_id": "abstract3d:triposr",
+    "background_removed": false,
+    "bundle_dir": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-triposr/04_i23d",
+    "case_id": "04_i23d",
+    "chunk_size": 2048,
+    "contact_sheet_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-triposr/04_i23d/contact_sheet.png",
+    "content_type": "model/gltf-binary",
+    "device": "mps",
+    "face_count": 19868,
+    "format": "glb",
+    "mc_resolution": 128,
+    "memory": {
+      "mps_allocated_bytes": 1680249088,
+      "rss_bytes": 20252114944
+    },
+    "metadata_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-triposr/04_i23d/metadata.json",
+    "mode": "i23d",
+    "model_id": "stabilityai/TripoSR",
+    "output_bytes": 398824,
+    "preview_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-triposr/04_i23d/preview.png",
+    "provider": "abstract3d:triposr",
+    "source_image_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/local-triposr/04_i23d/input.png",
+    "source_snapshot": "107cefdc244c39106fa830359024f6a2f1c78871",
+    "task": "image_to_scene3d",
+    "timings_s": {
+      "inference": 0.3002,
+      "load": 5.4285,
+      "mesh": 1.7667,
+      "preprocess": 0.0076,
+      "source_image_generation": null,
+      "total": 2.0745
+    },
+    "vertex_count": 9962
+  }
+]

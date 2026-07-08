@@ -1,0 +1,46 @@
+.venv
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.DS_Store
+.pytest_cache/
+site/
+
+# ---------------------------------------------------------------------------
+# Validation artifacts policy: version ONLY the experiments that reflect the
+# CURRENT state of the code (the certified bundles, the certification record,
+# and the generated-references feature proof). Every other experiment stays
+# local for the team but is not versioned.
+# ---------------------------------------------------------------------------
+artifacts/*
+!artifacts/validation/
+artifacts/validation/*
+
+# Certified proof assets (current pipeline output)
+!artifacts/validation/final-proof/
+artifacts/validation/final-proof/*
+!artifacts/validation/final-proof/hunyuan-starship/
+!artifacts/validation/final-proof/hunyuan-owl/
+!artifacts/validation/final-proof/summary/
+!artifacts/validation/iter3-multiview-fixed/
+artifacts/validation/iter3-multiview-fixed/*
+!artifacts/validation/iter3-multiview-fixed/face-2mv/
+
+# Generated-reference views feature (current)
+!artifacts/validation/generated-references/
+
+# Certification record + key evidence (current)
+!artifacts/validation/texture-cycle-proofs/
+artifacts/validation/texture-cycle-proofs/qa_runs/
+artifacts/validation/texture-cycle-proofs/critic1_evidence_sheets/
+artifacts/validation/texture-cycle-proofs/meshvault/**/*.png
+
+# Heavy sidecars excluded from versioned bundles (regenerable from scene.glb)
+artifacts/validation/**/scene.obj
+artifacts/validation/**/material_0.png
+
+# Local editor/MCP config
+.cursor/
+toot.md

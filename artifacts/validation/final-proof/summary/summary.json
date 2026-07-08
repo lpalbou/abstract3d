@@ -1,0 +1,126 @@
+[
+  {
+    "backend": "triposr",
+    "body_count": 1,
+    "face_count": 121348,
+    "object": "owl",
+    "observed_coverage_ratio": 0.3536,
+    "projection_mode": "hybrid_observed_view_plus_triplane",
+    "sheet_path": "/Users/albou/abstract3d/artifacts/validation/final-proof/triposr-owl/contact_sheet.png",
+    "source_pose": null,
+    "total_s": 62.2089,
+    "vertex_count": 73809,
+    "watertight": true
+  },
+  {
+    "backend": "hunyuan",
+    "body_count": 1,
+    "face_count": 120000,
+    "object": "owl",
+    "observed_coverage_ratio": 0.3327,
+    "projection_mode": "projection_only_plus_inpaint",
+    "sheet_path": "/Users/albou/abstract3d/artifacts/validation/final-proof/hunyuan-owl/contact_sheet.png",
+    "source_pose": {
+      "azimuth_deg": 0.0,
+      "elevation_deg": 0.0,
+      "estimated": true,
+      "silhouette_iou": 0.9007
+    },
+    "total_s": 512.5545,
+    "vertex_count": 60002,
+    "watertight": true
+  },
+  {
+    "backend": "triposr",
+    "body_count": 1,
+    "face_count": 77058,
+    "object": "chair",
+    "observed_coverage_ratio": 0.2844,
+    "projection_mode": "hybrid_observed_view_plus_triplane",
+    "sheet_path": "/Users/albou/abstract3d/artifacts/validation/final-proof/triposr-chair/contact_sheet.png",
+    "source_pose": null,
+    "total_s": 42.431,
+    "vertex_count": 43132,
+    "watertight": true
+  },
+  {
+    "backend": "hunyuan",
+    "body_count": 1,
+    "face_count": 120000,
+    "object": "chair",
+    "observed_coverage_ratio": 0.1816,
+    "projection_mode": "projection_only_plus_inpaint",
+    "sheet_path": "/Users/albou/abstract3d/artifacts/validation/final-proof/hunyuan-chair/contact_sheet.png",
+    "source_pose": {
+      "azimuth_deg": 7.5,
+      "elevation_deg": 0.0,
+      "estimated": true,
+      "silhouette_iou": 0.7939
+    },
+    "total_s": 524.7989,
+    "vertex_count": 59998,
+    "watertight": true
+  },
+  {
+    "backend": "triposr",
+    "body_count": 1,
+    "face_count": 62134,
+    "object": "starship",
+    "observed_coverage_ratio": 0.2749,
+    "projection_mode": "hybrid_observed_view_plus_triplane",
+    "sheet_path": "/Users/albou/abstract3d/artifacts/validation/final-proof/triposr-starship/contact_sheet.png",
+    "source_pose": null,
+    "total_s": 23.6245,
+    "vertex_count": 38792,
+    "watertight": true
+  },
+  {
+    "backend": "hunyuan",
+    "body_count": 1,
+    "face_count": 120000,
+    "object": "starship",
+    "observed_coverage_ratio": 0.2357,
+    "projection_mode": "projection_only_plus_inpaint",
+    "sheet_path": "/Users/albou/abstract3d/artifacts/validation/final-proof/hunyuan-starship/contact_sheet.png",
+    "source_pose": {
+      "azimuth_deg": 30.0,
+      "elevation_deg": 15.0,
+      "estimated": true,
+      "silhouette_iou": 0.7825
+    },
+    "total_s": 407.9399,
+    "vertex_count": 60002,
+    "watertight": true
+  },
+  {
+    "backend": "triposr",
+    "body_count": 1,
+    "face_count": 125882,
+    "object": "face",
+    "observed_coverage_ratio": 0.3196,
+    "projection_mode": "hybrid_observed_plus_symmetry_plus_triplane",
+    "sheet_path": "/Users/albou/abstract3d/artifacts/validation/final-proof/triposr-face/contact_sheet.png",
+    "source_pose": null,
+    "total_s": 242.7763,
+    "vertex_count": 72826,
+    "watertight": true
+  },
+  {
+    "backend": "hunyuan",
+    "body_count": 1,
+    "face_count": 120000,
+    "object": "face",
+    "observed_coverage_ratio": 0.2761,
+    "projection_mode": "projection_only_plus_symmetry_plus_inpaint",
+    "sheet_path": "/Users/albou/abstract3d/artifacts/validation/final-proof/hunyuan-face/contact_sheet.png",
+    "source_pose": {
+      "azimuth_deg": 7.5,
+      "elevation_deg": 0.0,
+      "estimated": true,
+      "silhouette_iou": 0.8561
+    },
+    "total_s": 548.2839,
+    "vertex_count": 59582,
+    "watertight": true
+  }
+]

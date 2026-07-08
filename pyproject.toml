@@ -1,0 +1,280 @@
+[build-system]
+requires = ["setuptools>=77.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "abstract3d"
+version = "0.2.0"
+description = "Abstract3D plugin for local-first text-to-3D and image-to-3D generation in AbstractFramework"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+    { name = "Laurent-Philippe Albou", email = "contact@abstractcore.ai" },
+]
+keywords = [
+    "abstractframework",
+    "abstractcore",
+    "abstractgateway",
+    "3d",
+    "spatial",
+    "geometry",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "abstractvision>=0.3.27",
+]
+# Base install is intentionally lightweight. Local runtime stacks and composed
+# text-to-image helpers stay behind explicit extras so remote/plugin hosts do
+# not pull Torch, local model runtimes, or platform-specific image backends by
+# default.
+
+[project.optional-dependencies]
+triposr = [
+    "numpy>=2.0.0,<3.0.0",
+    "torch>=2.7.0,<3.0.0",
+    "transformers>=5.0.0,<6.0.0",
+    "huggingface_hub>=0.30.0,<2.0.0",
+    "omegaconf>=2.3.0,<3.0.0",
+    "einops>=0.8.0,<1.0.0",
+    "trimesh>=4.12.0,<5.0.0",
+    "imageio>=2.37.0,<3.0.0",
+    "Pillow>=12.0.0,<13.0.0",
+    "rembg>=2.0.0,<3.0.0",
+    "onnxruntime>=1.20.0,<2.0.0",
+    "scikit-image>=0.25.0,<1.0.0",
+    "scipy>=1.10.0,<2.0.0",
+    "opencv-python-headless>=4.10.0,<5.0.0",
+    "psutil>=5.9.0,<7.0.0",
+    "matplotlib>=3.10.0,<4.0.0",
+    "pymeshlab>=2023.12,<2025.0",
+    "xatlas>=0.0.11,<1.0.0",
+    "moderngl>=5.12.0,<6.0.0",
+]
+
+trellis2 = [
+    "numpy>=2.0.0,<3.0.0",
+    "torch>=2.7.0,<3.0.0",
+    "torchvision>=0.22.0,<1.0.0",
+    "transformers>=5.0.0,<6.0.0",
+    "huggingface_hub>=0.30.0,<2.0.0",
+    "safetensors>=0.6.0,<1.0.0",
+    "trimesh>=4.12.0,<5.0.0",
+    "Pillow>=12.0.0,<13.0.0",
+    "psutil>=5.9.0,<7.0.0",
+    "matplotlib>=3.10.0,<4.0.0",
+]
+
+step1x = [
+    "numpy>=2.0.0,<3.0.0",
+    "torch>=2.7.0,<3.0.0",
+    "torchvision>=0.22.0,<1.0.0",
+    "diffusers>=0.38.0,<1.0.0",
+    "transformers>=5.0.0,<6.0.0",
+    "huggingface_hub>=0.30.0,<2.0.0",
+    "safetensors>=0.6.0,<1.0.0",
+    "trimesh>=4.12.0,<5.0.0",
+    "Pillow>=12.0.0,<13.0.0",
+    "rembg>=2.0.0,<3.0.0",
+    "onnxruntime>=1.20.0,<2.0.0",
+    "scikit-image>=0.25.0,<1.0.0",
+    "psutil>=5.9.0,<7.0.0",
+    "matplotlib>=3.10.0,<4.0.0",
+    "omegaconf>=2.3.0,<3.0.0",
+    "einops>=0.8.0,<1.0.0",
+    "pytorch-lightning>=2.2.0,<3.0.0",
+    "jaxtyping>=0.2.28,<1.0.0",
+    "plyfile>=1.0.0,<2.0.0",
+    "opencv-python-headless>=4.10.0,<5.0.0",
+    "timm>=0.9.0,<1.0.0",
+    "pymeshlab>=2023.12,<2025.0",
+    "PyMCubes>=0.1.4,<1.0.0",
+    "easydict>=1.13,<2.0.0",
+]
+
+hunyuan3d = [
+    "numpy>=2.0.0,<3.0.0",
+    "torch>=2.7.0,<3.0.0",
+    "diffusers>=0.38.0,<1.0.0",
+    "transformers>=5.0.0,<6.0.0",
+    "huggingface_hub>=0.30.0,<2.0.0",
+    "safetensors>=0.6.0,<1.0.0",
+    "trimesh>=4.12.0,<5.0.0",
+    "Pillow>=12.0.0,<13.0.0",
+    "rembg>=2.0.0,<3.0.0",
+    "onnxruntime>=1.20.0,<2.0.0",
+    "scikit-image>=0.25.0,<1.0.0",
+    "opencv-python-headless>=4.10.0,<5.0.0",
+    "pymeshlab>=2023.12,<2025.0",
+    "einops>=0.8.0,<1.0.0",
+    "PyYAML>=6.0.0,<7.0.0",
+    "psutil>=5.9.0,<7.0.0",
+    "matplotlib>=3.10.0,<4.0.0",
+    "xatlas>=0.0.11,<1.0.0",
+    "moderngl>=5.12.0,<6.0.0",
+    "scipy>=1.10.0,<2.0.0",
+]
+
+# Compatibility alias retained for callers that still request `abstract3d[t23d]`.
+t23d = []
+
+apple = [
+    "abstractvision[apple]>=0.3.27",
+    "numpy>=2.0.0,<3.0.0",
+    "torch>=2.7.0,<3.0.0",
+    "torchvision>=0.22.0,<1.0.0",
+    "diffusers>=0.38.0,<1.0.0",
+    "transformers>=5.0.0,<6.0.0",
+    "huggingface_hub>=0.30.0,<2.0.0",
+    "safetensors>=0.6.0,<1.0.0",
+    "omegaconf>=2.3.0,<3.0.0",
+    "einops>=0.8.0,<1.0.0",
+    "pytorch-lightning>=2.2.0,<3.0.0",
+    "jaxtyping>=0.2.28,<1.0.0",
+    "plyfile>=1.0.0,<2.0.0",
+    "opencv-python-headless>=4.10.0,<5.0.0",
+    "timm>=0.9.0,<1.0.0",
+    "pymeshlab>=2023.12,<2025.0",
+    "PyMCubes>=0.1.4,<1.0.0",
+    "easydict>=1.13,<2.0.0",
+    "trimesh>=4.12.0,<5.0.0",
+    "imageio>=2.37.0,<3.0.0",
+    "Pillow>=12.0.0,<13.0.0",
+    "rembg>=2.0.0,<3.0.0",
+    "onnxruntime>=1.20.0,<2.0.0",
+    "scikit-image>=0.25.0,<1.0.0",
+    "scipy>=1.10.0,<2.0.0",
+    "psutil>=5.9.0,<7.0.0",
+    "matplotlib>=3.10.0,<4.0.0",
+    "xatlas>=0.0.11,<1.0.0",
+    "moderngl>=5.12.0,<6.0.0",
+]
+
+gpu = [
+    "abstractvision[gpu]>=0.3.27",
+    "numpy>=2.0.0,<3.0.0",
+    "torch>=2.7.0,<3.0.0",
+    "torchvision>=0.22.0,<1.0.0",
+    "diffusers>=0.38.0,<1.0.0",
+    "transformers>=5.0.0,<6.0.0",
+    "huggingface_hub>=0.30.0,<2.0.0",
+    "safetensors>=0.6.0,<1.0.0",
+    "omegaconf>=2.3.0,<3.0.0",
+    "einops>=0.8.0,<1.0.0",
+    "pytorch-lightning>=2.2.0,<3.0.0",
+    "jaxtyping>=0.2.28,<1.0.0",
+    "plyfile>=1.0.0,<2.0.0",
+    "opencv-python-headless>=4.10.0,<5.0.0",
+    "timm>=0.9.0,<1.0.0",
+    "pymeshlab>=2023.12,<2025.0",
+    "PyMCubes>=0.1.4,<1.0.0",
+    "easydict>=1.13,<2.0.0",
+    "trimesh>=4.12.0,<5.0.0",
+    "imageio>=2.37.0,<3.0.0",
+    "Pillow>=12.0.0,<13.0.0",
+    "rembg>=2.0.0,<3.0.0",
+    "onnxruntime>=1.20.0,<2.0.0",
+    "scikit-image>=0.25.0,<1.0.0",
+    "scipy>=1.10.0,<2.0.0",
+    "psutil>=5.9.0,<7.0.0",
+    "matplotlib>=3.10.0,<4.0.0",
+    "xatlas>=0.0.11,<1.0.0",
+    "moderngl>=5.12.0,<6.0.0",
+]
+
+all-apple = [
+    "abstractvision[all-apple]>=0.3.27",
+    "numpy>=2.0.0,<3.0.0",
+    "torch>=2.7.0,<3.0.0",
+    "torchvision>=0.22.0,<1.0.0",
+    "diffusers>=0.38.0,<1.0.0",
+    "transformers>=5.0.0,<6.0.0",
+    "huggingface_hub>=0.30.0,<2.0.0",
+    "safetensors>=0.6.0,<1.0.0",
+    "omegaconf>=2.3.0,<3.0.0",
+    "einops>=0.8.0,<1.0.0",
+    "pytorch-lightning>=2.2.0,<3.0.0",
+    "jaxtyping>=0.2.28,<1.0.0",
+    "plyfile>=1.0.0,<2.0.0",
+    "opencv-python-headless>=4.10.0,<5.0.0",
+    "timm>=0.9.0,<1.0.0",
+    "pymeshlab>=2023.12,<2025.0",
+    "PyMCubes>=0.1.4,<1.0.0",
+    "easydict>=1.13,<2.0.0",
+    "trimesh>=4.12.0,<5.0.0",
+    "imageio>=2.37.0,<3.0.0",
+    "Pillow>=12.0.0,<13.0.0",
+    "rembg>=2.0.0,<3.0.0",
+    "onnxruntime>=1.20.0,<2.0.0",
+    "scikit-image>=0.25.0,<1.0.0",
+    "scipy>=1.10.0,<2.0.0",
+    "psutil>=5.9.0,<7.0.0",
+    "matplotlib>=3.10.0,<4.0.0",
+    "xatlas>=0.0.11,<1.0.0",
+    "moderngl>=5.12.0,<6.0.0",
+]
+
+all-gpu = [
+    "abstractvision[all-gpu]>=0.3.27",
+    "numpy>=2.0.0,<3.0.0",
+    "torch>=2.7.0,<3.0.0",
+    "torchvision>=0.22.0,<1.0.0",
+    "diffusers>=0.38.0,<1.0.0",
+    "transformers>=5.0.0,<6.0.0",
+    "huggingface_hub>=0.30.0,<2.0.0",
+    "safetensors>=0.6.0,<1.0.0",
+    "omegaconf>=2.3.0,<3.0.0",
+    "einops>=0.8.0,<1.0.0",
+    "pytorch-lightning>=2.2.0,<3.0.0",
+    "jaxtyping>=0.2.28,<1.0.0",
+    "plyfile>=1.0.0,<2.0.0",
+    "opencv-python-headless>=4.10.0,<5.0.0",
+    "timm>=0.9.0,<1.0.0",
+    "pymeshlab>=2023.12,<2025.0",
+    "PyMCubes>=0.1.4,<1.0.0",
+    "easydict>=1.13,<2.0.0",
+    "trimesh>=4.12.0,<5.0.0",
+    "imageio>=2.37.0,<3.0.0",
+    "Pillow>=12.0.0,<13.0.0",
+    "rembg>=2.0.0,<3.0.0",
+    "onnxruntime>=1.20.0,<2.0.0",
+    "scikit-image>=0.25.0,<1.0.0",
+    "scipy>=1.10.0,<2.0.0",
+    "psutil>=5.9.0,<7.0.0",
+    "matplotlib>=3.10.0,<4.0.0",
+    "xatlas>=0.0.11,<1.0.0",
+    "moderngl>=5.12.0,<6.0.0",
+]
+
+test = [
+    "pytest>=8.0.0",
+    "pytest-mock>=3.12.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/lpalbou/abstract3d"
+Repository = "https://github.com/lpalbou/abstract3d"
+Documentation = "https://lpalbou.github.io/abstract3d/"
+Changelog = "https://github.com/lpalbou/abstract3d/blob/main/CHANGELOG.md"
+
+[project.scripts]
+abstract3d = "abstract3d.cli:main"
+
+[project.entry-points."abstractcore.capabilities_plugins"]
+abstract3d = "abstract3d.integrations.abstractcore_plugin:register"
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["abstract3d*"]

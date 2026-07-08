@@ -1,0 +1,217 @@
+{
+  "appearance_mode": "uv_basecolor",
+  "backend_id": "abstract3d:hunyuan3d21-local",
+  "background_removed": true,
+  "bundle_dir": "/Users/albou/abstract3d/artifacts/validation/iter3-multiview-fixed/face-2mv",
+  "contact_sheet_path": "/Users/albou/abstract3d/artifacts/validation/iter3-multiview-fixed/face-2mv/contact_sheet.png",
+  "content_type": "model/gltf-binary",
+  "device": "mps",
+  "dtype": "float16",
+  "export_axis_canonicalization": [
+    "yup_front_z_to_zup_front_x"
+  ],
+  "face_count": 119999,
+  "format": "glb",
+  "geometry_views": [
+    {
+      "label": "source",
+      "tag": "front"
+    },
+    {
+      "declared_azimuth_deg": 90.0,
+      "label": "side_left",
+      "snap_delta_deg": 0.0,
+      "tag": "left"
+    },
+    {
+      "declared_azimuth_deg": -90.0,
+      "label": "side_right",
+      "snap_delta_deg": 0.0,
+      "tag": "right"
+    }
+  ],
+  "guidance_scale": 5.0,
+  "license": "tencent-hunyuan-community",
+  "license_note": "Tencent Hunyuan 3D 2.1 Community License: territory-restricted (excludes the European Union, United Kingdom, and South Korea), with additional terms for large-scale commercial deployments.",
+  "material_count": 1,
+  "memory": {
+    "mps_allocated_bytes": 5155031552,
+    "rss_bytes": 8019525632
+  },
+  "metadata_path": "/Users/albou/abstract3d/artifacts/validation/iter3-multiview-fixed/face-2mv/metadata.json",
+  "model_id": "tencent/Hunyuan3D-2mv/hunyuan3d-dit-v2-mv",
+  "multiview_conditioning": true,
+  "notes": [
+    "Hunyuan3D-2.1 official shape stage (flow-matching DiT + shape VAE + marching cubes).",
+    "Tencent Hunyuan 3D 2.1 Community License: territory-restricted (excludes the European Union, United Kingdom, and South Korea), with additional terms for large-scale commercial deployments.",
+    "Texture rebaked 2026-07-05 under ADR 0008 after the six-agent adversarial cycle; adversarial QA failures 66 -> 6 on the same harness."
+  ],
+  "num_chunks": 32768,
+  "num_inference_steps": 30,
+  "octree_resolution": 384,
+  "output_bytes": 6704500,
+  "postprocess_cleanup": [
+    "keep_significant_components:69->1@29042",
+    "remove_degenerate_faces",
+    "quadric_decimation:120000",
+    "merge_vertices",
+    "fix_normals"
+  ],
+  "postprocess_warnings": [],
+  "preview_path": "/Users/albou/abstract3d/artifacts/validation/iter3-multiview-fixed/face-2mv/preview.png",
+  "preview_renderer": "moderngl",
+  "provider": "abstract3d:hunyuan3d21-local",
+  "seed": 2025,
+  "source_image_path": "/Users/albou/abstract3d/artifacts/validation/iter3-multiview-fixed/face-2mv/input.png",
+  "source_snapshot": "82920d643c0dc2f7bfd7255f45f62d386edfe60c",
+  "task": "image_to_scene3d",
+  "texture_artifacts": {
+    "adr": "zero-defect cycle 4 (stroke veto, feature fringe repair, specular reconciliation, pale-chip commit, bottom-cap toning)",
+    "camera_distance": 3.0,
+    "export_frame": "gltf_yup_front_pz (canonical->glTF axis permutation baked at export; geometry.glb remains canonical for rebakes)",
+    "geometry_glb_path": "/Users/albou/abstract3d/artifacts/validation/iter3-multiview-fixed/face-2mv/geometry.glb",
+    "leverage": {
+      "available": true,
+      "direct_painted_ratio": 0.4344,
+      "leverage_ratio": 0.8742,
+      "mirror_completed_ratio": 0.026,
+      "mirror_over_photo_visible_ratio": 0.0051,
+      "potential_union_ratio": 0.497,
+      "shipped_direct_ratio": 0.4275,
+      "surface_texels": 1090086,
+      "surrendered_visible_ratio": 0.0635,
+      "unobservable_ratio": 0.503,
+      "views": [
+        {
+          "facing_threshold": 0.4,
+          "label": "front",
+          "painted_ratio": 0.1458,
+          "painted_texels": 158974,
+          "potential_ratio": 0.2264,
+          "potential_texels": 246746,
+          "rescued_texels": 4778,
+          "surrendered_downstream": 1187,
+          "surrendered_facing_gate": 70952,
+          "surrendered_union_drop": 2440,
+          "surrendered_zone_gate": 13472,
+          "won_ratio": 0.1048,
+          "won_texels": 114235
+        },
+        {
+          "facing_threshold": 0.2,
+          "label": "side_left",
+          "painted_ratio": 0.1864,
+          "painted_texels": 203142,
+          "potential_ratio": 0.2141,
+          "potential_texels": 233344,
+          "rescued_texels": 1701,
+          "surrendered_downstream": 1121,
+          "surrendered_facing_gate": 16947,
+          "surrendered_union_drop": 2752,
+          "surrendered_zone_gate": 10027,
+          "won_ratio": 0.1492,
+          "won_texels": 162669
+        },
+        {
+          "facing_threshold": 0.2,
+          "label": "side_right",
+          "painted_ratio": 0.1867,
+          "painted_texels": 203485,
+          "potential_ratio": 0.2143,
+          "potential_texels": 233581,
+          "rescued_texels": 2292,
+          "surrendered_downstream": 65,
+          "surrendered_facing_gate": 15858,
+          "surrendered_union_drop": 4171,
+          "surrendered_zone_gate": 10503,
+          "won_ratio": 0.1798,
+          "won_texels": 196002
+        }
+      ]
+    },
+    "obj_sidecars": [
+      "material_0.png",
+      "scene.mtl"
+    ],
+    "observed_coverage_ratio": 0.461,
+    "observed_view_stats": [
+      {
+        "azimuth_deg": 20.0,
+        "coverage_ratio": 0.1448,
+        "elevation_deg": 8.0,
+        "index": 1,
+        "label": "front"
+      },
+      {
+        "azimuth_deg": 90.0,
+        "coverage_ratio": 0.1884,
+        "elevation_deg": 0.0,
+        "index": 2,
+        "label": "side_left"
+      },
+      {
+        "azimuth_deg": -90.0,
+        "coverage_ratio": 0.1885,
+        "elevation_deg": 0.0,
+        "index": 3,
+        "label": "side_right"
+      }
+    ],
+    "projection_mode": "projection_multiview_plus_symmetry_plus_fill3d",
+    "publication": {
+      "cycle": "cycle 7 (reference leverage: witness-scarcity admission)",
+      "ruling": "critic1 RULING_CYCLE7 PUBLISH; contract escalation satisfied by two independent critic batteries on the exact staged bytes",
+      "verification": {
+        "compensated": "SSIM 0.7018 / MAE 14.88, 0 failures (critic1 + critic2 independent runs)",
+        "determinism": "four independent bakes, one texture.png FILE md5 2baf7408 (array md5 59d4f4b1); published bytes verified identical to the critic-certified staging bundle",
+        "raw": "dark detector improved to 0.0026; detectors green",
+        "texture_qa": "PASS 13/13"
+      }
+    },
+    "reference_view_count": 2,
+    "source_pose": {
+      "azimuth_deg": 20.0,
+      "elevation_deg": 8.0,
+      "estimated": true,
+      "method": "gradient_ncc",
+      "score": 0.0152,
+      "silhouette_iou": 0.0
+    },
+    "symmetry_completion": {
+      "applied": true,
+      "coverage_ratio": 0.0267,
+      "geometry_symmetry_score": 0.966,
+      "mode": "mirror_symmetry",
+      "tone_matched_texels": 4172
+    },
+    "texture_array_md5": "59d4f4b101171d1b9b16bdcd18820f6e",
+    "texture_completion": "mirror_symmetry",
+    "texture_padding": 8,
+    "texture_path": "/Users/albou/abstract3d/artifacts/validation/iter3-multiview-fixed/face-2mv/texture.png",
+    "texture_png_file_md5": "2baf740853a7e7c5451b099a351e5ca3",
+    "unseen_fill_mode": "mesh_harmonic",
+    "uv_preview_path": "/Users/albou/abstract3d/artifacts/validation/iter3-multiview-fixed/face-2mv/uv_preview.png",
+    "uv_vertex_count": 99532,
+    "vertex_mapping_count": 99532
+  },
+  "texture_completion": "auto",
+  "texture_mode": "baked_basecolor",
+  "texture_resolution": 2048,
+  "timings_s": {
+    "inference": 759.8407,
+    "load": 22.7284,
+    "mesh": 16.7023,
+    "preprocess": 2.183,
+    "source_image_generation": null,
+    "texture": 34.5711,
+    "total": 813.2971
+  },
+  "topology": {
+    "body_count": 1,
+    "euler_number": -605,
+    "is_watertight": false
+  },
+  "uv_present": true,
+  "vertex_count": 59396,
+  "volume_decoder": "adaptive"
+}

@@ -1,0 +1,97 @@
+{
+  "azimuths": [
+    35.0,
+    125.0,
+    215.0,
+    305.0
+  ],
+  "backend": "triposr",
+  "chunk_size": 2048,
+  "contact_sheet_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/triposr-rocket-resolution-study/contact_sheet.png",
+  "device": "mps",
+  "elevation": 20.0,
+  "remove_background": true,
+  "rows": [
+    {
+      "background_removed": true,
+      "bundle_dir": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/triposr-rocket-resolution-study/mc-128",
+      "chunk_size": 2048,
+      "contact_sheet_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/triposr-rocket-resolution-study/mc-128/contact_sheet.png",
+      "face_count": 6568,
+      "mc_resolution": 128,
+      "metadata_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/triposr-rocket-resolution-study/mc-128/metadata.json",
+      "scene_glb_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/triposr-rocket-resolution-study/mc-128/scene.glb",
+      "scene_obj_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/triposr-rocket-resolution-study/mc-128/scene.obj",
+      "timings_s": {
+        "inference": 0.3008,
+        "load": 5.4029,
+        "mesh": 1.1865,
+        "preprocess": 0.9939,
+        "source_image_generation": null,
+        "total": 2.4812
+      },
+      "vertex_count": 3293
+    },
+    {
+      "background_removed": true,
+      "bundle_dir": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/triposr-rocket-resolution-study/mc-192",
+      "chunk_size": 2048,
+      "contact_sheet_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/triposr-rocket-resolution-study/mc-192/contact_sheet.png",
+      "face_count": 15220,
+      "mc_resolution": 192,
+      "metadata_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/triposr-rocket-resolution-study/mc-192/metadata.json",
+      "scene_glb_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/triposr-rocket-resolution-study/mc-192/scene.glb",
+      "scene_obj_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/triposr-rocket-resolution-study/mc-192/scene.obj",
+      "timings_s": {
+        "inference": 0.2709,
+        "load": 5.4029,
+        "mesh": 3.5483,
+        "preprocess": 0.4459,
+        "source_image_generation": null,
+        "total": 4.2651
+      },
+      "vertex_count": 7637
+    },
+    {
+      "background_removed": true,
+      "bundle_dir": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/triposr-rocket-resolution-study/mc-256",
+      "chunk_size": 2048,
+      "contact_sheet_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/triposr-rocket-resolution-study/mc-256/contact_sheet.png",
+      "face_count": 26904,
+      "mc_resolution": 256,
+      "metadata_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/triposr-rocket-resolution-study/mc-256/metadata.json",
+      "scene_glb_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/triposr-rocket-resolution-study/mc-256/scene.glb",
+      "scene_obj_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/triposr-rocket-resolution-study/mc-256/scene.obj",
+      "timings_s": {
+        "inference": 0.274,
+        "load": 5.4029,
+        "mesh": 8.0092,
+        "preprocess": 0.4282,
+        "source_image_generation": null,
+        "total": 8.7114
+      },
+      "vertex_count": 13471
+    },
+    {
+      "background_removed": true,
+      "bundle_dir": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/triposr-rocket-resolution-study/mc-320",
+      "chunk_size": 2048,
+      "contact_sheet_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/triposr-rocket-resolution-study/mc-320/contact_sheet.png",
+      "face_count": 42904,
+      "mc_resolution": 320,
+      "metadata_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/triposr-rocket-resolution-study/mc-320/metadata.json",
+      "scene_glb_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/triposr-rocket-resolution-study/mc-320/scene.glb",
+      "scene_obj_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/triposr-rocket-resolution-study/mc-320/scene.obj",
+      "timings_s": {
+        "inference": 0.2923,
+        "load": 5.4029,
+        "mesh": 15.4271,
+        "preprocess": 0.4925,
+        "source_image_generation": null,
+        "total": 16.2119
+      },
+      "vertex_count": 21475
+    }
+  ],
+  "source_image": "/Users/albou/Desktop/rocket.png"
+}

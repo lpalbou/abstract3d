@@ -1,0 +1,347 @@
+{
+  "camera_distance": 3.0,
+  "source_pose": {
+    "azimuth_deg": 30.0,
+    "elevation_deg": 15.0,
+    "silhouette_iou": 0.0,
+    "method": "gradient_ncc",
+    "score": 0.043,
+    "estimated": true
+  },
+  "source_registration": {
+    "method": "photo_bbox_center"
+  },
+  "view_registration": [
+    {
+      "applied": false,
+      "scale": 1.0,
+      "shift_x": 0.0,
+      "shift_y": 0.0,
+      "label": "front",
+      "photometric": {
+        "applied": false
+      },
+      "pose": {
+        "refined": false
+      },
+      "ortho_half_extent": 0.7639
+    },
+    {
+      "applied": false,
+      "scale": 1.0,
+      "shift_x": 0.0,
+      "shift_y": 0.0,
+      "iou_before": 0.9459,
+      "iou_after": 0.9633,
+      "score_before": -0.5266,
+      "score_after": -0.3951,
+      "overlap_alignment": {
+        "applied": true,
+        "scale": 0.98,
+        "shift_x": -0.08,
+        "shift_y": -0.02,
+        "overlap": 11502,
+        "err_before": 0.2042,
+        "err_after": 0.1537
+      },
+      "dense_flow": {
+        "applied": false,
+        "reason": "band_too_small"
+      },
+      "label": "bottom",
+      "photometric": {
+        "applied": true,
+        "scale": 1.03,
+        "shift_x": 0.0,
+        "shift_y": 0.0074,
+        "profile_error": 0.0153
+      },
+      "pose": {
+        "refined": false
+      },
+      "ortho_half_extent": 1.1311
+    }
+  ],
+  "view_consistency": [
+    {
+      "overlap_texels": 0,
+      "harmonized": false,
+      "gains": null,
+      "disagreement": null,
+      "weight_scale": 1.0,
+      "label": "bottom",
+      "conflict_resolution": {
+        "conflict_texels": 0,
+        "zeroed_by_view": {}
+      }
+    }
+  ],
+  "outlier_filter": {
+    "dropped_texels": 592
+  },
+  "texture_padding": 8,
+  "projection_mode": "projection_multiview_plus_symmetry_plus_fill3d",
+  "unseen_fill_mode": "mesh_harmonic",
+  "observed_coverage_ratio": 0.3102,
+  "observed_view_stats": [
+    {
+      "index": 1,
+      "label": "front",
+      "azimuth_deg": 30.0,
+      "elevation_deg": 15.0,
+      "coverage_ratio": 0.0704
+    },
+    {
+      "index": 2,
+      "label": "bottom",
+      "azimuth_deg": 0.0,
+      "elevation_deg": -75.0,
+      "coverage_ratio": 0.1769
+    }
+  ],
+  "leverage": {
+    "available": true,
+    "surface_texels": 2004337,
+    "potential_union_ratio": 0.5232,
+    "direct_painted_ratio": 0.2496,
+    "leverage_ratio": 0.4771,
+    "surrendered_visible_ratio": 0.2758,
+    "unobservable_ratio": 0.4768,
+    "views": [
+      {
+        "label": "front",
+        "facing_threshold": 0.4,
+        "potential_texels": 528317,
+        "potential_ratio": 0.2636,
+        "painted_texels": 146395,
+        "painted_ratio": 0.073,
+        "won_texels": 145313,
+        "won_ratio": 0.0725,
+        "rescued_texels": 6423,
+        "surrendered_facing_gate": 365635,
+        "surrendered_zone_gate": 16005,
+        "surrendered_downstream": 0,
+        "surrendered_union_drop": 1099
+      },
+      {
+        "label": "bottom",
+        "facing_threshold": 0.2,
+        "potential_texels": 523308,
+        "potential_ratio": 0.2611,
+        "painted_texels": 354049,
+        "painted_ratio": 0.1766,
+        "won_texels": 353440,
+        "won_ratio": 0.1763,
+        "rescued_texels": 254,
+        "surrendered_facing_gate": 32573,
+        "surrendered_zone_gate": 139681,
+        "surrendered_downstream": 0,
+        "surrendered_union_drop": 775
+      }
+    ],
+    "shipped_direct_ratio": 0.2439,
+    "mirror_completed_ratio": 0.0565,
+    "mirror_over_photo_visible_ratio": 0.0141
+  },
+  "scarcity_rescue": {
+    "requested": "auto",
+    "enabled": true,
+    "applied": true,
+    "admitted_texels": 6678,
+    "consensus_refused": 220140,
+    "views": [
+      {
+        "label": "front",
+        "admitted_texels": 6420,
+        "consensus_refused": 218072
+      },
+      {
+        "label": "bottom",
+        "admitted_texels": 258,
+        "consensus_refused": 2068
+      }
+    ],
+    "admitted_ratio": 0.0033,
+    "speck_lifted_texels": 0
+  },
+  "texture_completion": "mirror_symmetry",
+  "texture_completion_requested": "auto",
+  "fill_detail": {
+    "applied": true,
+    "gain": 0.7,
+    "energy_calibration": {
+      "observed_energy": 0.84,
+      "target_energy": 0.588,
+      "fill_energy_at_1": 0.578,
+      "fill_energy_base": 0.086,
+      "fill_energy_final": 0.588,
+      "sigma_observed_band": 0.1772,
+      "sigma_at_scale": 0.0864,
+      "scale": 1.038
+    }
+  },
+  "fill_floor": {
+    "applied": true,
+    "lifted_texels": 72158,
+    "evidence_exempt_components": 21,
+    "mean_lift": 0.2339,
+    "p99_lift": 1.4,
+    "consensus_texels": 4346
+  },
+  "delight": {
+    "applied": false,
+    "views": []
+  },
+  "symmetry_completion": {
+    "mode": "mirror_symmetry",
+    "geometry_symmetry_score": 0.9826,
+    "coverage_ratio": 0.0565,
+    "tone_matched_texels": 5709,
+    "applied": true
+  },
+  "mirror_rescue": {
+    "applied": true,
+    "discs": [
+      {
+        "center": [
+          0.48313596844673157,
+          0.11923246085643768,
+          -0.03403865918517113
+        ],
+        "source_center": [
+          0.48313596844673157,
+          -0.11923246085643768,
+          -0.03403865918517113
+        ],
+        "radius": 0.11187134385108947,
+        "placement_shift": [
+          0.0,
+          -0.0019079595804214478,
+          0.0
+        ],
+        "core_texels": 211,
+        "own_blob_response": 0.1896,
+        "twin_blob_response": 0.0338,
+        "own_witness": 0.4451,
+        "twin_witness": 0.0396,
+        "rescued_texels": 28473,
+        "tone_offset": [
+          -0.2143,
+          -0.2284,
+          -0.2442
+        ]
+      }
+    ],
+    "geometry_symmetry_score": 0.9826
+  },
+  "trace_deposits": {
+    "applied": true,
+    "committed_texels": 6956,
+    "swept_islands": 98,
+    "rim_feathered": 3546,
+    "blob_count": 58
+  },
+  "pale_chips": {
+    "applied": true,
+    "committed_texels": 1527,
+    "blobs": 25,
+    "refused": {
+      "area": 64,
+      "w90": 0,
+      "ring": 3,
+      "isolation": 49,
+      "cover": 61
+    }
+  },
+  "bottom_cap": {
+    "applied": false,
+    "cap_texels": 0
+  },
+  "feature_fringe_repair": {
+    "applied": true,
+    "stamps": [
+      {
+        "complex": 2,
+        "mode": "full",
+        "veto": "texel:new_dark_blob a262 az+0.0el0"
+      },
+      {
+        "complex": 2,
+        "mode": "trace",
+        "veto": "texel:new_dark_blob a262 az+0.0el0"
+      }
+    ],
+    "patches": 54,
+    "recopies": 1,
+    "disc_refreshed": true,
+    "registration": [
+      1.125,
+      -0.06,
+      0.06
+    ],
+    "speck_lifted_texels": 2535,
+    "repaired_texels": 14542
+  },
+  "film_band": {
+    "applied": true,
+    "band_texels": 347325,
+    "commit_texels": 7064,
+    "vacated_claims": 0,
+    "rim_demoted": 292,
+    "mirror_destinations_removed": 1541,
+    "gradient_repaint": {
+      "applied": true,
+      "field_support_transitions": 6.0,
+      "authority_texels": 29918,
+      "gap_texels": 3285,
+      "clamp_texels": 62787,
+      "guard_dark_reverted": 2781,
+      "guard_bright_killed": 660,
+      "mass_nodes": 70220,
+      "base_ring_nodes": 605961,
+      "displaced_dark_vetoed": 7,
+      "displaced_refilled": 7
+    }
+  },
+  "seam_leveling": {
+    "applied": false
+  },
+  "compositing": {
+    "requested": "auto",
+    "mode": "gradient_domain",
+    "applied": true,
+    "solve_seconds": 5.38,
+    "solver": {
+      "nodes": 493666,
+      "edges": 1005432,
+      "cg_iterations": 53,
+      "final_relative_residual": 1.2181344406563196e-05,
+      "edge_kind_counts": {
+        "grid": 952621,
+        "stitch": 52811,
+        "line_constraint": 278365
+      },
+      "mg_level_sizes": [
+        493666,
+        68657,
+        9127,
+        1285,
+        204
+      ],
+      "gradient_rule": "max_confidence",
+      "anchor_lambda_scale": 0.00075,
+      "line_edge_weight": 0.5,
+      "specular_reconcile": {
+        "applied": false
+      },
+      "shadow_reconcile": {
+        "applied": false
+      }
+    }
+  },
+  "blend_sharpness": 3.0,
+  "feather_texels": 12.0,
+  "vertex_mapping_count": 75248,
+  "uv_vertex_count": 75248,
+  "face_count": 120000
+}

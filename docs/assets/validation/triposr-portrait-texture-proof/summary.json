@@ -1,0 +1,45 @@
+{
+  "input_class": "front_view_portrait",
+  "comparison_sheet": "contact_sheet.png",
+  "variants": [
+    {
+      "id": "baseline",
+      "projection_mode": "hybrid_observed_view_plus_triplane",
+      "observed_coverage_ratio": 0.2894,
+      "symmetry_completion": {
+        "mode": "none",
+        "coverage_ratio": 0.0,
+        "applied": false
+      },
+      "output_bytes": 6245992
+    },
+    {
+      "id": "mirror_symmetry",
+      "projection_mode": "hybrid_observed_plus_symmetry_plus_triplane",
+      "observed_coverage_ratio": 0.2894,
+      "symmetry_completion": {
+        "mode": "mirror_symmetry",
+        "coverage_ratio": 0.12,
+        "applied": true
+      },
+      "output_bytes": 6253140
+    },
+    {
+      "id": "mirror_symmetry_plus_side_ref",
+      "projection_mode": "hybrid_multiview_plus_symmetry_plus_triplane",
+      "observed_coverage_ratio": 0.3644,
+      "symmetry_completion": {
+        "mode": "mirror_symmetry",
+        "coverage_ratio": 0.12,
+        "applied": true
+      },
+      "reference_view_count": 1,
+      "output_bytes": 6389920
+    }
+  ],
+  "recommendation": {
+    "default_for_front_view_symmetric_subjects": "mirror_symmetry",
+    "optional_extra_reference": "one curated side view when available",
+    "limit": "texture completion helps hidden-side appearance modestly but does not replace portrait-specific geometry reconstruction"
+  }
+}

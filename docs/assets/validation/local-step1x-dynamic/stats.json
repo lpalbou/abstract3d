@@ -1,0 +1,776 @@
+[
+  {
+    "backend_id": "abstract3d:step1x-local",
+    "background_removal_policy": "auto_generated_image",
+    "background_removed": true,
+    "bundle_dir": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/iter-v17-full-dynamic-fixed/01_t23d",
+    "case_id": "01_t23d",
+    "cleanup_mode": "label_geometry_cleanup_disabled_on_mps",
+    "composed_text_to_scene3d": true,
+    "contact_sheet_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/iter-v17-full-dynamic-fixed/01_t23d/contact_sheet.png",
+    "content_type": "model/gltf-binary",
+    "cpu_extract_num_chunks": 16384,
+    "cpu_extract_surface_band": 0.75,
+    "device": "mps",
+    "dtype": "float32",
+    "exit_code": 0,
+    "export_axis_canonicalization": {
+      "applied": [
+        "stable_pose_z_up",
+        "center_xy_ground_z"
+      ],
+      "stable_pose_probability": 0.383309,
+      "warnings": []
+    },
+    "face_count": 89010,
+    "foreground_ratio": 0.95,
+    "format": "glb",
+    "geometry_only": true,
+    "geometry_subfolder": "Step1X-3D-Geometry-Label-1300m",
+    "geometry_subfolder_policy": "default_label",
+    "guidance_scale": 4.5,
+    "label_condition": {
+      "geometry_type": "smooth",
+      "symmetry": "asymmetry"
+    },
+    "max_facenum": 200000,
+    "memory": {
+      "mps_allocated_bytes": 1048576,
+      "mps_driver_allocated_bytes": 3419963392,
+      "mps_recommended_max_bytes": 115448725504,
+      "rss_bytes": 5288493056
+    },
+    "metadata_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/iter-v17-full-dynamic-fixed/01_t23d/metadata.json",
+    "mode": "t23d",
+    "model_id": "stepfun-ai/Step1X-3D",
+    "model_revision": "bf7084495b3a72222f36549b7942948aa4d9daa7",
+    "native_text_to_scene3d": false,
+    "notes": [
+      "Apple MPS uses float32 for stability in the current local runtime.",
+      "Apple MPS uses a lower default guidance scale than upstream to reduce local instability.",
+      "The Step1X runtime supports the official base and label geometry checkpoints locally.",
+      "Apple MPS uses CPU-side surface extraction after denoising to avoid local accelerator failures in marching-cubes extraction.",
+      "The Step1X runtime feeds raw images plus preprocessing policy into the official pipeline so conditioning is only applied once inside the model path.",
+      "The supported Step1X path in abstract3d is geometry-only; texture remains out of scope.",
+      "The Step1X label-geometry checkpoint is supported locally and uses auto labels unless overridden explicitly.",
+      "The Step1X label-geometry path disables upstream in-pipeline cleanup on Apple MPS because that stage is not stable enough locally.",
+      "On Apple MPS, abstract3d releases the Step1X runtime before mesh export and preview rendering to reduce unified-memory pressure.",
+      "The Apple MPS label-geometry path applies deterministic CPU mesh cleanup after extraction.",
+      "Exported Step1X meshes and preview renders use a stable-pose canonical frame."
+    ],
+    "num_inference_steps": 14,
+    "octree_resolution": 128,
+    "octree_resolution_policy": "default",
+    "output_bytes": 2354328,
+    "patchset_version": "step1x-geometry-compat-v4",
+    "pipeline_cleanup": {
+      "do_reduce_face": false,
+      "do_remove_degenerate_face": false,
+      "do_remove_floater": false
+    },
+    "postprocess_cleanup": [
+      "reduce_face:140000",
+      "remove_floater",
+      "keep_largest_component:3->1",
+      "merge_vertices",
+      "fill_holes",
+      "fix_normals",
+      "shade_smooth"
+    ],
+    "postprocess_max_facenum": 140000,
+    "postprocess_max_facenum_policy": "mps_smooth_asymmetry_compact",
+    "postprocess_warnings": [],
+    "preview_axis_canonicalization": {
+      "applied": [
+        "stable_pose_z_up",
+        "center_xy_ground_z"
+      ],
+      "stable_pose_probability": 0.383309,
+      "warnings": []
+    },
+    "preview_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/iter-v17-full-dynamic-fixed/01_t23d/preview.png",
+    "provider": "abstract3d:step1x-local",
+    "runtime_memory": {
+      "keep_resident": false,
+      "mps_memory_cap_applied": true,
+      "mps_memory_cap_bytes": 68719476736,
+      "mps_memory_fraction": 0.595238,
+      "released_before_export": true
+    },
+    "source_dir": "/Users/albou/.cache/abstract3d/vendor/step1x/cb5ac944709c6c913109070c7b90c3447f57f3d4",
+    "source_image_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/iter-v17-full-dynamic-fixed/01_t23d/input.png",
+    "source_snapshot": "cb5ac944709c6c913109070c7b90c3447f57f3d4",
+    "status": "succeeded",
+    "surface_cleanup": {
+      "do_reduce_face": true,
+      "do_remove_degenerate_face": false,
+      "do_remove_floater": true
+    },
+    "surface_extract_device": "cpu",
+    "surface_extract_runtime": {
+      "dropped_components": [
+        "transformer",
+        "visual_encoder",
+        "caption_encoder",
+        "label_encoder",
+        "vae"
+      ],
+      "extraction_mode": "vae_subprocess",
+      "helper_report": {
+        "export_axis_canonicalization": {
+          "applied": [
+            "stable_pose_z_up",
+            "center_xy_ground_z"
+          ],
+          "stable_pose_probability": 0.383309,
+          "warnings": []
+        },
+        "face_count": 89010,
+        "postprocess_applied": [
+          "reduce_face:140000",
+          "remove_floater",
+          "keep_largest_component:3->1",
+          "merge_vertices",
+          "fill_holes",
+          "fix_normals",
+          "shade_smooth"
+        ],
+        "postprocess_warnings": [],
+        "raw_face_count": 234746,
+        "raw_vertex_count": 117381,
+        "topology": {
+          "body_count": 823,
+          "euler_number": 769,
+          "is_watertight": false
+        },
+        "vertex_count": 47536,
+        "view_count": 4
+      },
+      "helper_stderr": "/Users/albou/tmp/abstractframework/.venv/lib/python3.12/site-packages/lightning_fabric/__init__.py:41: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.\n/Users/albou/tmp/abstractframework/.venv/lib/python3.12/site-packages/transformers/utils/backbone_utils.py:7: FutureWarning: Importing `BackboneConfigMixin` from `utils/backbone_utils.py` is deprecated and will be removed in Transformers v5.10. Import as `from transformers.backbone_utils import BackboneConfigMixin` instead.\n  warnings.warn(\n/Users/albou/tmp/abstractframework/.venv/lib/python3.12/site-packages/transformers/utils/backbone_utils.py:15: FutureWarning: Importing `BackboneMixin` from `utils/backbone_utils.py` is deprecated and will be removed in Transformers v5.10. Import as `from transformers.backbone_utils import BackboneMixin` instead.\n  warnings.warn(",
+      "helper_stdout": null,
+      "latents_device": "mps:0",
+      "memory_after_extract": {
+        "mps_allocated_bytes": 1056768,
+        "mps_driver_allocated_bytes": 3419963392,
+        "mps_recommended_max_bytes": 115448725504
+      },
+      "memory_after_offload": {
+        "mps_allocated_bytes": 767423488,
+        "mps_driver_allocated_bytes": 49808965632,
+        "mps_recommended_max_bytes": 115448725504
+      },
+      "memory_after_parent_drop": {
+        "mps_allocated_bytes": 1056768,
+        "mps_driver_allocated_bytes": 44993904640,
+        "mps_recommended_max_bytes": 115448725504
+      },
+      "memory_before_offload": {
+        "mps_allocated_bytes": 8782343680,
+        "mps_driver_allocated_bytes": 56926699520,
+        "mps_recommended_max_bytes": 115448725504
+      },
+      "moved_to_cpu": [
+        "transformer",
+        "visual_encoder",
+        "label_encoder"
+      ],
+      "preserve_runtime": false
+    },
+    "task": "text_to_scene3d",
+    "timings_s": {
+      "inference": 34.2857,
+      "load": 2.9214,
+      "mesh": 39.1612,
+      "preprocess": 5.8002,
+      "source_image_generation": 4.0509,
+      "total": 83.298
+    },
+    "topology": {
+      "body_count": 823,
+      "euler_number": 769,
+      "is_watertight": false
+    },
+    "vertex_count": 47536,
+    "wall_clock_s": 86.7056
+  },
+  {
+    "backend_id": "abstract3d:step1x-local",
+    "background_removal_policy": "auto_generated_image",
+    "background_removed": true,
+    "bundle_dir": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/iter-v17-full-dynamic-fixed/02_t23d",
+    "case_id": "02_t23d",
+    "cleanup_mode": "label_geometry_cleanup_disabled_on_mps",
+    "composed_text_to_scene3d": true,
+    "contact_sheet_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/iter-v17-full-dynamic-fixed/02_t23d/contact_sheet.png",
+    "content_type": "model/gltf-binary",
+    "cpu_extract_num_chunks": 16384,
+    "cpu_extract_surface_band": 0.55,
+    "device": "mps",
+    "dtype": "float32",
+    "exit_code": 0,
+    "export_axis_canonicalization": {
+      "applied": [
+        "stable_pose_z_up",
+        "upright_furniture_flip_x_pi",
+        "center_xy_ground_z"
+      ],
+      "stable_pose_probability": 0.249638,
+      "warnings": []
+    },
+    "face_count": 132484,
+    "foreground_ratio": 0.95,
+    "format": "glb",
+    "geometry_only": true,
+    "geometry_subfolder": "Step1X-3D-Geometry-Label-1300m",
+    "geometry_subfolder_policy": "default_label",
+    "guidance_scale": 4.5,
+    "label_condition": {
+      "geometry_type": "sharp",
+      "symmetry": "x"
+    },
+    "max_facenum": 200000,
+    "memory": {
+      "mps_allocated_bytes": 602112,
+      "mps_driver_allocated_bytes": 3419963392,
+      "mps_recommended_max_bytes": 115448725504,
+      "rss_bytes": 5313265664
+    },
+    "metadata_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/iter-v17-full-dynamic-fixed/02_t23d/metadata.json",
+    "mode": "t23d",
+    "model_id": "stepfun-ai/Step1X-3D",
+    "model_revision": "bf7084495b3a72222f36549b7942948aa4d9daa7",
+    "native_text_to_scene3d": false,
+    "notes": [
+      "Apple MPS uses float32 for stability in the current local runtime.",
+      "Apple MPS uses a lower default guidance scale than upstream to reduce local instability.",
+      "The Step1X runtime supports the official base and label geometry checkpoints locally.",
+      "Apple MPS uses CPU-side surface extraction after denoising to avoid local accelerator failures in marching-cubes extraction.",
+      "The Step1X runtime feeds raw images plus preprocessing policy into the official pipeline so conditioning is only applied once inside the model path.",
+      "The supported Step1X path in abstract3d is geometry-only; texture remains out of scope.",
+      "The Step1X label-geometry checkpoint is supported locally and uses auto labels unless overridden explicitly.",
+      "The Step1X label-geometry path disables upstream in-pipeline cleanup on Apple MPS because that stage is not stable enough locally.",
+      "On Apple MPS, abstract3d releases the Step1X runtime before mesh export and preview rendering to reduce unified-memory pressure.",
+      "The Apple MPS label-geometry path applies deterministic CPU mesh cleanup after extraction.",
+      "Exported Step1X meshes and preview renders use a stable-pose canonical frame."
+    ],
+    "num_inference_steps": 14,
+    "octree_resolution": 128,
+    "octree_resolution_policy": "default",
+    "output_bytes": 3601404,
+    "patchset_version": "step1x-geometry-compat-v4",
+    "pipeline_cleanup": {
+      "do_reduce_face": false,
+      "do_remove_degenerate_face": false,
+      "do_remove_floater": false
+    },
+    "postprocess_cleanup": [
+      "reduce_face:200000",
+      "remove_floater",
+      "keep_largest_component:4->1",
+      "merge_vertices",
+      "fill_holes",
+      "fix_normals",
+      "shade_smooth"
+    ],
+    "postprocess_max_facenum": 200000,
+    "postprocess_max_facenum_policy": "default",
+    "postprocess_warnings": [],
+    "preview_axis_canonicalization": {
+      "applied": [
+        "stable_pose_z_up",
+        "upright_furniture_flip_x_pi",
+        "center_xy_ground_z"
+      ],
+      "stable_pose_probability": 0.249638,
+      "warnings": []
+    },
+    "preview_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/iter-v17-full-dynamic-fixed/02_t23d/preview.png",
+    "provider": "abstract3d:step1x-local",
+    "runtime_memory": {
+      "keep_resident": false,
+      "mps_memory_cap_applied": true,
+      "mps_memory_cap_bytes": 68719476736,
+      "mps_memory_fraction": 0.595238,
+      "released_before_export": true
+    },
+    "source_dir": "/Users/albou/.cache/abstract3d/vendor/step1x/cb5ac944709c6c913109070c7b90c3447f57f3d4",
+    "source_image_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/iter-v17-full-dynamic-fixed/02_t23d/input.png",
+    "source_snapshot": "cb5ac944709c6c913109070c7b90c3447f57f3d4",
+    "status": "succeeded",
+    "surface_cleanup": {
+      "do_reduce_face": true,
+      "do_remove_degenerate_face": false,
+      "do_remove_floater": true
+    },
+    "surface_extract_device": "cpu",
+    "surface_extract_runtime": {
+      "dropped_components": [
+        "transformer",
+        "visual_encoder",
+        "caption_encoder",
+        "label_encoder",
+        "vae"
+      ],
+      "extraction_mode": "vae_subprocess",
+      "helper_report": {
+        "export_axis_canonicalization": {
+          "applied": [
+            "stable_pose_z_up",
+            "upright_furniture_flip_x_pi",
+            "center_xy_ground_z"
+          ],
+          "stable_pose_probability": 0.249638,
+          "warnings": []
+        },
+        "face_count": 132484,
+        "postprocess_applied": [
+          "reduce_face:200000",
+          "remove_floater",
+          "keep_largest_component:4->1",
+          "merge_vertices",
+          "fill_holes",
+          "fix_normals",
+          "shade_smooth"
+        ],
+        "postprocess_warnings": [],
+        "raw_face_count": 298384,
+        "raw_vertex_count": 149286,
+        "topology": {
+          "body_count": 1956,
+          "euler_number": 1625,
+          "is_watertight": false
+        },
+        "vertex_count": 74398,
+        "view_count": 4
+      },
+      "helper_stderr": "/Users/albou/tmp/abstractframework/.venv/lib/python3.12/site-packages/lightning_fabric/__init__.py:41: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.\n/Users/albou/tmp/abstractframework/.venv/lib/python3.12/site-packages/transformers/utils/backbone_utils.py:7: FutureWarning: Importing `BackboneConfigMixin` from `utils/backbone_utils.py` is deprecated and will be removed in Transformers v5.10. Import as `from transformers.backbone_utils import BackboneConfigMixin` instead.\n  warnings.warn(\n/Users/albou/tmp/abstractframework/.venv/lib/python3.12/site-packages/transformers/utils/backbone_utils.py:15: FutureWarning: Importing `BackboneMixin` from `utils/backbone_utils.py` is deprecated and will be removed in Transformers v5.10. Import as `from transformers.backbone_utils import BackboneMixin` instead.\n  warnings.warn(",
+      "helper_stdout": null,
+      "latents_device": "mps:0",
+      "memory_after_extract": {
+        "mps_allocated_bytes": 610304,
+        "mps_driver_allocated_bytes": 3419963392,
+        "mps_recommended_max_bytes": 115448725504
+      },
+      "memory_after_offload": {
+        "mps_allocated_bytes": 766977024,
+        "mps_driver_allocated_bytes": 55005708288,
+        "mps_recommended_max_bytes": 115448725504
+      },
+      "memory_after_parent_drop": {
+        "mps_allocated_bytes": 610304,
+        "mps_driver_allocated_bytes": 50190647296,
+        "mps_recommended_max_bytes": 115448725504
+      },
+      "memory_before_offload": {
+        "mps_allocated_bytes": 8781897216,
+        "mps_driver_allocated_bytes": 62123442176,
+        "mps_recommended_max_bytes": 115448725504
+      },
+      "moved_to_cpu": [
+        "transformer",
+        "visual_encoder",
+        "label_encoder"
+      ],
+      "preserve_runtime": false
+    },
+    "task": "text_to_scene3d",
+    "timings_s": {
+      "inference": 59.2726,
+      "load": 2.9215,
+      "mesh": 41.8952,
+      "preprocess": 5.9208,
+      "source_image_generation": 4.1835,
+      "total": 111.2721
+    },
+    "topology": {
+      "body_count": 1956,
+      "euler_number": 1625,
+      "is_watertight": false
+    },
+    "vertex_count": 74398,
+    "wall_clock_s": 114.7005
+  },
+  {
+    "backend_id": "abstract3d:step1x-local",
+    "background_removal_policy": "auto_opaque_input",
+    "background_removed": true,
+    "bundle_dir": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/iter-v17-full-dynamic-fixed/03_i23d",
+    "case_id": "03_i23d",
+    "cleanup_mode": "runtime_defaults",
+    "composed_text_to_scene3d": false,
+    "contact_sheet_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/iter-v17-full-dynamic-fixed/03_i23d/contact_sheet.png",
+    "content_type": "model/gltf-binary",
+    "cpu_extract_num_chunks": 16384,
+    "cpu_extract_surface_band": 0.65,
+    "device": "mps",
+    "dtype": "float32",
+    "exit_code": 0,
+    "export_axis_canonicalization": {
+      "applied": [
+        "stable_pose_z_up",
+        "center_xy_ground_z"
+      ],
+      "stable_pose_probability": 0.290918,
+      "warnings": []
+    },
+    "face_count": 114178,
+    "foreground_ratio": 0.95,
+    "format": "glb",
+    "geometry_only": true,
+    "geometry_subfolder": "Step1X-3D-Geometry-1300m",
+    "geometry_subfolder_policy": "mps_i23d_sharp_asymmetry_base_fallback",
+    "guidance_scale": 4.5,
+    "label_condition": null,
+    "max_facenum": 200000,
+    "memory": {
+      "mps_allocated_bytes": 547072,
+      "mps_driver_allocated_bytes": 10256384,
+      "mps_recommended_max_bytes": 115448725504,
+      "rss_bytes": 1780006912
+    },
+    "metadata_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/iter-v17-full-dynamic-fixed/03_i23d/metadata.json",
+    "mode": "i23d",
+    "model_id": "stepfun-ai/Step1X-3D",
+    "model_revision": "bf7084495b3a72222f36549b7942948aa4d9daa7",
+    "native_text_to_scene3d": false,
+    "notes": [
+      "Apple MPS uses float32 for stability in the current local runtime.",
+      "Apple MPS uses a lower default guidance scale than upstream to reduce local instability.",
+      "The Step1X runtime supports the official base and label geometry checkpoints locally.",
+      "Apple MPS uses CPU-side surface extraction after denoising to avoid local accelerator failures in marching-cubes extraction.",
+      "The Step1X runtime feeds raw images plus preprocessing policy into the official pipeline so conditioning is only applied once inside the model path.",
+      "The supported Step1X path in abstract3d is geometry-only; texture remains out of scope.",
+      "Apple MPS sharp asymmetric i23d cases default to the official base geometry checkpoint because that local operating point preserves product-shape cues better than the coarse label prior.",
+      "On Apple MPS, abstract3d releases the Step1X runtime before mesh export and preview rendering to reduce unified-memory pressure.",
+      "The Apple MPS label-geometry path applies deterministic CPU mesh cleanup after extraction.",
+      "Exported Step1X meshes and preview renders use a stable-pose canonical frame."
+    ],
+    "num_inference_steps": 14,
+    "octree_resolution": 128,
+    "octree_resolution_policy": "default",
+    "output_bytes": 3078248,
+    "patchset_version": "step1x-geometry-compat-v4",
+    "pipeline_cleanup": {
+      "do_reduce_face": true,
+      "do_remove_degenerate_face": false,
+      "do_remove_floater": true
+    },
+    "postprocess_cleanup": [
+      "reduce_face:200000",
+      "remove_floater",
+      "keep_largest_component:8->1",
+      "merge_vertices",
+      "fill_holes",
+      "fix_normals",
+      "shade_smooth"
+    ],
+    "postprocess_max_facenum": 200000,
+    "postprocess_max_facenum_policy": "default",
+    "postprocess_warnings": [],
+    "preview_axis_canonicalization": {
+      "applied": [
+        "stable_pose_z_up",
+        "center_xy_ground_z"
+      ],
+      "stable_pose_probability": 0.290918,
+      "warnings": []
+    },
+    "preview_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/iter-v17-full-dynamic-fixed/03_i23d/preview.png",
+    "provider": "abstract3d:step1x-local",
+    "runtime_memory": {
+      "keep_resident": false,
+      "mps_memory_cap_applied": true,
+      "mps_memory_cap_bytes": 68719476736,
+      "mps_memory_fraction": 0.595238,
+      "released_before_export": true
+    },
+    "source_dir": "/Users/albou/.cache/abstract3d/vendor/step1x/cb5ac944709c6c913109070c7b90c3447f57f3d4",
+    "source_image_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/iter-v17-full-dynamic-fixed/03_i23d/input.png",
+    "source_snapshot": "cb5ac944709c6c913109070c7b90c3447f57f3d4",
+    "status": "succeeded",
+    "surface_cleanup": {
+      "do_reduce_face": true,
+      "do_remove_degenerate_face": false,
+      "do_remove_floater": true
+    },
+    "surface_extract_device": "cpu",
+    "surface_extract_runtime": {
+      "dropped_components": [
+        "transformer",
+        "visual_encoder",
+        "caption_encoder",
+        "label_encoder",
+        "vae"
+      ],
+      "extraction_mode": "vae_subprocess",
+      "helper_report": {
+        "export_axis_canonicalization": {
+          "applied": [
+            "stable_pose_z_up",
+            "center_xy_ground_z"
+          ],
+          "stable_pose_probability": 0.290918,
+          "warnings": []
+        },
+        "face_count": 114178,
+        "postprocess_applied": [
+          "reduce_face:200000",
+          "remove_floater",
+          "keep_largest_component:8->1",
+          "merge_vertices",
+          "fill_holes",
+          "fix_normals",
+          "shade_smooth"
+        ],
+        "postprocess_warnings": [],
+        "raw_face_count": 266786,
+        "raw_vertex_count": 133401,
+        "topology": {
+          "body_count": 1341,
+          "euler_number": 1242,
+          "is_watertight": false
+        },
+        "vertex_count": 63516,
+        "view_count": 4
+      },
+      "helper_stderr": "/Users/albou/tmp/abstractframework/.venv/lib/python3.12/site-packages/lightning_fabric/__init__.py:41: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.\n/Users/albou/tmp/abstractframework/.venv/lib/python3.12/site-packages/transformers/utils/backbone_utils.py:7: FutureWarning: Importing `BackboneConfigMixin` from `utils/backbone_utils.py` is deprecated and will be removed in Transformers v5.10. Import as `from transformers.backbone_utils import BackboneConfigMixin` instead.\n  warnings.warn(\n/Users/albou/tmp/abstractframework/.venv/lib/python3.12/site-packages/transformers/utils/backbone_utils.py:15: FutureWarning: Importing `BackboneMixin` from `utils/backbone_utils.py` is deprecated and will be removed in Transformers v5.10. Import as `from transformers.backbone_utils import BackboneMixin` instead.\n  warnings.warn(",
+      "helper_stdout": null,
+      "latents_device": "mps:0",
+      "memory_after_extract": {
+        "mps_allocated_bytes": 552960,
+        "mps_driver_allocated_bytes": 18644992,
+        "mps_recommended_max_bytes": 115448725504
+      },
+      "memory_after_offload": {
+        "mps_allocated_bytes": 766919680,
+        "mps_driver_allocated_bytes": 19958366208,
+        "mps_recommended_max_bytes": 115448725504
+      },
+      "memory_after_parent_drop": {
+        "mps_allocated_bytes": 552960,
+        "mps_driver_allocated_bytes": 14983921664,
+        "mps_recommended_max_bytes": 115448725504
+      },
+      "memory_before_offload": {
+        "mps_allocated_bytes": 7249561856,
+        "mps_driver_allocated_bytes": 26962853888,
+        "mps_recommended_max_bytes": 115448725504
+      },
+      "moved_to_cpu": [
+        "transformer",
+        "visual_encoder"
+      ],
+      "preserve_runtime": false
+    },
+    "task": "image_to_scene3d",
+    "timings_s": {
+      "inference": 74.6448,
+      "load": 2.2725,
+      "mesh": 40.1336,
+      "preprocess": 6.7083,
+      "source_image_generation": null,
+      "total": 121.4867
+    },
+    "topology": {
+      "body_count": 1341,
+      "euler_number": 1242,
+      "is_watertight": false
+    },
+    "vertex_count": 63516,
+    "wall_clock_s": 124.2154
+  },
+  {
+    "backend_id": "abstract3d:step1x-local",
+    "background_removal_policy": "auto_opaque_input",
+    "background_removed": true,
+    "bundle_dir": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/iter-v17-full-dynamic-fixed/04_i23d",
+    "case_id": "04_i23d",
+    "cleanup_mode": "label_geometry_cleanup_disabled_on_mps",
+    "composed_text_to_scene3d": false,
+    "contact_sheet_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/iter-v17-full-dynamic-fixed/04_i23d/contact_sheet.png",
+    "content_type": "model/gltf-binary",
+    "cpu_extract_num_chunks": 16384,
+    "cpu_extract_surface_band": 0.75,
+    "device": "mps",
+    "dtype": "float32",
+    "exit_code": 0,
+    "export_axis_canonicalization": {
+      "applied": [
+        "stable_pose_z_up",
+        "center_xy_ground_z"
+      ],
+      "stable_pose_probability": 0.237752,
+      "warnings": []
+    },
+    "face_count": 84058,
+    "foreground_ratio": 0.95,
+    "format": "glb",
+    "geometry_only": true,
+    "geometry_subfolder": "Step1X-3D-Geometry-Label-1300m",
+    "geometry_subfolder_policy": "default_label",
+    "guidance_scale": 4.5,
+    "label_condition": {
+      "geometry_type": "smooth",
+      "symmetry": "x"
+    },
+    "max_facenum": 200000,
+    "memory": {
+      "mps_allocated_bytes": 1048576,
+      "mps_driver_allocated_bytes": 10256384,
+      "mps_recommended_max_bytes": 115448725504,
+      "rss_bytes": 1788592128
+    },
+    "metadata_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/iter-v17-full-dynamic-fixed/04_i23d/metadata.json",
+    "mode": "i23d",
+    "model_id": "stepfun-ai/Step1X-3D",
+    "model_revision": "bf7084495b3a72222f36549b7942948aa4d9daa7",
+    "native_text_to_scene3d": false,
+    "notes": [
+      "Apple MPS uses float32 for stability in the current local runtime.",
+      "Apple MPS uses a lower default guidance scale than upstream to reduce local instability.",
+      "The Step1X runtime supports the official base and label geometry checkpoints locally.",
+      "Apple MPS uses CPU-side surface extraction after denoising to avoid local accelerator failures in marching-cubes extraction.",
+      "The Step1X runtime feeds raw images plus preprocessing policy into the official pipeline so conditioning is only applied once inside the model path.",
+      "The supported Step1X path in abstract3d is geometry-only; texture remains out of scope.",
+      "The Step1X label-geometry checkpoint is supported locally and uses auto labels unless overridden explicitly.",
+      "The Step1X label-geometry path disables upstream in-pipeline cleanup on Apple MPS because that stage is not stable enough locally.",
+      "On Apple MPS, abstract3d releases the Step1X runtime before mesh export and preview rendering to reduce unified-memory pressure.",
+      "The Apple MPS label-geometry path applies deterministic CPU mesh cleanup after extraction.",
+      "Exported Step1X meshes and preview renders use a stable-pose canonical frame."
+    ],
+    "num_inference_steps": 14,
+    "octree_resolution": 128,
+    "octree_resolution_policy": "default",
+    "output_bytes": 2193628,
+    "patchset_version": "step1x-geometry-compat-v4",
+    "pipeline_cleanup": {
+      "do_reduce_face": false,
+      "do_remove_degenerate_face": false,
+      "do_remove_floater": false
+    },
+    "postprocess_cleanup": [
+      "reduce_face:160000",
+      "remove_floater",
+      "keep_largest_component:2->1",
+      "merge_vertices",
+      "fill_holes",
+      "fix_normals",
+      "shade_smooth"
+    ],
+    "postprocess_max_facenum": 160000,
+    "postprocess_max_facenum_policy": "mps_smooth_compact",
+    "postprocess_warnings": [],
+    "preview_axis_canonicalization": {
+      "applied": [
+        "stable_pose_z_up",
+        "center_xy_ground_z"
+      ],
+      "stable_pose_probability": 0.237752,
+      "warnings": []
+    },
+    "preview_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/iter-v17-full-dynamic-fixed/04_i23d/preview.png",
+    "provider": "abstract3d:step1x-local",
+    "runtime_memory": {
+      "keep_resident": false,
+      "mps_memory_cap_applied": true,
+      "mps_memory_cap_bytes": 68719476736,
+      "mps_memory_fraction": 0.595238,
+      "released_before_export": true
+    },
+    "source_dir": "/Users/albou/.cache/abstract3d/vendor/step1x/cb5ac944709c6c913109070c7b90c3447f57f3d4",
+    "source_image_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/iter-v17-full-dynamic-fixed/04_i23d/input.png",
+    "source_snapshot": "cb5ac944709c6c913109070c7b90c3447f57f3d4",
+    "status": "succeeded",
+    "surface_cleanup": {
+      "do_reduce_face": true,
+      "do_remove_degenerate_face": false,
+      "do_remove_floater": true
+    },
+    "surface_extract_device": "cpu",
+    "surface_extract_runtime": {
+      "dropped_components": [
+        "transformer",
+        "visual_encoder",
+        "caption_encoder",
+        "label_encoder",
+        "vae"
+      ],
+      "extraction_mode": "vae_subprocess",
+      "helper_report": {
+        "export_axis_canonicalization": {
+          "applied": [
+            "stable_pose_z_up",
+            "center_xy_ground_z"
+          ],
+          "stable_pose_probability": 0.237752,
+          "warnings": []
+        },
+        "face_count": 84058,
+        "postprocess_applied": [
+          "reduce_face:160000",
+          "remove_floater",
+          "keep_largest_component:2->1",
+          "merge_vertices",
+          "fill_holes",
+          "fix_normals",
+          "shade_smooth"
+        ],
+        "postprocess_warnings": [],
+        "raw_face_count": 183200,
+        "raw_vertex_count": 91604,
+        "topology": {
+          "body_count": 257,
+          "euler_number": 165,
+          "is_watertight": false
+        },
+        "vertex_count": 43134,
+        "view_count": 4
+      },
+      "helper_stderr": "/Users/albou/tmp/abstractframework/.venv/lib/python3.12/site-packages/lightning_fabric/__init__.py:41: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.\n/Users/albou/tmp/abstractframework/.venv/lib/python3.12/site-packages/transformers/utils/backbone_utils.py:7: FutureWarning: Importing `BackboneConfigMixin` from `utils/backbone_utils.py` is deprecated and will be removed in Transformers v5.10. Import as `from transformers.backbone_utils import BackboneConfigMixin` instead.\n  warnings.warn(\n/Users/albou/tmp/abstractframework/.venv/lib/python3.12/site-packages/transformers/utils/backbone_utils.py:15: FutureWarning: Importing `BackboneMixin` from `utils/backbone_utils.py` is deprecated and will be removed in Transformers v5.10. Import as `from transformers.backbone_utils import BackboneMixin` instead.\n  warnings.warn(",
+      "helper_stdout": null,
+      "latents_device": "mps:0",
+      "memory_after_extract": {
+        "mps_allocated_bytes": 1056768,
+        "mps_driver_allocated_bytes": 10256384,
+        "mps_recommended_max_bytes": 115448725504
+      },
+      "memory_after_offload": {
+        "mps_allocated_bytes": 767423488,
+        "mps_driver_allocated_bytes": 49863753728,
+        "mps_recommended_max_bytes": 115448725504
+      },
+      "memory_after_parent_drop": {
+        "mps_allocated_bytes": 1056768,
+        "mps_driver_allocated_bytes": 45048692736,
+        "mps_recommended_max_bytes": 115448725504
+      },
+      "memory_before_offload": {
+        "mps_allocated_bytes": 8782343680,
+        "mps_driver_allocated_bytes": 56981487616,
+        "mps_recommended_max_bytes": 115448725504
+      },
+      "moved_to_cpu": [
+        "transformer",
+        "visual_encoder",
+        "label_encoder"
+      ],
+      "preserve_runtime": false
+    },
+    "task": "image_to_scene3d",
+    "timings_s": {
+      "inference": 52.2431,
+      "load": 2.843,
+      "mesh": 32.4765,
+      "preprocess": 6.6639,
+      "source_image_generation": null,
+      "total": 91.3835
+    },
+    "topology": {
+      "body_count": 257,
+      "euler_number": 165,
+      "is_watertight": false
+    },
+    "vertex_count": 43134,
+    "wall_clock_s": 94.686
+  }
+]

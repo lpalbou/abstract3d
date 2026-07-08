@@ -1,0 +1,484 @@
+{
+  "azimuth": 35.0,
+  "elevation": 20.0,
+  "rows": [
+    {
+      "label": "i23d owl",
+      "source_image": "artifacts/validation/triposr-texture-comparison/owl/vertex_color/input.png",
+      "regular_preview_renderer": "moderngl",
+      "improved_preview_renderer": "moderngl",
+      "regular": {
+        "appearance_mode": "vertex_color",
+        "backend_id": "abstract3d:triposr",
+        "background_removed": true,
+        "bundle_dir": "artifacts/validation/triposr-texture-comparison/owl/vertex_color",
+        "chunk_size": 2048,
+        "cleanup_mode": "presentation",
+        "contact_sheet_path": "artifacts/validation/triposr-texture-comparison/owl/vertex_color/contact_sheet.png",
+        "content_type": "model/gltf-binary",
+        "device": "mps",
+        "face_count": 102209,
+        "format": "glb",
+        "material_count": 0,
+        "mc_resolution": 256,
+        "memory": {
+          "mps_allocated_bytes": 1680249088,
+          "rss_bytes": 2361737216
+        },
+        "metadata_path": "artifacts/validation/triposr-texture-comparison/owl/vertex_color/metadata.json",
+        "model_id": "stabilityai/TripoSR",
+        "notes": [
+          "TripoSR applies a deterministic CPU postprocess after marching-cubes extraction: small-component pruning, marching-cube cleanup, light Taubin smoothing, hole repair, and normal repair."
+        ],
+        "output_bytes": 2658932,
+        "postprocess_cleanup": [
+          "remove_small_components:256",
+          "marching_cube_cleanup",
+          "taubin_smooth:4",
+          "repair_non_manifold_edges",
+          "repair_non_manifold_vertices",
+          "close_holes:32",
+          "merge_vertices",
+          "fix_normals"
+        ],
+        "postprocess_warnings": [],
+        "preview_path": "artifacts/validation/triposr-texture-comparison/owl/vertex_color/preview.png",
+        "provider": "abstract3d:triposr",
+        "source_image_path": "artifacts/validation/triposr-texture-comparison/owl/vertex_color/input.png",
+        "source_snapshot": "107cefdc244c39106fa830359024f6a2f1c78871",
+        "surface_cleanup": {
+          "hole_size": 32,
+          "min_component_faces": 256,
+          "smooth_steps": 4
+        },
+        "task": "image_to_scene3d",
+        "texture_mode": "vertex_color",
+        "texture_resolution": null,
+        "texture_warnings": [],
+        "timings_s": {
+          "inference": 0.2989,
+          "load": 4.5238,
+          "mesh": 12.7976,
+          "preprocess": 0.9968,
+          "source_image_generation": null,
+          "texture": null,
+          "total": 14.0933
+        },
+        "topology": {
+          "body_count": 1,
+          "euler_number": -46,
+          "is_watertight": false
+        },
+        "topology_before_cleanup": {
+          "body_count": 17,
+          "euler_number": -89,
+          "is_watertight": false
+        },
+        "uv_present": false,
+        "vertex_count": 51112
+      },
+      "improved": {
+        "appearance_mode": "uv_basecolor",
+        "backend_id": "abstract3d:triposr",
+        "background_removed": true,
+        "bundle_dir": "artifacts/validation/triposr-texture-comparison/owl/baked_2048",
+        "chunk_size": 2048,
+        "cleanup_mode": "presentation",
+        "contact_sheet_path": "artifacts/validation/triposr-texture-comparison/owl/baked_2048/contact_sheet.png",
+        "content_type": "model/gltf-binary",
+        "device": "mps",
+        "face_count": 102209,
+        "format": "glb",
+        "material_count": 1,
+        "mc_resolution": 256,
+        "memory": {
+          "mps_allocated_bytes": 1680249088,
+          "rss_bytes": 2539716608
+        },
+        "metadata_path": "artifacts/validation/triposr-texture-comparison/owl/baked_2048/metadata.json",
+        "model_id": "stabilityai/TripoSR",
+        "notes": [
+          "TripoSR applies a deterministic CPU postprocess after marching-cubes extraction: small-component pruning, marching-cube cleanup, light Taubin smoothing, hole repair, and normal repair.",
+          "TripoSR baked_basecolor mode unwraps UVs, rasterizes a position atlas, queries colors from the triplane field, and exports a textured GLB."
+        ],
+        "output_bytes": 6214716,
+        "postprocess_cleanup": [
+          "remove_small_components:256",
+          "marching_cube_cleanup",
+          "taubin_smooth:4",
+          "repair_non_manifold_edges",
+          "repair_non_manifold_vertices",
+          "close_holes:32",
+          "merge_vertices",
+          "fix_normals"
+        ],
+        "postprocess_warnings": [],
+        "preview_path": "artifacts/validation/triposr-texture-comparison/owl/baked_2048/preview.png",
+        "provider": "abstract3d:triposr",
+        "source_image_path": "artifacts/validation/triposr-texture-comparison/owl/baked_2048/input.png",
+        "source_snapshot": "107cefdc244c39106fa830359024f6a2f1c78871",
+        "surface_cleanup": {
+          "hole_size": 32,
+          "min_component_faces": 256,
+          "smooth_steps": 4
+        },
+        "task": "image_to_scene3d",
+        "texture_artifacts": {
+          "geometry_glb_path": "artifacts/validation/triposr-texture-comparison/owl/baked_2048/geometry.glb",
+          "obj_sidecars": [
+            "material_0.png",
+            "scene.mtl"
+          ],
+          "texture_padding": 8,
+          "texture_path": "artifacts/validation/triposr-texture-comparison/owl/baked_2048/texture.png",
+          "uv_preview_path": "artifacts/validation/triposr-texture-comparison/owl/baked_2048/uv_preview.png",
+          "uv_vertex_count": 63090,
+          "vertex_mapping_count": 63090
+        },
+        "texture_mode": "baked_basecolor",
+        "texture_resolution": 2048,
+        "texture_warnings": [],
+        "timings_s": {
+          "inference": 0.3022,
+          "load": 4.8822,
+          "mesh": 12.0919,
+          "preprocess": 0.9839,
+          "source_image_generation": null,
+          "texture": 18.1328,
+          "total": 31.5108
+        },
+        "topology": {
+          "body_count": 1,
+          "euler_number": -46,
+          "is_watertight": false
+        },
+        "topology_before_cleanup": {
+          "body_count": 17,
+          "euler_number": -89,
+          "is_watertight": false
+        },
+        "uv_present": true,
+        "vertex_count": 63090
+      }
+    },
+    {
+      "label": "i23d rocket",
+      "source_image": "artifacts/validation/triposr-texture-comparison/rocket/vertex_color/input.png",
+      "regular_preview_renderer": "moderngl",
+      "improved_preview_renderer": "moderngl",
+      "regular": {
+        "appearance_mode": "vertex_color",
+        "backend_id": "abstract3d:triposr",
+        "background_removed": true,
+        "bundle_dir": "artifacts/validation/triposr-texture-comparison/rocket/vertex_color",
+        "chunk_size": 2048,
+        "cleanup_mode": "presentation",
+        "contact_sheet_path": "artifacts/validation/triposr-texture-comparison/rocket/vertex_color/contact_sheet.png",
+        "content_type": "model/gltf-binary",
+        "device": "mps",
+        "face_count": 17988,
+        "format": "glb",
+        "material_count": 0,
+        "mc_resolution": 256,
+        "memory": {
+          "mps_allocated_bytes": 1680249088,
+          "rss_bytes": 2050195456
+        },
+        "metadata_path": "artifacts/validation/triposr-texture-comparison/rocket/vertex_color/metadata.json",
+        "model_id": "stabilityai/TripoSR",
+        "notes": [
+          "TripoSR applies a deterministic CPU postprocess after marching-cubes extraction: small-component pruning, marching-cube cleanup, light Taubin smoothing, hole repair, and normal repair."
+        ],
+        "output_bytes": 469104,
+        "postprocess_cleanup": [
+          "remove_small_components:67",
+          "marching_cube_cleanup",
+          "taubin_smooth:4",
+          "repair_non_manifold_edges",
+          "repair_non_manifold_vertices",
+          "close_holes:24",
+          "merge_vertices",
+          "fix_normals"
+        ],
+        "postprocess_warnings": [],
+        "preview_path": "artifacts/validation/triposr-texture-comparison/rocket/vertex_color/preview.png",
+        "provider": "abstract3d:triposr",
+        "source_image_path": "artifacts/validation/triposr-texture-comparison/rocket/vertex_color/input.png",
+        "source_snapshot": "107cefdc244c39106fa830359024f6a2f1c78871",
+        "surface_cleanup": {
+          "hole_size": 24,
+          "min_component_faces": 67,
+          "smooth_steps": 4
+        },
+        "task": "image_to_scene3d",
+        "texture_mode": "vertex_color",
+        "texture_resolution": null,
+        "texture_warnings": [],
+        "timings_s": {
+          "inference": 0.3333,
+          "load": 4.7318,
+          "mesh": 10.5071,
+          "preprocess": 1.0416,
+          "source_image_generation": null,
+          "texture": null,
+          "total": 11.882
+        },
+        "topology": {
+          "body_count": 1,
+          "euler_number": -4,
+          "is_watertight": false
+        },
+        "topology_before_cleanup": {
+          "body_count": 1,
+          "euler_number": -15,
+          "is_watertight": false
+        },
+        "uv_present": false,
+        "vertex_count": 8999
+      },
+      "improved": {
+        "appearance_mode": "uv_basecolor",
+        "backend_id": "abstract3d:triposr",
+        "background_removed": true,
+        "bundle_dir": "artifacts/validation/triposr-texture-comparison/rocket/baked_2048",
+        "chunk_size": 2048,
+        "cleanup_mode": "presentation",
+        "contact_sheet_path": "artifacts/validation/triposr-texture-comparison/rocket/baked_2048/contact_sheet.png",
+        "content_type": "model/gltf-binary",
+        "device": "mps",
+        "face_count": 17988,
+        "format": "glb",
+        "material_count": 1,
+        "mc_resolution": 256,
+        "memory": {
+          "mps_allocated_bytes": 1680249088,
+          "rss_bytes": 2180055040
+        },
+        "metadata_path": "artifacts/validation/triposr-texture-comparison/rocket/baked_2048/metadata.json",
+        "model_id": "stabilityai/TripoSR",
+        "notes": [
+          "TripoSR applies a deterministic CPU postprocess after marching-cubes extraction: small-component pruning, marching-cube cleanup, light Taubin smoothing, hole repair, and normal repair.",
+          "TripoSR baked_basecolor mode unwraps UVs, rasterizes a position atlas, queries colors from the triplane field, and exports a textured GLB."
+        ],
+        "output_bytes": 2205456,
+        "postprocess_cleanup": [
+          "remove_small_components:67",
+          "marching_cube_cleanup",
+          "taubin_smooth:4",
+          "repair_non_manifold_edges",
+          "repair_non_manifold_vertices",
+          "close_holes:24",
+          "merge_vertices",
+          "fix_normals"
+        ],
+        "postprocess_warnings": [],
+        "preview_path": "artifacts/validation/triposr-texture-comparison/rocket/baked_2048/preview.png",
+        "provider": "abstract3d:triposr",
+        "source_image_path": "artifacts/validation/triposr-texture-comparison/rocket/baked_2048/input.png",
+        "source_snapshot": "107cefdc244c39106fa830359024f6a2f1c78871",
+        "surface_cleanup": {
+          "hole_size": 24,
+          "min_component_faces": 67,
+          "smooth_steps": 4
+        },
+        "task": "image_to_scene3d",
+        "texture_artifacts": {
+          "geometry_glb_path": "artifacts/validation/triposr-texture-comparison/rocket/baked_2048/geometry.glb",
+          "obj_sidecars": [
+            "material_0.png",
+            "scene.mtl"
+          ],
+          "texture_padding": 8,
+          "texture_path": "artifacts/validation/triposr-texture-comparison/rocket/baked_2048/texture.png",
+          "uv_preview_path": "artifacts/validation/triposr-texture-comparison/rocket/baked_2048/uv_preview.png",
+          "uv_vertex_count": 11023,
+          "vertex_mapping_count": 11023
+        },
+        "texture_mode": "baked_basecolor",
+        "texture_resolution": 2048,
+        "texture_warnings": [],
+        "timings_s": {
+          "inference": 0.2977,
+          "load": 4.7191,
+          "mesh": 10.3938,
+          "preprocess": 0.9822,
+          "source_image_generation": null,
+          "texture": 4.0523,
+          "total": 15.726
+        },
+        "topology": {
+          "body_count": 1,
+          "euler_number": -4,
+          "is_watertight": false
+        },
+        "topology_before_cleanup": {
+          "body_count": 1,
+          "euler_number": -15,
+          "is_watertight": false
+        },
+        "uv_present": true,
+        "vertex_count": 11023
+      }
+    },
+    {
+      "label": "t23d-derived chair",
+      "source_image": "artifacts/validation/triposr-texture-comparison/chair_t23d_source/vertex_color/input.png",
+      "regular_preview_renderer": "moderngl",
+      "improved_preview_renderer": "moderngl",
+      "regular": {
+        "appearance_mode": "vertex_color",
+        "backend_id": "abstract3d:triposr",
+        "background_removed": true,
+        "bundle_dir": "artifacts/validation/triposr-texture-comparison/chair_t23d_source/vertex_color",
+        "chunk_size": 2048,
+        "cleanup_mode": "presentation",
+        "contact_sheet_path": "artifacts/validation/triposr-texture-comparison/chair_t23d_source/vertex_color/contact_sheet.png",
+        "content_type": "model/gltf-binary",
+        "device": "mps",
+        "face_count": 87434,
+        "format": "glb",
+        "material_count": 0,
+        "mc_resolution": 256,
+        "memory": {
+          "mps_allocated_bytes": 1680249088,
+          "rss_bytes": 2124005376
+        },
+        "metadata_path": "artifacts/validation/triposr-texture-comparison/chair_t23d_source/vertex_color/metadata.json",
+        "model_id": "stabilityai/TripoSR",
+        "notes": [
+          "TripoSR applies a deterministic CPU postprocess after marching-cubes extraction: small-component pruning, marching-cube cleanup, light Taubin smoothing, hole repair, and normal repair."
+        ],
+        "output_bytes": 2274792,
+        "postprocess_cleanup": [
+          "remove_small_components:251",
+          "marching_cube_cleanup",
+          "taubin_smooth:4",
+          "repair_non_manifold_edges",
+          "repair_non_manifold_vertices",
+          "close_holes:32",
+          "merge_vertices",
+          "fix_normals"
+        ],
+        "postprocess_warnings": [],
+        "preview_path": "artifacts/validation/triposr-texture-comparison/chair_t23d_source/vertex_color/preview.png",
+        "provider": "abstract3d:triposr",
+        "source_image_path": "artifacts/validation/triposr-texture-comparison/chair_t23d_source/vertex_color/input.png",
+        "source_snapshot": "107cefdc244c39106fa830359024f6a2f1c78871",
+        "surface_cleanup": {
+          "hole_size": 32,
+          "min_component_faces": 251,
+          "smooth_steps": 4
+        },
+        "task": "image_to_scene3d",
+        "texture_mode": "vertex_color",
+        "texture_resolution": null,
+        "texture_warnings": [],
+        "timings_s": {
+          "inference": 0.3024,
+          "load": 4.5724,
+          "mesh": 10.6609,
+          "preprocess": 0.9827,
+          "source_image_generation": null,
+          "texture": null,
+          "total": 11.946
+        },
+        "topology": {
+          "body_count": 1,
+          "euler_number": -40,
+          "is_watertight": false
+        },
+        "topology_before_cleanup": {
+          "body_count": 1,
+          "euler_number": -103,
+          "is_watertight": false
+        },
+        "uv_present": false,
+        "vertex_count": 43725
+      },
+      "improved": {
+        "appearance_mode": "uv_basecolor",
+        "backend_id": "abstract3d:triposr",
+        "background_removed": true,
+        "bundle_dir": "artifacts/validation/triposr-texture-comparison/chair_t23d_source/baked_2048",
+        "chunk_size": 2048,
+        "cleanup_mode": "presentation",
+        "contact_sheet_path": "artifacts/validation/triposr-texture-comparison/chair_t23d_source/baked_2048/contact_sheet.png",
+        "content_type": "model/gltf-binary",
+        "device": "mps",
+        "face_count": 87434,
+        "format": "glb",
+        "material_count": 1,
+        "mc_resolution": 256,
+        "memory": {
+          "mps_allocated_bytes": 1680249088,
+          "rss_bytes": 2678226944
+        },
+        "metadata_path": "artifacts/validation/triposr-texture-comparison/chair_t23d_source/baked_2048/metadata.json",
+        "model_id": "stabilityai/TripoSR",
+        "notes": [
+          "TripoSR applies a deterministic CPU postprocess after marching-cubes extraction: small-component pruning, marching-cube cleanup, light Taubin smoothing, hole repair, and normal repair.",
+          "TripoSR baked_basecolor mode unwraps UVs, rasterizes a position atlas, queries colors from the triplane field, and exports a textured GLB."
+        ],
+        "output_bytes": 5127716,
+        "postprocess_cleanup": [
+          "remove_small_components:251",
+          "marching_cube_cleanup",
+          "taubin_smooth:4",
+          "repair_non_manifold_edges",
+          "repair_non_manifold_vertices",
+          "close_holes:32",
+          "merge_vertices",
+          "fix_normals"
+        ],
+        "postprocess_warnings": [],
+        "preview_path": "artifacts/validation/triposr-texture-comparison/chair_t23d_source/baked_2048/preview.png",
+        "provider": "abstract3d:triposr",
+        "source_image_path": "artifacts/validation/triposr-texture-comparison/chair_t23d_source/baked_2048/input.png",
+        "source_snapshot": "107cefdc244c39106fa830359024f6a2f1c78871",
+        "surface_cleanup": {
+          "hole_size": 32,
+          "min_component_faces": 251,
+          "smooth_steps": 4
+        },
+        "task": "image_to_scene3d",
+        "texture_artifacts": {
+          "geometry_glb_path": "artifacts/validation/triposr-texture-comparison/chair_t23d_source/baked_2048/geometry.glb",
+          "obj_sidecars": [
+            "material_0.png",
+            "scene.mtl"
+          ],
+          "texture_padding": 8,
+          "texture_path": "artifacts/validation/triposr-texture-comparison/chair_t23d_source/baked_2048/texture.png",
+          "uv_preview_path": "artifacts/validation/triposr-texture-comparison/chair_t23d_source/baked_2048/uv_preview.png",
+          "uv_vertex_count": 52254,
+          "vertex_mapping_count": 52254
+        },
+        "texture_mode": "baked_basecolor",
+        "texture_resolution": 2048,
+        "texture_warnings": [],
+        "timings_s": {
+          "inference": 0.3066,
+          "load": 4.5616,
+          "mesh": 10.5922,
+          "preprocess": 0.9817,
+          "source_image_generation": null,
+          "texture": 14.5366,
+          "total": 26.4171
+        },
+        "topology": {
+          "body_count": 1,
+          "euler_number": -40,
+          "is_watertight": false
+        },
+        "topology_before_cleanup": {
+          "body_count": 1,
+          "euler_number": -103,
+          "is_watertight": false
+        },
+        "uv_present": true,
+        "vertex_count": 52254
+      }
+    }
+  ],
+  "contact_sheet": "contact_sheet.png"
+}

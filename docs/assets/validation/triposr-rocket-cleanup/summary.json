@@ -1,0 +1,115 @@
+{
+  "clean": {
+    "backend_id": "abstract3d:triposr",
+    "background_removed": true,
+    "bundle_dir": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/rocket-i23d-triposr-cleanup/clean",
+    "chunk_size": 2048,
+    "cleanup_mode": "presentation",
+    "contact_sheet_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/rocket-i23d-triposr-cleanup/clean/contact_sheet.png",
+    "content_type": "model/gltf-binary",
+    "device": "mps",
+    "face_count": 17988,
+    "format": "glb",
+    "mc_resolution": 256,
+    "memory": {
+      "mps_allocated_bytes": 1680249088,
+      "rss_bytes": 3676340224
+    },
+    "metadata_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/rocket-i23d-triposr-cleanup/clean/metadata.json",
+    "model_id": "stabilityai/TripoSR",
+    "notes": [
+      "TripoSR applies a deterministic CPU postprocess after marching-cubes extraction: small-component pruning, marching-cube cleanup, light Taubin smoothing, hole repair, and normal repair."
+    ],
+    "output_bytes": 469104,
+    "postprocess_cleanup": [
+      "remove_small_components:67",
+      "marching_cube_cleanup",
+      "taubin_smooth:4",
+      "repair_non_manifold_edges",
+      "repair_non_manifold_vertices",
+      "close_holes:24",
+      "merge_vertices",
+      "fix_normals"
+    ],
+    "postprocess_warnings": [],
+    "preview_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/rocket-i23d-triposr-cleanup/clean/preview.png",
+    "provider": "abstract3d:triposr",
+    "source_image_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/rocket-i23d-triposr-cleanup/clean/input.png",
+    "source_snapshot": "107cefdc244c39106fa830359024f6a2f1c78871",
+    "surface_cleanup": {
+      "hole_size": 24,
+      "min_component_faces": 67,
+      "smooth_steps": 4
+    },
+    "task": "image_to_scene3d",
+    "timings_s": {
+      "inference": 0.2646,
+      "load": 4.5028,
+      "mesh": 9.3504,
+      "preprocess": 0.5042,
+      "source_image_generation": null,
+      "total": 10.1192
+    },
+    "topology": {
+      "body_count": 1,
+      "euler_number": -4,
+      "is_watertight": false
+    },
+    "topology_before_cleanup": {
+      "body_count": 1,
+      "euler_number": -15,
+      "is_watertight": false
+    },
+    "vertex_count": 8999
+  },
+  "comparison_contact_sheet": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/rocket-i23d-triposr-cleanup/summary/comparison_contact_sheet.png",
+  "input_image": "/Users/albou/Desktop/rocket.png",
+  "raw": {
+    "backend_id": "abstract3d:triposr",
+    "background_removed": true,
+    "bundle_dir": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/rocket-i23d-triposr-cleanup/raw",
+    "chunk_size": 2048,
+    "cleanup_mode": "none",
+    "contact_sheet_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/rocket-i23d-triposr-cleanup/raw/contact_sheet.png",
+    "content_type": "model/gltf-binary",
+    "device": "mps",
+    "face_count": 26904,
+    "format": "glb",
+    "mc_resolution": 256,
+    "memory": {
+      "mps_allocated_bytes": 1680249088,
+      "rss_bytes": 2015330304
+    },
+    "metadata_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/rocket-i23d-triposr-cleanup/raw/metadata.json",
+    "model_id": "stabilityai/TripoSR",
+    "notes": [],
+    "output_bytes": 539404,
+    "postprocess_cleanup": [],
+    "postprocess_warnings": [],
+    "preview_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/rocket-i23d-triposr-cleanup/raw/preview.png",
+    "provider": "abstract3d:triposr",
+    "source_image_path": "/Users/albou/tmp/abstractframework/abstract3d/artifacts/validation/rocket-i23d-triposr-cleanup/raw/input.png",
+    "source_snapshot": "107cefdc244c39106fa830359024f6a2f1c78871",
+    "surface_cleanup": {},
+    "task": "image_to_scene3d",
+    "timings_s": {
+      "inference": 0.2953,
+      "load": 4.5028,
+      "mesh": 8.4593,
+      "preprocess": 0.977,
+      "source_image_generation": null,
+      "total": 9.7316
+    },
+    "topology": {
+      "body_count": 1,
+      "euler_number": -15,
+      "is_watertight": false
+    },
+    "topology_before_cleanup": {
+      "body_count": 1,
+      "euler_number": -15,
+      "is_watertight": false
+    },
+    "vertex_count": 13471
+  }
+}
