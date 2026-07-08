@@ -1115,6 +1115,36 @@ whenever the estimators disagree again.)
   and stale evidence cannot be mistaken for current behavior. Enforced by
   the allowlist in `.gitignore`; user-facing docs may only link versioned
   paths (`docs/assets/` carries curated copies where needed).
+- Performance work on a certified pipeline is safe exactly when it is
+  bit-exact and gated: capture a stage's real inputs once (monkeypatch +
+  abort), iterate the optimization offline against a verbatim copy of the
+  original implementation requiring BITWISE-equal outputs, then confirm
+  end-to-end with the golden-bake hash harness. Categories proven safe by
+  construction: exact-NN query parallelism (`workers`), exact-NN pruning
+  at an acceptance threshold the caller already applies
+  (`distance_upper_bound` + the existing validity mask), randomized query
+  order for thread load balance (per-point results independent), bounding-
+  window restriction of UV-local per-blob ops (row-major order inside a
+  window equals global row-major restricted), and flat-domain extraction
+  for world-space ring statistics (extraction preserves reduction order).
+  Categories that are NOT safe without re-certification: any change to
+  summation order (pairwise vs sequential), dtype, or thresholds.
+- scipy `cKDTree.query(workers=-1)` splits query points into contiguous
+  per-thread chunks with no work stealing: spatially-coherent (atlas-
+  ordered) query arrays concentrate the expensive far-from-tree queries in
+  a few chunks and one straggler thread owns the wall time. A fixed random
+  permutation (undone on return) equalized thread loads for a 3.8x gain.
+  Separately: exact-NN with a distance bound the caller already enforces
+  turns "search the whole tree" into "prove nothing is near", which is
+  dramatically cheaper when acceptance is rare (mirror twins: 1.6%
+  acceptance, 148x).
+- Attribute memory to stages before optimizing it: the background-sampler
+  timeline with stage spans (`abstract3d.profiling`) showed the bake's RSS
+  peak is a plateau built across projection -> blend -> fill, not a single
+  stage's spike; releasing the fill stage's ~0.5 GB of full-atlas
+  statistics intermediates trimmed but did not move the peak's structure.
+  Run one process per measured asset: a shared process carries the
+  previous asset's high-water mark forward and corrupts attribution.
 
 ## DEPRECATED
 

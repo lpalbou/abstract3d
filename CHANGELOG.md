@@ -1,5 +1,62 @@
 # Changelog
 
+## Unreleased
+
+### Added (executable golden-bake regression harness + public bundle API)
+
+- `scripts/golden_bake.py` turns the certification's determinism claim into an
+  executable gate: it rebakes the three certified proof assets through their
+  canonical recipes and fails unless every baked `texture.png` reproduces the
+  published hash bit-exactly. `--profile` adds per-stage wall time and RSS/MPS
+  memory attribution (one process per asset so peaks stay attributable).
+- `abstract3d.bundle` — the previously script-only rebake path is now a
+  supported API: `load_bundle` / `prepare_observed_views` / `rebake_bundle`
+  load a bundle's canonical `geometry.glb`, rebuild the observed-view list
+  (source matting, reference angles, the identity-image contract), rebake,
+  and write a versioned bundle revision (`schema_version`, texture md5,
+  trimmed bake stats). Documented caveat: TripoSR bundles rebake without the
+  resident triplane color prior; the certified Hunyuan bundles rebake with
+  full fidelity.
+- `abstract3d.profiling` — read-only stage/memory profiler (background RSS
+  sampler + externally-wrapped stage functions), used by the harness;
+  profiled runs stay bit-identical because nothing touches array state.
+
+### Changed (bake performance program — outputs bit-identical)
+
+All optimizations below reproduce the certified texture hashes bit-exactly
+(verified per-change on captured stage inputs AND end-to-end by the golden
+harness; before/after evidence in
+`artifacts/validation/bake-performance-program/`). Measured on the golden
+recipes at res 2048 (Apple M5 Max): owl 258 s -> 88 s (2.9x), face
+220 s -> 167 s (1.3x), ship 59 s -> 55 s (1.1x). Memory peaks -0.15 GB
+(ship/owl); the peak-structure analysis is recorded in the profiles.
+
+- `mirror_fill_from_observed`: the exact-NN mirror-twin lookup now runs
+  parallel (`workers=-1`) and pruned at the acceptance threshold
+  (`distance_upper_bound`) — most mirror twins land nowhere near an observed
+  texel (1.6% acceptance measured on the owl), and unbounded exact-NN
+  backtracking dominated the stage (167 s -> 1.1 s, 148x, bitwise-identical:
+  pruned misses return inf and are dropped by the same `valid` mask).
+- `synthesize_fill_detail`: donor k-NN queries go through `_balanced_query`,
+  which randomizes query order before scipy's per-thread chunking (atlas-
+  ordered queries give whole chunks of far-from-tree texels to one straggler
+  thread) and undoes the permutation on return — exact same per-point
+  results, 3.8x on the owl donor query. Full-atlas statistics intermediates
+  (~0.5 GB) are released before the long query phase; the two observed
+  quantiles they feed are computed ahead, unchanged.
+- `commit_pale_chips`: per-blob work (masks, isolation dilation, gathers)
+  now runs inside each blob's bounding window via `find_objects` (margin
+  covers the dilation) with the loop-invariant plain-domain colors hoisted —
+  474 committed / 2264 candidate blobs previously paid full-atlas ops each
+  (42.8 s -> 0.8 s, 53x, bitwise-identical).
+- `commit_trace_deposits`: eval units are stored as (window, local-mask)
+  pairs; world-space ring/residue tests evaluate over precomputed flat
+  domains (row-major extraction preserves reduction order bit-exactly);
+  full-atlas masks are materialized only for units that actually commit
+  (17.7 s -> 6.9 s on the face proof, bitwise-identical).
+- Index maps for the flat domains use int32 (identical indexing behavior,
+  half the footprint).
+
 ## 0.2.0 (2026-07-08)
 
 First public release of the standalone repository (`github.com/lpalbou/abstract3d`).

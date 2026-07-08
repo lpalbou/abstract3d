@@ -1,0 +1,155 @@
+[
+ {
+  "asset": "face",
+  "status": "match",
+  "baked_md5": "2baf740853a7e7c5451b099a351e5ca3",
+  "expected_md5": "2baf740853a7e7c5451b099a351e5ca3",
+  "seconds": 166.8,
+  "coverage": 0.4679,
+  "rss_peak_gb": 7.45,
+  "slowest_stages": [
+   {
+    "name": "composite_gradient_domain",
+    "seconds": 11.118,
+    "rss_peak_gb": 6.43
+   },
+   {
+    "name": "register_reference_by_source_overlap",
+    "seconds": 10.447,
+    "rss_peak_gb": 5.16
+   },
+   {
+    "name": "register_reference_by_source_overlap",
+    "seconds": 10.442,
+    "rss_peak_gb": 4.39
+   },
+   {
+    "name": "commit_trace_deposits",
+    "seconds": 6.914,
+    "rss_peak_gb": 7.06
+   },
+   {
+    "name": "synthesize_fill_detail",
+    "seconds": 5.874,
+    "rss_peak_gb": 6.88
+   },
+   {
+    "name": "tone_bottom_cap",
+    "seconds": 5.162,
+    "rss_peak_gb": 7.16
+   },
+   {
+    "name": "tone_match_completion_components",
+    "seconds": 4.316,
+    "rss_peak_gb": 6.5
+   },
+   {
+    "name": "estimate_pose_photometric",
+    "seconds": 3.87,
+    "rss_peak_gb": 3.19
+   }
+  ]
+ },
+ {
+  "asset": "ship",
+  "status": "match",
+  "baked_md5": "b8e2b0d47ec4336a17067b59e1718455",
+  "expected_md5": "b8e2b0d47ec4336a17067b59e1718455",
+  "seconds": 55.3,
+  "coverage": 0.2078,
+  "rss_peak_gb": 5.79,
+  "slowest_stages": [
+   {
+    "name": "_tripo_make_texture_atlas",
+    "seconds": 30.098,
+    "rss_peak_gb": 2.95
+   },
+   {
+    "name": "synthesize_fill_detail",
+    "seconds": 13.434,
+    "rss_peak_gb": 5.79
+   },
+   {
+    "name": "_balanced_query",
+    "seconds": 8.393,
+    "rss_peak_gb": 5.21
+   },
+   {
+    "name": "texel_surface_smooth",
+    "seconds": 2.676,
+    "rss_peak_gb": 5.06
+   },
+   {
+    "name": "_tripo_project_observed_texture",
+    "seconds": 2.143,
+    "rss_peak_gb": 5.15
+   },
+   {
+    "name": "enforce_fill_luminance_floor",
+    "seconds": 1.742,
+    "rss_peak_gb": 5.71
+   },
+   {
+    "name": "blend_projections",
+    "seconds": 0.53,
+    "rss_peak_gb": 4.67
+   },
+   {
+    "name": "mesh_graph_harmonic_fill",
+    "seconds": 0.48,
+    "rss_peak_gb": 4.86
+   }
+  ]
+ },
+ {
+  "asset": "owl",
+  "status": "match",
+  "baked_md5": "ff746509ccb9429a6161cd40657df080",
+  "expected_md5": "ff746509ccb9429a6161cd40657df080",
+  "seconds": 88.0,
+  "coverage": 0.301,
+  "rss_peak_gb": 5.83,
+  "slowest_stages": [
+   {
+    "name": "synthesize_fill_detail",
+    "seconds": 45.437,
+    "rss_peak_gb": 5.71
+   },
+   {
+    "name": "_balanced_query",
+    "seconds": 40.4,
+    "rss_peak_gb": 5.19
+   },
+   {
+    "name": "_tripo_make_texture_atlas",
+    "seconds": 25.361,
+    "rss_peak_gb": 2.95
+   },
+   {
+    "name": "estimate_pose_photometric",
+    "seconds": 3.774,
+    "rss_peak_gb": 3.1
+   },
+   {
+    "name": "texel_surface_smooth",
+    "seconds": 2.745,
+    "rss_peak_gb": 5.08
+   },
+   {
+    "name": "_tripo_project_observed_texture",
+    "seconds": 2.152,
+    "rss_peak_gb": 5.1
+   },
+   {
+    "name": "enforce_fill_luminance_floor",
+    "seconds": 2.05,
+    "rss_peak_gb": 5.83
+   },
+   {
+    "name": "mirror_fill_from_observed",
+    "seconds": 1.18,
+    "rss_peak_gb": 5.13
+   }
+  ]
+ }
+]

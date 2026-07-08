@@ -1654,7 +1654,21 @@ def mirror_fill_from_observed(
         from scipy.spatial import cKDTree
 
         tree = cKDTree(observed_positions)
-        distances, indices = tree.query(unseen_positions, k=1)
+        # Two pure-search optimizations, both output-identical by
+        # construction (verified bitwise on the golden assets):
+        # - workers=-1 parallelizes over query points; exact NN per point.
+        # - distance_upper_bound prunes the search at the acceptance
+        #   threshold: most mirror twins land nowhere near an observed
+        #   texel (measured 1.6% acceptance on the owl), and unbounded
+        #   exact-NN backtracking across the whole tree dominated the
+        #   stage (140 s of a 167 s stage). Queries beyond the bound
+        #   return (inf, n) and are dropped by the same `valid` mask that
+        #   already applied the threshold; the small slack keeps the
+        #   exact `<= threshold` cut with the mask, not the prune.
+        distances, indices = tree.query(
+            unseen_positions, k=1, workers=-1,
+            distance_upper_bound=threshold * 1.001,
+        )
     except Exception:
         return fill_rgb, fill_mask
 
@@ -2502,6 +2516,29 @@ def _fill_value_noise_3d(points: Any, wavelength: float, seed: int) -> Any:
     return nxy0 * (1 - t[:, 2]) + nxy1 * t[:, 2]
 
 
+def _balanced_query(tree: Any, points: Any, k: int, *, workers: int = -1) -> Tuple[Any, Any]:
+    """`cKDTree.query` under a randomized query order (results identical).
+
+    scipy splits the query array into contiguous per-thread chunks. Atlas-
+    ordered texel queries are spatially coherent, so whole chunks land far
+    from the tree (expensive exact-NN backtracking) while others are trivial
+    — one straggler thread then owns most of the wall time. A fixed random
+    permutation spreads hard queries across all threads. Per-point results
+    are exact NN either way; the permutation is undone before returning
+    (measured 3.8x on the owl donor query, bitwise-identical output).
+    """
+    import numpy as np
+
+    points = np.asarray(points)
+    if len(points) < 4096:
+        return tree.query(points, k=k, workers=workers)
+    permutation = np.random.default_rng(11).permutation(len(points))
+    inverse = np.empty_like(permutation)
+    inverse[permutation] = np.arange(len(permutation))
+    distances, indices = tree.query(points[permutation], k=k, workers=workers)
+    return distances[inverse], indices[inverse]
+
+
 def _masked_gaussian_filter(field: Any, mask: Any, sigma: float) -> Any:
     """Gaussian filter over masked pixels only (normalized convolution)."""
     import numpy as np
@@ -2837,10 +2874,26 @@ def synthesize_fill_detail(
     fill_nrm = normals[fill]
     fill_base = rgb[fill]
     n_fill = len(fill_pos)
+    # The full-atlas intermediates above (~0.5 GB at 2048) are no longer
+    # needed once their observed-texel extractions exist; releasing them
+    # here keeps the long donor-query phase off the bake's RSS peak. The
+    # two observed quantiles consumed later are computed from log_res /
+    # amplitude before the release (values unchanged: same inputs, same
+    # operations, merely reordered ahead of their consumers).
+    amp_cap_early = (
+        float(np.percentile(amplitude[observed].max(axis=1), 90.0))
+        if observed.any() else None
+    )
+    amp_floor_early = (
+        np.percentile(np.abs(log_res[observed]), 25.0, axis=0) / 0.798
+        if observed.any() else None
+    )
+    del log_low, log_res, amplitude, dir3, dir_valid, anisotropy
+    del d_u, d_v, jxx, jxy, jyy, trace, disc, lam1, lam2, ev_u, ev_v, gx, gy
 
     tree = cKDTree(obs_pos)
     kq = int(min(max(1, neighbors), len(obs_pos)))
-    distances, indices = tree.query(fill_pos, k=kq, workers=-1)
+    distances, indices = _balanced_query(tree, fill_pos, k=kq)
     distances = np.atleast_2d(np.asarray(distances, dtype=np.float32))
     indices = np.atleast_2d(np.asarray(indices, dtype=np.int64))
     if distances.shape[0] == 1 and n_fill > 1:
@@ -2860,7 +2913,7 @@ def synthesize_fill_detail(
 
     target_amp = np.einsum("nk,nkc->nc", weights, obs_amp[indices]).astype(np.float32)
     if observed.any():
-        amp_cap = float(np.percentile(amplitude[observed].max(axis=1), 90.0))
+        amp_cap = amp_cap_early
         target_amp = np.minimum(target_amp, amp_cap)
         # Amplitude FLOOR at the observed population's low quantile (per
         # channel): donors imaged at extreme grazing carry artificially low
@@ -2879,8 +2932,7 @@ def synthesize_fill_detail(
         # stochastic level. No fill may claim to be smoother than the
         # quietest quartile of the witnessed material; the closed-loop
         # energy calibration and sigma guard keep the global level honest.
-        amp_floor = np.percentile(
-            np.abs(log_res[observed]), 25.0, axis=0) / 0.798
+        amp_floor = amp_floor_early
         target_amp = np.maximum(target_amp, amp_floor[None, :].astype(np.float32))
     target_anis = np.einsum("nk,nk->n", weights, obs_anis[indices]).astype(np.float32)
     # Orientation: sign-invariant tensor average, principal eigenvector by
@@ -6843,22 +6895,38 @@ def commit_trace_deposits(
         dark_sizes[0] = 0
 
     blobs, blob_count = cc_label(candidates, structure=np.ones((3, 3), bool))
-    eval_units: List[Any] = []
-    for blob_id in range(1, blob_count + 1):
-        blob = blobs == blob_id
-        area = int(blob.sum())
+    # Eval units are stored as (window, local_mask) pairs and every
+    # per-unit operation below runs inside the unit's bounding window or
+    # on a precomputed flat domain; with hundreds of candidate units the
+    # previous full-atlas masks/gathers per unit dominated this stage
+    # (measured 17.7 s on the face proof; outputs verified bitwise-
+    # identical against the full-atlas formulation).
+    from scipy.ndimage import find_objects
+
+    atlas_shape = surface.shape
+    eval_units: List[Tuple[Tuple[slice, slice], Any]] = []
+    for blob_id, bbox in enumerate(find_objects(blobs), start=1):
+        if bbox is None:
+            continue
+        window = (
+            slice(max(bbox[0].start - 2, 0), min(bbox[0].stop + 2, atlas_shape[0])),
+            slice(max(bbox[1].start - 2, 0), min(bbox[1].stop + 2, atlas_shape[1])),
+        )
+        blob_local = blobs[window] == blob_id
+        area = int(blob_local.sum())
         if area < min_area:
             continue
         if area <= int(max_blob_eval):
-            eval_units.append(blob)
+            eval_units.append((window, blob_local))
             continue
-        cores = blob & (deviation >= 1.5 * float(deviation_min))
+        cores = blob_local & (deviation[window] >= 1.5 * float(deviation_min))
         piece_labels, piece_count = cc_label(cores, structure=np.ones((3, 3), bool))
         for piece_id in range(1, piece_count + 1):
             piece = piece_labels == piece_id
             if int(piece.sum()) < min_area:
                 continue
-            eval_units.append(binary_dilation(piece, iterations=2) & blob)
+            eval_units.append(
+                (window, binary_dilation(piece, iterations=2) & blob_local))
 
     # residue field for the whole-neighborhood rule below: trace-weight
     # texels reading BELOW SKIN (mid-gray dashes and chip shadow edges,
@@ -6897,51 +6965,83 @@ def commit_trace_deposits(
     out = rgba.copy()
     committed_total = 0
     committed_mask = np.zeros(surface.shape, dtype=bool)
-    for blob in eval_units:
-        area = int(blob.sum())
+
+    # Flat ring domain: a ring texel must be direct with sub-threshold
+    # deviation, so distances and per-view statistics are evaluated only
+    # over that fixed population (row-major extraction preserves the
+    # element order the full-atlas boolean indexing produced, keeping
+    # every reduction bit-identical).
+    ring_domain = direct & (deviation < float(deviation_min))
+    dom_rows, dom_cols = np.nonzero(ring_domain)
+    dom_pts = pts[dom_rows, dom_cols]
+    dom_valid = [v[dom_rows, dom_cols] for v in valid_stack]
+    dom_rgb = [v[dom_rows, dom_cols] for v in rgb_stack]
+    dom_lum = lum[dom_rows, dom_cols]
+    dom_index_map = np.full(atlas_shape, -1, dtype=np.int32)
+    dom_index_map[dom_rows, dom_cols] = np.arange(len(dom_rows), dtype=np.int32)
+    blob_at_dom = np.zeros(len(dom_rows), dtype=bool)
+
+    residue_rows, residue_cols = np.nonzero(residue_field)
+    residue_pts = pts[residue_rows, residue_cols]
+    residue_index_map = np.full(atlas_shape, -1, dtype=np.int32)
+    residue_index_map[residue_rows, residue_cols] = np.arange(
+        len(residue_rows), dtype=np.int32)
+    blob_at_residue = np.zeros(len(residue_rows), dtype=bool)
+
+    def materialize(window, local_mask):
+        full = np.zeros(atlas_shape, dtype=bool)
+        full[window][local_mask] = True
+        return full
+
+    for window, blob_local in eval_units:
+        area = int(blob_local.sum())
         if area < min_area or area > max_area:
             continue
-        if film is not None and float((blob & film).sum()) / area > float(film_overlap_max):
+        if film is not None and float(
+                (blob_local & film[window]).sum()) / area > float(film_overlap_max):
             continue
-        blob_center = pts[blob].mean(axis=0)
-        blob_weights = winner_weight[blob]
+        pts_window = pts[window]
+        blob_pts = pts_window[blob_local]
+        blob_center = blob_pts.mean(axis=0)
+        blob_weights = winner_weight[window][blob_local]
         if float(np.percentile(blob_weights, 50)) > float(trace_w50):
             continue
         if float(np.percentile(blob_weights, 90)) > float(trace_w90):
             continue
-        bright_deposit = float(np.median(blob_response[blob])) > 0.0
+        bright_deposit = float(np.median(blob_response[window][blob_local])) > 0.0
         if bright_deposit and feature_tree is not None:
-            core_distance, _ = feature_tree.query(pts[blob], k=1, workers=-1)
+            core_distance, _ = feature_tree.query(blob_pts, k=1, workers=-1)
             if float(np.median(np.asarray(core_distance))) < halo_radius:
                 continue
         if not bright_deposit:
             # isolation: reject frontier slivers of a connected dark mass
-            blob_dark_labels = dark_labels[blob & dark_mask]
+            blob_dark_labels = dark_labels[window][blob_local & dark_mask[window]]
             blob_dark_labels = blob_dark_labels[blob_dark_labels > 0]
             if len(blob_dark_labels):
                 component_size = int(dark_sizes[np.unique(blob_dark_labels)].max())
                 if component_size > 3 * area + 8:
                     continue
         blob_radius = float(np.percentile(
-            np.linalg.norm(pts[blob] - blob_center[None, :], axis=1), 90))
+            np.linalg.norm(blob_pts - blob_center[None, :], axis=1), 90))
         ring_radius = max(2.5 * blob_radius, 1.5 * r_ctx)
-        distance = np.linalg.norm(pts - blob_center[None, None, :], axis=2)
-        ring = (
-            direct & ~blob & (distance <= ring_radius)
-            & (deviation < float(deviation_min))
-        )
-        ring_count = int(ring.sum())
+        blob_dom_ids = dom_index_map[window][blob_local]
+        blob_dom_ids = blob_dom_ids[blob_dom_ids >= 0]
+        blob_at_dom[blob_dom_ids] = True
+        dom_distance = np.linalg.norm(dom_pts - blob_center[None, :], axis=1)
+        ring_flat = (dom_distance <= ring_radius) & ~blob_at_dom
+        blob_at_dom[blob_dom_ids] = False
+        ring_count = int(ring_flat.sum())
         if ring_count < int(ring_min_texels):
             continue
         votes: List[float] = []
         covers: List[float] = []
         for view_index in range(len(projections)):
-            selected = ring & valid_stack[view_index]
+            selected = ring_flat & dom_valid[view_index]
             n_selected = int(selected.sum())
             cover = n_selected / ring_count
             if n_selected < int(ring_min_texels) or cover < float(ring_cover_frac):
                 continue
-            view_lum = rgb_stack[view_index][selected].mean(axis=1)
+            view_lum = dom_rgb[view_index][selected].mean(axis=1)
             votes.append(float(
                 (view_lum > float(bright_context) * bright_median).mean()))
             covers.append(cover)
@@ -6961,9 +7061,18 @@ def commit_trace_deposits(
         # The blob therefore commits only if EVERY residue island inside
         # its ring is itself sweepable under the same consensus — clean
         # the neighborhood fully, or leave it exactly as witnessed.
-        residue_near = residue_field & ~blob & (distance <= ring_radius)
+        blob_res_ids = residue_index_map[window][blob_local]
+        blob_res_ids = blob_res_ids[blob_res_ids >= 0]
+        blob_at_residue[blob_res_ids] = True
+        residue_distance = np.linalg.norm(
+            residue_pts - blob_center[None, :], axis=1)
+        residue_near_flat = (residue_distance <= ring_radius) & ~blob_at_residue
+        blob_at_residue[blob_res_ids] = False
         sweep_islands: List[Any] = []
-        if residue_near.any():
+        if residue_near_flat.any():
+            residue_near = np.zeros(atlas_shape, dtype=bool)
+            residue_near[residue_rows[residue_near_flat],
+                         residue_cols[residue_near_flat]] = True
             residue_labels, residue_count = cc_label(
                 residue_near, structure=np.ones((3, 3), bool))
             refused = False
@@ -6986,14 +7095,16 @@ def commit_trace_deposits(
         # blobs mid-dark (dark_debris 0.0024 -> 0.0048 at az-22.5). The
         # commit's consensus evidence is that the surround is BRIGHT
         # material — the retone must draw from exactly that evidence.
-        anchor_mask = ring & (lum > float(bright_context) * bright_median)
-        if int(anchor_mask.sum()) < int(ring_min_texels):
+        anchor_flat = ring_flat & (dom_lum > float(bright_context) * bright_median)
+        if int(anchor_flat.sum()) < int(ring_min_texels):
             continue
-        newly_committed = blob.copy()
-        blob_rows, blob_cols = np.nonzero(blob)
-        ring_rows, ring_cols = np.nonzero(anchor_mask)
+        newly_committed = materialize(window, blob_local)
+        local_rows, local_cols = np.nonzero(blob_local)
+        blob_rows = local_rows + window[0].start
+        blob_cols = local_cols + window[1].start
+        ring_rows, ring_cols = dom_rows[anchor_flat], dom_cols[anchor_flat]
         blob_points = pts[blob_rows, blob_cols]
-        ring_points = pts[ring_rows, ring_cols]
+        ring_points = dom_pts[anchor_flat]
         ring_colors = out[ring_rows, ring_cols, :3]
         squared = ((blob_points[:, None, :] - ring_points[None, :, :]) ** 2).sum(axis=2)
         inverse_weights = 1.0 / (squared + 1e-8)
@@ -7001,7 +7112,7 @@ def commit_trace_deposits(
             inverse_weights.sum(axis=1, keepdims=True), 1e-9)
         out[blob_rows, blob_cols, :3] = blended
         committed_total += area
-        committed_mask |= blob
+        committed_mask[window][blob_local] = True
         # retone the neighborhood's sweepable residue from the same
         # validated anchors (their own contrast never re-thresholded —
         # the consensus is the blob's)
@@ -7028,6 +7139,8 @@ def commit_trace_deposits(
         # its own darkness in place.
         rim_exclusion = binary_dilation(
             newly_committed, iterations=int(rim_feather_texels))
+        anchor_mask = np.zeros(atlas_shape, dtype=bool)
+        anchor_mask[ring_rows, ring_cols] = True
         rim_anchor = anchor_mask & ~rim_exclusion
         if int(rim_anchor.sum()) >= int(ring_min_texels):
             rim_anchor_rows, rim_anchor_cols = np.nonzero(rim_anchor)
@@ -7244,8 +7357,25 @@ def commit_pale_chips(
     committed = np.zeros(surface.shape, dtype=bool)
     refused = {"area": 0, "w90": 0, "ring": 0, "isolation": 0, "cover": 0}
     n_committed_blobs = 0
+    # Per-blob work happens inside each blob's bounding window (margin 2
+    # covers the isolation dilation): candidate chips are tiny, so full-
+    # atlas masks/dilations per blob dominated this stage (measured 44 s
+    # on the face proof; output verified bitwise-identical). The plain
+    # colors gather is loop-invariant (`colors` is never mutated) and is
+    # hoisted for the same reason.
+    from scipy.ndimage import find_objects
+
+    blob_slices = find_objects(blobs)
+    plain_colors = colors[plain]
     for blob_id in range(1, blob_count + 1):
-        blob = blobs == blob_id
+        bbox = blob_slices[blob_id - 1]
+        if bbox is None:
+            continue
+        window = (
+            slice(max(bbox[0].start - 2, 0), min(bbox[0].stop + 2, surface.shape[0])),
+            slice(max(bbox[1].start - 2, 0), min(bbox[1].stop + 2, surface.shape[1])),
+        )
+        blob = blobs[window] == blob_id
         area = int(blob.sum())
         if area < int(min_area) or area > max_area:
             refused["area"] += 1
@@ -7253,15 +7383,16 @@ def commit_pale_chips(
         # isolation: 2-dilated blob touching a big bright component is a
         # frontier sliver of real bright material
         ring2 = binary_dilation(blob, iterations=2)
-        touched = np.unique(bright_labels[ring2 & bright_mask])
+        touched = np.unique(bright_labels[window][ring2 & bright_mask[window]])
         touched = touched[touched > 0]
         if any(bright_sizes[label_id] >= int(bright_connect_min)
                for label_id in touched):
             refused["isolation"] += 1
             continue
-        center = pts[blob].mean(axis=0)
+        pts_window = pts[window]
+        center = pts_window[blob].mean(axis=0)
         radius = max(
-            float(np.linalg.norm(pts[blob] - center, axis=1).max()) * 1.5, r_ctx)
+            float(np.linalg.norm(pts_window[blob] - center, axis=1).max()) * 1.5, r_ctx)
         ring_idx = np.asarray(
             plain_tree.query_ball_point(center, r=radius), dtype=np.int64)
         if len(ring_idx) < int(ring_min_texels):
@@ -7291,13 +7422,15 @@ def commit_pale_chips(
             refused["ring"] += 1
             continue
         anchor_points = plain_points[anchor_sel]
-        anchor_rgb = colors[plain][anchor_sel]
-        blob_points = pts[blob]
+        anchor_rgb = plain_colors[anchor_sel]
+        blob_points = pts_window[blob]
         squared = ((blob_points[:, None, :] - anchor_points[None, :, :]) ** 2).sum(axis=2)
         inverse_weights = 1.0 / np.maximum(squared, 1e-10)
         inverse_weights /= inverse_weights.sum(axis=1, keepdims=True)
-        out[blob, :3] = inverse_weights @ anchor_rgb
-        committed |= blob
+        out_window = out[window]
+        out_window[blob, :3] = inverse_weights @ anchor_rgb
+        committed_window = committed[window]
+        committed_window[blob] = True
         n_committed_blobs += 1
 
     stats.update(

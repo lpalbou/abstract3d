@@ -1,5 +1,0 @@
-[abstractcore.capabilities_plugins]
-abstract3d = abstract3d.integrations.abstractcore_plugin:register
-
-[console_scripts]
-abstract3d = abstract3d.cli:main

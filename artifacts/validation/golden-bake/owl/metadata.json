@@ -1,0 +1,163 @@
+{
+ "schema_version": 1,
+ "kind": "rebake",
+ "source_bundle": "/Users/albou/abstract3d/artifacts/validation/final-proof/hunyuan-owl",
+ "texture_resolution": 2048,
+ "texture_completion": "auto",
+ "projection_model": "orthographic",
+ "source_pose_override": null,
+ "scarcity_rescue": "auto",
+ "compositing": "auto",
+ "reference_count": 0,
+ "bake_seconds": 85.07,
+ "texture_png_md5": "ff746509ccb9429a6161cd40657df080",
+ "stats": {
+  "camera_distance": 3.0,
+  "source_pose": {
+   "azimuth_deg": 0.0,
+   "elevation_deg": 0.0,
+   "silhouette_iou": 0.0,
+   "method": "gradient_ncc",
+   "score": 0.0528,
+   "estimated": false
+  },
+  "source_registration": {
+   "method": "photo_bbox_center"
+  },
+  "view_registration": [
+   {
+    "applied": false,
+    "scale": 1.0,
+    "shift_x": 0.0,
+    "shift_y": 0.0,
+    "label": "front",
+    "photometric": {
+     "applied": false
+    },
+    "pose": {
+     "refined": false
+    },
+    "ortho_half_extent": 1.1727
+   }
+  ],
+  "view_consistency": [],
+  "outlier_filter": {
+   "dropped_texels": 1390
+  },
+  "texture_padding": 8,
+  "projection_mode": "projection_only_plus_symmetry_plus_fill3d",
+  "unseen_fill_mode": "mesh_harmonic",
+  "observed_coverage_ratio": 0.301,
+  "observed_view_stats": [
+   {
+    "index": 1,
+    "label": "front",
+    "azimuth_deg": 0.0,
+    "elevation_deg": 0.0,
+    "coverage_ratio": 0.2922
+   }
+  ],
+  "leverage": {
+   "available": true,
+   "surface_texels": 2269019,
+   "potential_union_ratio": 0.3522,
+   "direct_painted_ratio": 0.2912,
+   "leverage_ratio": 0.8271,
+   "surrendered_visible_ratio": 0.0611,
+   "unobservable_ratio": 0.6478,
+   "views": [
+    {
+     "label": "front",
+     "facing_threshold": 0.2,
+     "potential_texels": 799042,
+     "potential_ratio": 0.3522,
+     "painted_texels": 660849,
+     "painted_ratio": 0.2912,
+     "won_texels": 659924,
+     "won_ratio": 0.2908,
+     "rescued_texels": 3,
+     "surrendered_facing_gate": 84620,
+     "surrendered_zone_gate": 51750,
+     "surrendered_downstream": 0,
+     "surrendered_union_drop": 2167
+    }
+   ],
+   "shipped_direct_ratio": 0.2912,
+   "mirror_completed_ratio": 0.0098,
+   "mirror_over_photo_visible_ratio": 0.0056
+  },
+  "scarcity_rescue": {
+   "requested": "auto",
+   "enabled": false,
+   "applied": false
+  },
+  "texture_completion": "mirror_symmetry",
+  "texture_completion_requested": "auto",
+  "fill_detail": {
+   "applied": true,
+   "gain": 0.7,
+   "energy_calibration": {
+    "observed_energy": 1.363,
+    "target_energy": 0.954,
+    "fill_energy_at_1": 0.98,
+    "fill_energy_base": 0.031,
+    "fill_energy_final": 0.98,
+    "sigma_observed_band": 0.1971,
+    "sigma_at_scale": 0.1484,
+    "scale": 1.0
+   }
+  },
+  "fill_floor": {
+   "applied": true,
+   "lifted_texels": 25099,
+   "evidence_exempt_components": 34,
+   "mean_lift": 0.5669,
+   "p99_lift": 1.4,
+   "consensus_texels": 7118
+  },
+  "delight": {
+   "applied": false
+  },
+  "symmetry_completion": {
+   "mode": "mirror_symmetry",
+   "geometry_symmetry_score": 0.9789,
+   "coverage_ratio": 0.0098,
+   "tone_matched_texels": 0,
+   "applied": true
+  },
+  "mirror_rescue": {
+   "applied": false,
+   "discs": [],
+   "geometry_symmetry_score": 0.9789
+  },
+  "trace_deposits": {
+   "applied": false,
+   "blob_count": 0
+  },
+  "pale_chips": {
+   "applied": false
+  },
+  "bottom_cap": {
+   "applied": false
+  },
+  "feature_fringe_repair": {
+   "applied": false
+  },
+  "film_band": {
+   "applied": false
+  },
+  "seam_leveling": {
+   "applied": false
+  },
+  "compositing": {
+   "requested": "auto",
+   "mode": "legacy",
+   "applied": false
+  },
+  "blend_sharpness": 3.0,
+  "feather_texels": 12.0,
+  "vertex_mapping_count": 68270,
+  "uv_vertex_count": 68270,
+  "face_count": 120000
+ }
+}

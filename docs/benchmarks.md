@@ -70,6 +70,36 @@ photos themselves pass):
   opaque texture must commit each texel to one material where the photo shows
   semi-transparent wisps
 
+## Bake Performance Program (2026-07-08, outputs bit-identical)
+
+The certified texture pipeline was profiled stage-by-stage and optimized
+under a hard constraint: every change must reproduce the certified texture
+hashes bit-exactly. The golden-bake harness (`scripts/golden_bake.py`)
+enforces this executably — it rebakes the three certified assets through
+their canonical recipes and fails on any hash deviation.
+
+Results on the golden recipes at res 2048 (Apple M5 Max, one process per
+asset):
+
+| asset | bake before | bake after | speedup | texture hash |
+| --- | --- | --- | --- | --- |
+| owl (single view) | 257.8 s | 88 s | 2.9x | `ff746509...` reproduced |
+| face (multi-view) | 220.5 s | 167 s | 1.3x | `2baf7408...` reproduced |
+| starship (single view) | 58.6 s | 55 s | 1.1x | `b8e2b0d4...` reproduced |
+
+- proof pack: `artifacts/validation/bake-performance-program/` (before/after
+  chart, per-asset pixel-identity sheets with |diff| panels, timeline plots,
+  `report.json` with stage-level attribution)
+- dominant fixes: pruned+parallel exact-NN mirror-twin lookup (167 s -> 1.1 s
+  on the owl's mirror stage), thread-load-balanced donor queries, bounding-
+  window per-blob commits (43 s -> 0.8 s on the face's pale-chip pass)
+- memory: RSS peaks moved -0.15 GB (ship/owl); the peak is a plateau built
+  across projection/blend/fill rather than one stage's spike (see the
+  timeline plots), so further reduction needs lifetime work across stages
+- honest scope: mesh inference (the 7-13 min Hunyuan stage) is untouched;
+  these gains apply to the texture stage of every `i23d`/`t23d` textured
+  generation and to `abstract3d.bundle.rebake_bundle`
+
 ## Generated Reference Views (2026-07-08)
 
 When a surface region is unobservable from the supplied photos, the pipeline can now

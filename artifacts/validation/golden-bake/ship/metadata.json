@@ -1,0 +1,171 @@
+{
+ "schema_version": 1,
+ "kind": "rebake",
+ "source_bundle": "/Users/albou/abstract3d/artifacts/validation/final-proof/hunyuan-starship",
+ "texture_resolution": 2048,
+ "texture_completion": "auto",
+ "projection_model": "orthographic",
+ "source_pose_override": [
+  30.0,
+  15.0
+ ],
+ "scarcity_rescue": "auto",
+ "compositing": "auto",
+ "reference_count": 0,
+ "bake_seconds": 52.382,
+ "texture_png_md5": "b8e2b0d47ec4336a17067b59e1718455",
+ "stats": {
+  "camera_distance": 3.0,
+  "source_pose": {
+   "azimuth_deg": 30.0,
+   "elevation_deg": 15.0,
+   "silhouette_iou": 0.0,
+   "method": "override",
+   "score": null,
+   "estimated": false
+  },
+  "source_registration": {
+   "method": "mesh_bbox_center",
+   "frame_center_dx_px": 54.24,
+   "frame_center_dy_px": -27.94,
+   "frame_size": 1024
+  },
+  "view_registration": [
+   {
+    "applied": false,
+    "scale": 1.0,
+    "shift_x": 0.0,
+    "shift_y": 0.0,
+    "label": "front",
+    "photometric": {
+     "applied": false
+    },
+    "pose": {
+     "refined": false
+    },
+    "ortho_half_extent": 0.7639,
+    "frame_center_dx_px": 54.24,
+    "frame_center_dy_px": -27.94
+   }
+  ],
+  "view_consistency": [],
+  "outlier_filter": {
+   "dropped_texels": 291
+  },
+  "texture_padding": 8,
+  "projection_mode": "projection_only_plus_symmetry_plus_fill3d",
+  "unseen_fill_mode": "mesh_harmonic",
+  "observed_coverage_ratio": 0.2078,
+  "observed_view_stats": [
+   {
+    "index": 1,
+    "label": "front",
+    "azimuth_deg": 30.0,
+    "elevation_deg": 15.0,
+    "coverage_ratio": 0.1862
+   }
+  ],
+  "leverage": {
+   "available": true,
+   "surface_texels": 2004337,
+   "potential_union_ratio": 0.2756,
+   "direct_painted_ratio": 0.1855,
+   "leverage_ratio": 0.6729,
+   "surrendered_visible_ratio": 0.091,
+   "unobservable_ratio": 0.7244,
+   "views": [
+    {
+     "label": "front",
+     "facing_threshold": 0.2,
+     "potential_texels": 552418,
+     "potential_ratio": 0.2756,
+     "painted_texels": 371729,
+     "painted_ratio": 0.1855,
+     "won_texels": 369103,
+     "won_ratio": 0.1842,
+     "rescued_texels": 11,
+     "surrendered_facing_gate": 130402,
+     "surrendered_zone_gate": 50455,
+     "surrendered_downstream": 0,
+     "surrendered_union_drop": 1448
+    }
+   ],
+   "shipped_direct_ratio": 0.1855,
+   "mirror_completed_ratio": 0.0224,
+   "mirror_over_photo_visible_ratio": 0.006
+  },
+  "scarcity_rescue": {
+   "requested": "auto",
+   "enabled": false,
+   "applied": false
+  },
+  "texture_completion": "mirror_symmetry",
+  "texture_completion_requested": "auto",
+  "fill_detail": {
+   "applied": true,
+   "gain": 0.7,
+   "energy_calibration": {
+    "observed_energy": 0.882,
+    "target_energy": 0.618,
+    "fill_energy_at_1": 0.556,
+    "fill_energy_base": 0.043,
+    "fill_energy_final": 0.618,
+    "sigma_observed_band": 0.1792,
+    "sigma_at_scale": 0.096,
+    "scale": 1.202
+   }
+  },
+  "fill_floor": {
+   "applied": true,
+   "lifted_texels": 113070,
+   "evidence_exempt_components": 31,
+   "mean_lift": 0.173,
+   "p99_lift": 1.4,
+   "consensus_texels": 2784
+  },
+  "delight": {
+   "applied": false
+  },
+  "symmetry_completion": {
+   "mode": "mirror_symmetry",
+   "geometry_symmetry_score": 0.9826,
+   "coverage_ratio": 0.0224,
+   "tone_matched_texels": 0,
+   "applied": true
+  },
+  "mirror_rescue": {
+   "applied": false,
+   "discs": [],
+   "geometry_symmetry_score": 0.9826
+  },
+  "trace_deposits": {
+   "applied": false,
+   "blob_count": 0
+  },
+  "pale_chips": {
+   "applied": false
+  },
+  "bottom_cap": {
+   "applied": false
+  },
+  "feature_fringe_repair": {
+   "applied": false
+  },
+  "film_band": {
+   "applied": false
+  },
+  "seam_leveling": {
+   "applied": false
+  },
+  "compositing": {
+   "requested": "auto",
+   "mode": "legacy",
+   "applied": false
+  },
+  "blend_sharpness": 3.0,
+  "feather_texels": 12.0,
+  "vertex_mapping_count": 75248,
+  "uv_vertex_count": 75248,
+  "face_count": 120000
+ }
+}

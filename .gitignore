@@ -18,6 +18,18 @@ artifacts/*
 !artifacts/validation/
 artifacts/validation/*
 
+# Golden-bake regression harness output: version the summaries and
+# profiles (small, reviewable); the baked bytes are hash-identical
+# duplicates of the certified assets and stay local.
+!artifacts/validation/golden-bake/
+artifacts/validation/golden-bake/**/scene.glb
+artifacts/validation/golden-bake/**/texture.png
+artifacts/validation/golden-bake/**/uv_preview.png
+artifacts/validation/golden-bake/**/profile.json
+
+# Bake performance program proof pack (charts, identity sheets, report)
+!artifacts/validation/bake-performance-program/
+
 # Certified proof assets (current pipeline output)
 !artifacts/validation/final-proof/
 artifacts/validation/final-proof/*
@@ -44,3 +56,4 @@ artifacts/validation/**/material_0.png
 # Local editor/MCP config
 .cursor/
 toot.md
+src/abstract3d.egg-info/

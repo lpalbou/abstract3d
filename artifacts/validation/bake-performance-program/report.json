@@ -1,0 +1,179 @@
+{
+ "methodology": "Canonical golden-recipe rebakes (scripts/golden_bake.py) at res 2048, one process per asset, Apple M5 Max 128 GB (mps profile). Every optimization is bitwise output-preserving: baked texture md5 equals the certified published hash for all assets, before and after.",
+ "baseline_commit": "8c49cda (v0.2.0)",
+ "assets": {
+  "face": {
+   "status": "match",
+   "texture_md5": "2baf740853a7e7c5451b099a351e5ca3",
+   "seconds_before": 220.5,
+   "seconds_after": 166.8,
+   "speedup": 1.32,
+   "rss_peak_gb_before": 7.39,
+   "rss_peak_gb_after": 7.45,
+   "slowest_stages_before": {
+    "commit_pale_chips": 43.8,
+    "commit_trace_deposits": 17.8,
+    "composite_gradient_domain": 11.0,
+    "register_reference_by_source_overlap": 19.9,
+    "synthesize_fill_detail": 6.0,
+    "tone_bottom_cap": 5.2
+   },
+   "slowest_stages_after": [
+    {
+     "name": "composite_gradient_domain",
+     "seconds": 11.118,
+     "rss_peak_gb": 6.43
+    },
+    {
+     "name": "register_reference_by_source_overlap",
+     "seconds": 10.447,
+     "rss_peak_gb": 5.16
+    },
+    {
+     "name": "register_reference_by_source_overlap",
+     "seconds": 10.442,
+     "rss_peak_gb": 4.39
+    },
+    {
+     "name": "commit_trace_deposits",
+     "seconds": 6.914,
+     "rss_peak_gb": 7.06
+    },
+    {
+     "name": "synthesize_fill_detail",
+     "seconds": 5.874,
+     "rss_peak_gb": 6.88
+    },
+    {
+     "name": "tone_bottom_cap",
+     "seconds": 5.162,
+     "rss_peak_gb": 7.16
+    },
+    {
+     "name": "tone_match_completion_components",
+     "seconds": 4.316,
+     "rss_peak_gb": 6.5
+    },
+    {
+     "name": "estimate_pose_photometric",
+     "seconds": 3.87,
+     "rss_peak_gb": 3.19
+    }
+   ]
+  },
+  "ship": {
+   "status": "match",
+   "texture_md5": "b8e2b0d47ec4336a17067b59e1718455",
+   "seconds_before": 58.6,
+   "seconds_after": 55.3,
+   "speedup": 1.06,
+   "rss_peak_gb_before": 5.93,
+   "rss_peak_gb_after": 5.79,
+   "slowest_stages_before": {
+    "synthesize_fill_detail": 16.5,
+    "texel_surface_smooth": 2.6,
+    "enforce_fill_luminance_floor": 1.7,
+    "mirror_fill_from_observed": 1.0
+   },
+   "slowest_stages_after": [
+    {
+     "name": "_tripo_make_texture_atlas",
+     "seconds": 30.098,
+     "rss_peak_gb": 2.95
+    },
+    {
+     "name": "synthesize_fill_detail",
+     "seconds": 13.434,
+     "rss_peak_gb": 5.79
+    },
+    {
+     "name": "_balanced_query",
+     "seconds": 8.393,
+     "rss_peak_gb": 5.21
+    },
+    {
+     "name": "texel_surface_smooth",
+     "seconds": 2.676,
+     "rss_peak_gb": 5.06
+    },
+    {
+     "name": "_tripo_project_observed_texture",
+     "seconds": 2.143,
+     "rss_peak_gb": 5.15
+    },
+    {
+     "name": "enforce_fill_luminance_floor",
+     "seconds": 1.742,
+     "rss_peak_gb": 5.71
+    },
+    {
+     "name": "blend_projections",
+     "seconds": 0.53,
+     "rss_peak_gb": 4.67
+    },
+    {
+     "name": "mesh_graph_harmonic_fill",
+     "seconds": 0.48,
+     "rss_peak_gb": 4.86
+    }
+   ]
+  },
+  "owl": {
+   "status": "match",
+   "texture_md5": "ff746509ccb9429a6161cd40657df080",
+   "seconds_before": 257.8,
+   "seconds_after": 88.0,
+   "speedup": 2.93,
+   "rss_peak_gb_before": 5.97,
+   "rss_peak_gb_after": 5.83,
+   "slowest_stages_before": {
+    "mirror_fill_from_observed": 166.8,
+    "synthesize_fill_detail": 49.5,
+    "estimate_pose_photometric": 3.8,
+    "texel_surface_smooth": 2.7
+   },
+   "slowest_stages_after": [
+    {
+     "name": "synthesize_fill_detail",
+     "seconds": 45.437,
+     "rss_peak_gb": 5.71
+    },
+    {
+     "name": "_balanced_query",
+     "seconds": 40.4,
+     "rss_peak_gb": 5.19
+    },
+    {
+     "name": "_tripo_make_texture_atlas",
+     "seconds": 25.361,
+     "rss_peak_gb": 2.95
+    },
+    {
+     "name": "estimate_pose_photometric",
+     "seconds": 3.774,
+     "rss_peak_gb": 3.1
+    },
+    {
+     "name": "texel_surface_smooth",
+     "seconds": 2.745,
+     "rss_peak_gb": 5.08
+    },
+    {
+     "name": "_tripo_project_observed_texture",
+     "seconds": 2.152,
+     "rss_peak_gb": 5.1
+    },
+    {
+     "name": "enforce_fill_luminance_floor",
+     "seconds": 2.05,
+     "rss_peak_gb": 5.83
+    },
+    {
+     "name": "mirror_fill_from_observed",
+     "seconds": 1.18,
+     "rss_peak_gb": 5.13
+    }
+   ]
+  }
+ }
+}
