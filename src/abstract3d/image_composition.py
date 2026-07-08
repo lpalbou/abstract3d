@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import os
-from typing import Any, Callable, Dict, MutableMapping, Optional
+from typing import Any, Callable, Dict, MutableMapping, Optional, Tuple
 
 from .errors import DependencyUnavailableError
 
@@ -116,6 +116,13 @@ def resolve_image_generation_request(
     return resolved
 
 
+# The composed-t23d option surface: backends pop exactly these keys from a
+# generation call before the strict unknown-option check runs.
+IMAGE_REQUEST_KEYS: Tuple[str, ...] = (
+    "image_provider", "image_model", "image_width", "image_height", "image_seed",
+)
+
+
 def pop_image_generation_request(owner: Any, kwargs: MutableMapping[str, Any]) -> Dict[str, Any]:
     return resolve_image_generation_request(
         owner,
@@ -125,6 +132,17 @@ def pop_image_generation_request(owner: Any, kwargs: MutableMapping[str, Any]) -
         height=kwargs.pop("image_height", None),
         seed=kwargs.pop("image_seed", None),
     )
+
+
+def pop_composition_kwargs(kwargs: MutableMapping[str, Any]) -> Dict[str, Any]:
+    """Extract the composed-image options from a generation call's kwargs.
+
+    Backends forward ONLY these to `_make_source_image`, so the composition
+    keys are consumed from the caller's dict (previously `**kwargs` passed a
+    copy and the keys survived, which would trip the strict option check).
+    """
+
+    return {key: kwargs.pop(key) for key in IMAGE_REQUEST_KEYS if key in kwargs}
 
 
 def _owner_vision(owner: Any) -> Optional[Any]:

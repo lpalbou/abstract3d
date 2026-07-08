@@ -59,8 +59,11 @@ def test_t23d_defaults_to_provider_neutral_image_generation(monkeypatch, tmp_pat
 
     assert exit_code == 0
     assert calls["prompt"] == "rocket"
-    assert calls["image_provider"] is None
-    assert calls["image_model"] is None
+    # Provider-neutral means ABSENT under the strict option contract: the
+    # CLI forwards only explicitly-set options, and the composition layer
+    # resolves its configured default when no provider/model arrives.
+    assert "image_provider" not in calls
+    assert "image_model" not in calls
     assert calls["image_width"] == 768
     assert calls["image_height"] == 768
     summary = json.loads(capsys.readouterr().out)

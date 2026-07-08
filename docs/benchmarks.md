@@ -73,17 +73,40 @@ photos themselves pass):
 ## Generation Time and Mesh Density (2026-07-08)
 
 Aggregated from every bundle `metadata.json` in the validation tree (87
-checked runs, Apple M5 Max `mps` profile; regenerate with
-`python scripts/generation_stats.py`):
+checked runs, Apple M5 Max `mps` profile; regenerate the time/density
+columns with `python scripts/generation_stats.py`). The two quality columns
+are 1-5 visual-inspection scores (rubric and per-group evidence below):
 
-| backend / task | n | total (median [min-max]) | vertices (median) | faces (median) |
-| --- | --- | --- | --- | --- |
-| hunyuan3d21-local / i23d | 9 | 766 s [481-2152] | 59,900 | 120,000 |
-| hunyuan3d21-local / t23d | 4 | 553 s [513-645] | 80,000 | 160,000 |
-| step1x-local / i23d | 19 | 95 s [39-154] | 129,882 | 164,044 |
-| step1x-local / t23d | 11 | 75 s [35-111] | 96,149 | 188,108 |
-| triposr / i23d | 36 | 22 s [2-243] | 47,418 | 87,434 |
-| triposr / t23d | 8 | 27 s [10-62] | 36,434 | 67,797 |
+| backend / task | n | total (median [min-max]) | vertices (median) | faces (median) | mesh quality | texture quality | model license |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| hunyuan3d21 / i23d | 9 | 766 s [481-2152] | 59,900 | 120,000 | 4.5 | 4.0 | Tencent Hunyuan Community (excludes EU/UK/KR) |
+| hunyuan3d21 / t23d | 4 | 553 s [513-645] | 80,000 | 160,000 | 4.5 | 4.0 | Tencent Hunyuan Community (excludes EU/UK/KR) |
+| step1x / i23d | 19 | 95 s [39-154] | 129,882 | 164,044 | 2.5 | n/a (geometry-only) | Apache-2.0 |
+| step1x / t23d | 11 | 75 s [35-111] | 96,149 | 188,108 | 2.5 | n/a (geometry-only) | Apache-2.0 |
+| triposr / i23d | 36 | 22 s [2-243] | 47,418 | 87,434 | 2.5 | 3.0 | MIT |
+| triposr / t23d | 8 | 27 s [10-62] | 36,434 | 67,797 | 2.5 | 3.0 | MIT |
+
+### How the quality scores are generated
+
+The scores are qualitative judgments from a REPRODUCIBLE inspection
+protocol, not a computed metric:
+
+1. Two representative bundles per backend/task group (the canonical proof
+   objects) are loaded through the MeshVault MCP server driven headless
+   (`load_model`), inspected structurally (`describe_scene`), and rendered
+   from three canonical angles (`screenshot` at azimuth 30/135/-90).
+2. Every render, the combined review sheet, the structural data, and the
+   per-group evidence notes are versioned under
+   `artifacts/validation/quality-review/` (`scores.json` carries the
+   rubric), so a reviewer can re-judge the same material independently.
+3. Where a certified record exists (the Hunyuan proof assets), the score
+   also cites it: texture 4.0 reflects `texture_qa` 13/13 with the
+   documented proven-limit residuals, not perfection.
+
+Scale: 5 production-ready at close inspection; 4 strong with minor
+localized flaws; 3 recognizable and usable with visible flaws; 2 weak;
+1 failed. Scores are per-group medians of the inspected subjects — e.g.
+Step1X `i23d` pairs a recognizable espresso machine with a weak owl.
 
 Reading the ranges honestly:
 

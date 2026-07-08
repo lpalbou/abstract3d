@@ -1,0 +1,48 @@
+{
+  "method": "Headless MeshVault MCP inspection (load_model + describe_scene + 3 renders at az 30/135/-90) of two representative bundles per backend/task group, plus the certified texture-QA record where it applies. Scores are qualitative human-reviewable judgments on a 1-5 scale; every render is versioned in this folder so reviewers can re-judge independently.",
+  "scale": {
+    "5": "production-ready against the input at close inspection",
+    "4": "strong; minor localized flaws",
+    "3": "recognizable and usable; visible flaws",
+    "2": "weak; major deviation from the subject",
+    "1": "failed"
+  },
+  "groups": {
+    "triposr/i23d": {
+      "mesh": 2.5,
+      "texture": 3.0,
+      "inspected": ["starship (final-proof)", "face (final-proof)"],
+      "evidence": "Starship geometry is blob-accreted with mushy superstructure; face is relief-flattened with a weak cranium. Observed-view texture regions are faithful; sides carry smearing and speckle."
+    },
+    "triposr/t23d": {
+      "mesh": 2.5,
+      "texture": 3.0,
+      "inspected": ["owl (final-proof)", "chair (final-proof)"],
+      "evidence": "Owl silhouette correct but soft detail; chair keeps thin legs after cleanup but with wobble. Woven-seat texture reads well frontally, degrades off-axis."
+    },
+    "hunyuan3d21/i23d": {
+      "mesh": 4.5,
+      "texture": 4.0,
+      "inspected": ["starship (final-proof, certified)", "face-2mv (certified)"],
+      "evidence": "Watertight single bodies; hull antennae and facial structure preserved; multi-view conditioning fixes the back of the head. Textures certified (texture_qa 13/13); residual proven-limit classes documented in the certification (eye-region slivers are geometry, tone band at photo handoff)."
+    },
+    "hunyuan3d21/t23d": {
+      "mesh": 4.5,
+      "texture": 4.0,
+      "inspected": ["owl (final-proof, certified)", "chair (final-proof)"],
+      "evidence": "Owl carving relief crisp at close range (certified 13/13); chair solid with slight seat-weave softening. Unseen-region fill is coherent after the zero-defect program."
+    },
+    "step1x/i23d": {
+      "mesh": 2.5,
+      "texture": null,
+      "inspected": ["espresso (iter-v17)", "owl (iter-v17)"],
+      "evidence": "Geometry-only backend (no texture stage). Espresso machine blocky but recognizable on the base-checkpoint fallback; owl remains weak (repo benchmark language: below bar)."
+    },
+    "step1x/t23d": {
+      "mesh": 2.5,
+      "texture": null,
+      "inspected": ["teapot (iter-v17)", "chair (iter-v17)"],
+      "evidence": "Teapot recognizable and clean; chair materially better than the historical blob baseline but still below bar (thin members malformed)."
+    }
+  }
+}

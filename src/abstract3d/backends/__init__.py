@@ -3,7 +3,33 @@
 from __future__ import annotations
 
 import importlib
-from typing import Any, Callable, Dict, Tuple
+from typing import Any, Callable, Dict, Mapping, Tuple
+
+from ..errors import InvalidRequestError
+
+# Keys the host/manager layer may attach to any generation call; backends
+# that do not consume them must not reject them (they are envelope, not
+# tuning options).
+_ENVELOPE_KEYS = frozenset({"artifact_store", "run_id", "tags", "metadata"})
+
+
+def reject_unknown_options(backend_id: str, kwargs: Mapping[str, Any]) -> None:
+    """Fail loudly on options the backend did not consume.
+
+    Every backend pops the options it supports from its kwargs; whatever
+    remains is either a typo or a knob this backend does not have. Silent
+    acceptance meant a caller could not distinguish "tuned and applied"
+    from "tuned and ignored" — the CLI itself was sending diffusion knobs
+    to feed-forward backends with no effect and no warning.
+    """
+
+    leftover = sorted(k for k in kwargs if k not in _ENVELOPE_KEYS)
+    if leftover:
+        raise InvalidRequestError(
+            f"{backend_id} does not support these options: {', '.join(leftover)}. "
+            "Consult `list_operations()` (or `abstract3d catalog`) for the "
+            "options each backend accepts."
+        )
 
 
 _BACKEND_EXPORTS: Dict[str, Tuple[str, str]] = {

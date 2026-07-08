@@ -34,7 +34,11 @@ def _parser() -> argparse.ArgumentParser:
     common.set_defaults(texture_reference_remove_background=None)
     common.add_argument("--num-inference-steps", type=int, default=None)
     common.add_argument("--guidance-scale", type=float, default=None)
-    common.add_argument("--chunk-size", type=int, default=2048)
+    common.add_argument("--octree-resolution", type=int, default=None,
+                        help="Shape-VAE octree resolution (hunyuan3d21/step1x): higher = denser mesh.")
+    common.add_argument("--max-facenum", type=int, default=None,
+                        help="Post-process face-count cap (hunyuan3d21/step1x).")
+    common.add_argument("--chunk-size", type=int, default=None)
     common.add_argument("--model", default=None)
     common.add_argument("--model-subfolder", default=None)
     common.add_argument("--backend", default="abstract3d:triposr")
@@ -95,58 +99,50 @@ def main(argv: list[str] | None = None) -> int:
         return _print_catalog(args)
 
     manager = Scene3DManager(backend_id=args.backend)
-    if args.command == "i23d":
-        generation_kwargs = {}
-        if args.num_inference_steps is not None:
-            generation_kwargs["num_inference_steps"] = args.num_inference_steps
-        result = manager.i23d(
-            args.image,
-            prompt=args.prompt,
-            format=args.format,
-            output_dir=args.output_dir,
-            mc_resolution=args.mc_resolution,
-            device=args.device,
-            chunk_size=args.chunk_size,
-            model=args.model,
-            model_subfolder=args.model_subfolder,
-            remove_background=True if args.remove_background else None,
-            cleanup=args.cleanup,
-            texture_mode=args.texture_mode,
-            texture_resolution=args.texture_resolution,
-            texture_completion=args.texture_completion,
-            texture_reference_images=list(args.texture_reference_image or []),
-            texture_reference_angles=list(args.texture_reference_angle or []),
-            texture_reference_remove_background=args.texture_reference_remove_background,
-            guidance_scale=args.guidance_scale,
-            **generation_kwargs,
-        )
-        print(json.dumps(result.get("metadata") or {}, indent=2, sort_keys=True))
-        return 0
-    if args.command == "t23d":
-        generation_kwargs = {}
-        if args.num_inference_steps is not None:
-            generation_kwargs["num_inference_steps"] = args.num_inference_steps
-        result = manager.t23d(
-            args.prompt,
-            format=args.format,
-            output_dir=args.output_dir,
-            mc_resolution=args.mc_resolution,
-            device=args.device,
-            chunk_size=args.chunk_size,
-            model=args.model,
-            model_subfolder=args.model_subfolder,
-            image_provider=args.image_provider,
-            image_model=args.image_model,
-            image_width=args.image_width,
-            image_height=args.image_height,
-            image_seed=args.image_seed,
-            cleanup=args.cleanup,
-            texture_mode=args.texture_mode,
-            texture_resolution=args.texture_resolution,
-            texture_completion=args.texture_completion,
-            guidance_scale=args.guidance_scale,
-            **generation_kwargs,
-        )
+    if args.command in ("i23d", "t23d"):
+        # Only options the user explicitly set are forwarded: backends now
+        # REJECT unknown options instead of ignoring them, so the CLI must
+        # not spray every flag at every backend (e.g. --guidance-scale has
+        # no meaning on the feed-forward TripoSR path).
+        options = {
+            "format": args.format,
+            "output_dir": args.output_dir,
+            "device": args.device,
+            "mc_resolution": args.mc_resolution,
+            "cleanup": args.cleanup,
+            "texture_mode": args.texture_mode,
+            "texture_resolution": args.texture_resolution,
+            "texture_completion": args.texture_completion,
+            "num_inference_steps": args.num_inference_steps,
+            "guidance_scale": args.guidance_scale,
+            "octree_resolution": args.octree_resolution,
+            "max_facenum": args.max_facenum,
+            "chunk_size": args.chunk_size,
+            "model": args.model,
+            "model_subfolder": args.model_subfolder,
+        }
+        if args.command == "i23d":
+            options.update(
+                prompt=args.prompt,
+                remove_background=True if args.remove_background else None,
+            )
+            if args.texture_reference_image:
+                options["texture_reference_images"] = list(args.texture_reference_image)
+                options["texture_reference_angles"] = list(args.texture_reference_angle or [])
+            options["texture_reference_remove_background"] = args.texture_reference_remove_background
+        else:
+            options.update(
+                image_provider=args.image_provider,
+                image_model=args.image_model,
+                image_width=args.image_width,
+                image_height=args.image_height,
+                image_seed=args.image_seed,
+            )
+        options = {key: value for key, value in options.items() if value is not None}
+        if args.command == "i23d":
+            result = manager.i23d(args.image, **options)
+        else:
+            result = manager.t23d(args.prompt, **options)
         print(json.dumps(result.get("metadata") or {}, indent=2, sort_keys=True))
         return 0
     if args.command == "validate":

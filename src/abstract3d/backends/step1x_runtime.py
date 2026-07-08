@@ -1996,8 +1996,10 @@ class Step1XGeometryBackend:
 
         image_generation_s: Optional[float] = None
         if actual_task == "text_to_scene3d":
+            from ..image_composition import pop_composition_kwargs
+
             image_started = time.perf_counter()
-            image_bytes = self._make_source_image(prompt, **kwargs)
+            image_bytes = self._make_source_image(prompt, **pop_composition_kwargs(kwargs))
             image_generation_s = round(time.perf_counter() - image_started, 4)
             source_image = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
             _release_mlx_generation_cache()
@@ -2088,6 +2090,10 @@ class Step1XGeometryBackend:
             label=label_for_pipeline if isinstance(label_for_pipeline, Mapping) else None,
         )
         seed = int(kwargs.pop("seed", kwargs.pop("image_seed", 2025)) or 2025)
+        # All supported options consumed; unknown leftovers fail loudly.
+        from . import reject_unknown_options
+
+        reject_unknown_options(self.backend_id, kwargs)
         try:
             generator = torch.Generator(device=self._resident_device or "cpu")
         except (RuntimeError, ValueError):

@@ -968,8 +968,10 @@ class Hunyuan3DShapeBackend:
 
         image_generation_s: Optional[float] = None
         if actual_task == "text_to_scene3d":
+            from ..image_composition import pop_composition_kwargs
+
             image_started = time.perf_counter()
-            image_bytes = self._make_source_image(prompt, **kwargs)
+            image_bytes = self._make_source_image(prompt, **pop_composition_kwargs(kwargs))
             image_generation_s = round(time.perf_counter() - image_started, 4)
             source_image = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
             # Free MLX buffers before loading the 3.3B DiT on the same
@@ -1111,6 +1113,26 @@ class Hunyuan3DShapeBackend:
             or _env("ABSTRACT3D_HUNYUAN_VOLUME_DECODER")
             or "hierarchical"
         ).strip().lower()
+        # Texture options are consumed here (values are used post-inference)
+        # so the strict unknown-option check can run BEFORE the multi-minute
+        # diffusion stage: a typo must fail in milliseconds, not after 10
+        # minutes of inference.
+        texture_mode = str(
+            kwargs.pop("texture_mode", None)
+            or _owner_cfg(self._owner, "scene3d_hunyuan_texture_mode")
+            or _env("ABSTRACT3D_HUNYUAN_TEXTURE_MODE")
+            or "baked_basecolor"
+        ).strip().lower()
+        texture_resolution = int(kwargs.pop("texture_resolution", None) or 2048)
+        # Default "auto": a single-photo bake observes a thin sliver of the
+        # subject, and for measurably symmetric geometry (score-gated inside
+        # the bake) the mirrored twin of that sliver is real content where
+        # a propagated fill is a characterless wash. Explicit "none" or
+        # "mirror_symmetry" continue to force their modes.
+        texture_completion = str(kwargs.pop("texture_completion", None) or "auto").strip().lower()
+        from . import reject_unknown_options
+
+        reject_unknown_options(self.backend_id, kwargs)
 
         source_dir = Path(self._last_runtime_stats["source_dir"])
         inference_started = time.perf_counter()
@@ -1163,19 +1185,6 @@ class Hunyuan3DShapeBackend:
             # Free ~7 GB of accelerator memory before texture bake and preview.
             self._clear_runtime()
 
-        texture_mode = str(
-            kwargs.pop("texture_mode", None)
-            or _owner_cfg(self._owner, "scene3d_hunyuan_texture_mode")
-            or _env("ABSTRACT3D_HUNYUAN_TEXTURE_MODE")
-            or "baked_basecolor"
-        ).strip().lower()
-        texture_resolution = int(kwargs.pop("texture_resolution", None) or 2048)
-        # Default "auto": a single-photo bake observes a thin sliver of the
-        # subject, and for measurably symmetric geometry (score-gated inside
-        # the bake) the mirrored twin of that sliver is real content where
-        # a propagated fill is a characterless wash. Explicit "none" or
-        # "mirror_symmetry" continue to force their modes.
-        texture_completion = str(kwargs.pop("texture_completion", None) or "auto").strip().lower()
         texture_requested = texture_mode == "baked_basecolor"
         texture_s: Optional[float] = None
         texture_stats: Dict[str, Any] = {}

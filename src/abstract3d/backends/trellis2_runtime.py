@@ -1265,14 +1265,22 @@ class Trellis2LocalBackend:
 
         image_generation_s: Optional[float] = None
         if actual_task == "text_to_scene3d":
+            from ..image_composition import pop_composition_kwargs
+
             image_started = time.perf_counter()
-            image_bytes = self._make_source_image(prompt, **kwargs)
+            image_bytes = self._make_source_image(prompt, **pop_composition_kwargs(kwargs))
             image_generation_s = round(time.perf_counter() - image_started, 4)
             image_input = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
         else:
             if image is None:
                 raise ValueError("image_to_scene3d requires an image input.")
             image_input = image
+
+        # All supported options consumed; unknown leftovers fail loudly
+        # (before conditioning/sampling so a typo costs milliseconds).
+        from . import reject_unknown_options
+
+        reject_unknown_options(self.backend_id, kwargs)
 
         preprocess_started = time.perf_counter()
         source_preview, prepared_rgb, background_removed = _prepare_image(

@@ -2800,8 +2800,10 @@ class TripoSRBackend:
 
         image_generation_s: Optional[float] = None
         if actual_task == "text_to_scene3d":
+            from ..image_composition import pop_composition_kwargs
+
             image_started = time.perf_counter()
-            image_bytes = self._make_source_image(prompt, **kwargs)
+            image_bytes = self._make_source_image(prompt, **pop_composition_kwargs(kwargs))
             image_generation_s = round(time.perf_counter() - image_started, 4)
             image_input = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
         else:
@@ -2845,6 +2847,11 @@ class TripoSRBackend:
             kwargs.pop("texture_reference_remove_background", None),
             fallback=remove_background,
         )
+        # Every supported option has been consumed; anything left is a typo
+        # or another backend's knob and must fail loudly, not silently.
+        from . import reject_unknown_options
+
+        reject_unknown_options(self.backend_id, kwargs)
         mesh_started = time.perf_counter()
         meshes = model_runtime.extract_mesh(scene_codes, not texture_requested, resolution=int(resolved_mc_resolution))
         geometry_mesh = meshes[0]

@@ -30,6 +30,9 @@ artifacts/validation/golden-bake/**/profile.json
 # Bake performance program proof pack (charts, identity sheets, report)
 !artifacts/validation/bake-performance-program/
 
+# Quality-review protocol output (renders, structural data, scores)
+!artifacts/validation/quality-review/
+
 # Certified proof assets (current pipeline output)
 !artifacts/validation/final-proof/
 artifacts/validation/final-proof/*

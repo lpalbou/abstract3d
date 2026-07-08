@@ -21,6 +21,33 @@
   sampler + externally-wrapped stage functions), used by the harness;
   profiled runs stay bit-identical because nothing touches array state.
 
+### Changed (strict generation-option contract)
+
+- Backends now REJECT unknown generation options with the new typed
+  `InvalidRequestError` instead of silently ignoring them (the CLI itself
+  was sending diffusion knobs to the feed-forward TripoSR path with no
+  effect and no warning). Each backend consumes its supported options and
+  the leftovers fail loudly — before the expensive inference stage on the
+  diffusion backends, so a typo costs milliseconds, not minutes. Envelope
+  keys (`artifact_store`, `run_id`, `tags`, `metadata`) are exempt.
+- The CLI forwards only explicitly-set flags (None-valued options are no
+  longer sprayed at every backend) and exposes the mesh-density controls
+  that were previously Python/config-only: `--octree-resolution` and
+  `--max-facenum` (hunyuan3d21/step1x).
+- Composed `t23d` image options are consumed through one helper
+  (`pop_composition_kwargs`), so `image_provider/model/width/height/seed`
+  are recognized composition keys on every backend and unknown `image_*`
+  spellings fail like any other typo.
+
+### Added (visual quality review protocol)
+
+- `artifacts/validation/quality-review/`: reproducible per-backend quality
+  scoring — two representative bundles per backend/task inspected through
+  the headless MeshVault MCP server (structural `describe_scene` + three
+  canonical renders each), with every render, the rubric, and per-group
+  evidence versioned (`scores.json`). The benchmark table now carries
+  mesh/texture quality scores and the model license per backend.
+
 ### Added (generation statistics + headless MeshVault verification)
 
 - `scripts/generation_stats.py` aggregates wall time, stage times, and mesh
