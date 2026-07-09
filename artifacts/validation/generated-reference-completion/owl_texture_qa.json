@@ -1,9 +1,7 @@
 {
-  "bundle": "/private/tmp/refgen/owl_final",
-  "verdict": "FAIL",
-  "failed": [
-    "texel.fill_gradient_energy_ratio"
-  ],
+  "bundle": "/private/tmp/refgen2/owl_composite",
+  "verdict": "PASS",
+  "failed": [],
   "gates": [
     {
       "name": "material.glb.base_color_factor",
@@ -42,29 +40,29 @@
     },
     {
       "name": "texel.fill_gradient_energy_ratio",
-      "passed": false,
-      "measured": "0.469 (observed 234, synthesized 110, coarse ratio 0.347)",
+      "passed": true,
+      "measured": "0.613 (observed 364, synthesized 224, coarse ratio 0.562)",
       "requirement": "in [0.5, 2.5] (synthesized detail vs projected photo detail; upper bound rejects noise)",
       "evidence": null
     },
     {
       "name": "texel.facet_cellular",
       "passed": true,
-      "measured": "fill 0.014 vs observed 0.028 (5 straight-edged cells)",
+      "measured": "fill 0.022 vs observed 0.011 (1 straight-edged cells)",
       "requirement": "fill cellular fraction <= 0.080 (max(2.0 x observed, 0.08))",
       "evidence": null
     },
     {
       "name": "texel.seam_steps",
       "passed": true,
-      "measured": "worst p95 deltaE 41.9 at front|side_right; worst median 16.2 at front|side_right",
+      "measured": "worst p95 deltaE 42.4 at observed|fill; worst median 13.9 at side_left|top",
       "requirement": "p95 <= 61.2 and median <= 23.1 (photo-calibrated x 1.35)",
       "evidence": null
     },
     {
       "name": "viewer.brightness_ratio",
       "passed": true,
-      "measured": "0.876 (render 113 vs photo 129 [matte_robust]; factor-ignoring renderer shows 113)",
+      "measured": "0.860 (render 111 vs photo 129 [matte_robust]; factor-ignoring renderer shows 111)",
       "requirement": "in [0.72, 1.4] with baseColorFactor applied",
       "evidence": "viewer_truth_vs_repo_render.png"
     },
@@ -101,7 +99,7 @@
         "azimuth_deg": 180.0,
         "elevation_deg": 0.0,
         "generated": true,
-        "coverage_ratio": 0.2195
+        "coverage_ratio": 0.2601
       },
       {
         "index": 3,
@@ -109,7 +107,7 @@
         "azimuth_deg": 90.0,
         "elevation_deg": 0.0,
         "generated": true,
-        "coverage_ratio": 0.2114
+        "coverage_ratio": 0.2664
       },
       {
         "index": 4,
@@ -117,7 +115,7 @@
         "azimuth_deg": -90.0,
         "elevation_deg": 0.0,
         "generated": true,
-        "coverage_ratio": 0.2714
+        "coverage_ratio": 0.2183
       },
       {
         "index": 5,
@@ -125,18 +123,18 @@
         "azimuth_deg": 0.0,
         "elevation_deg": 55.0,
         "generated": true,
-        "coverage_ratio": 0.2085
+        "coverage_ratio": 0.1618
       }
     ],
     "symmetry": {
       "mode": "mirror_symmetry",
       "geometry_symmetry_score": 0.9789,
-      "coverage_ratio": 0.0042,
-      "tone_matched_texels": 690,
+      "coverage_ratio": 0.0018,
+      "tone_matched_texels": 457,
       "applied": true
     },
     "unseen_fill_mode": null,
-    "observed_coverage_ratio": 0.8377
+    "observed_coverage_ratio": 0.8492
   },
   "leverage": null,
   "coverage_reconciliation": [
@@ -150,34 +148,34 @@
       "label": "back",
       "azimuth_deg": 180.0,
       "reconstructed_coverage": 0.2875,
-      "metadata_coverage": 0.2195
+      "metadata_coverage": 0.2601
     },
     {
       "label": "side_left",
       "azimuth_deg": 90.0,
       "reconstructed_coverage": 0.2852,
-      "metadata_coverage": 0.2114
+      "metadata_coverage": 0.2664
     },
     {
       "label": "side_right",
       "azimuth_deg": -90.0,
       "reconstructed_coverage": 0.2857,
-      "metadata_coverage": 0.2714
+      "metadata_coverage": 0.2183
     },
     {
       "label": "top",
       "azimuth_deg": 0.0,
       "reconstructed_coverage": 0.2372,
-      "metadata_coverage": 0.2085
+      "metadata_coverage": 0.1618
     }
   ],
   "fill_character": {
-    "observed_energy": 234.1874542236328,
-    "unobserved_energy": 109.80802917480469,
-    "fill_energy": 102.47798156738281,
-    "symmetry_energy": 130.01565551757812,
-    "fill_to_observed_ratio": 0.46888946096124184,
-    "coarse_ratio": 0.34698457241078295,
+    "observed_energy": 364.49371337890625,
+    "unobserved_energy": 223.52536010742188,
+    "fill_energy": 236.8227081298828,
+    "symmetry_energy": 195.9158477783203,
+    "fill_to_observed_ratio": 0.6132488761885944,
+    "coarse_ratio": 0.5620433818518417,
     "unobserved_texels": 52886,
     "fill_texels": 33064,
     "observed_texels": 499118
@@ -193,95 +191,81 @@
   "seams": {
     "front|back": {
       "band_px": 259,
-      "p95_all": 13.408989906311035,
-      "same_material_px": 216,
-      "p50": 4.125312328338623,
-      "p95": 9.020448684692383,
-      "max": 13.715964317321777,
-      "worst_xy": [
-        792,
-        356
-      ]
+      "p95_all": 81.06056213378906,
+      "same_material_px": 48
     },
     "front|side_left": {
       "band_px": 2758,
-      "p95_all": 65.79059600830078,
-      "same_material_px": 1812,
-      "p50": 11.419050216674805,
-      "p95": 34.58907699584961,
-      "max": 52.007850646972656,
+      "p95_all": 69.43299865722656,
+      "same_material_px": 1732,
+      "p50": 13.329225540161133,
+      "p95": 36.78639602661133,
+      "max": 53.088897705078125,
       "worst_xy": [
-        513,
-        317
+        184,
+        642
       ]
     },
     "front|side_right": {
       "band_px": 1842,
-      "p95_all": 87.70848846435547,
-      "same_material_px": 975,
-      "p50": 16.231782913208008,
-      "p95": 41.87254333496094,
-      "max": 51.24289321899414,
+      "p95_all": 100.46273803710938,
+      "same_material_px": 965,
+      "p50": 8.64330005645752,
+      "p95": 29.118541717529297,
+      "max": 43.45640563964844,
       "worst_xy": [
-        827,
-        686
+        1017,
+        664
       ]
     },
     "front|top": {
       "band_px": 751,
-      "p95_all": 45.86704635620117,
-      "same_material_px": 525,
-      "p50": 11.344209671020508,
-      "p95": 29.740768432617188,
-      "max": 52.65912628173828,
+      "p95_all": 81.7672119140625,
+      "same_material_px": 390,
+      "p50": 13.606039047241211,
+      "p95": 38.145633697509766,
+      "max": 47.207977294921875,
       "worst_xy": [
-        822,
-        677
+        129,
+        404
       ]
     },
     "back|side_left": {
       "band_px": 202,
-      "p95_all": 12.515423774719238,
-      "same_material_px": 193,
-      "p50": 5.60052490234375,
-      "p95": 12.43293571472168,
-      "max": 17.037033081054688,
-      "worst_xy": [
-        590,
-        39
-      ]
+      "p95_all": 75.69856262207031,
+      "same_material_px": 55
     },
     "back|top": {
       "band_px": 1361,
-      "p95_all": 33.08367919921875,
-      "same_material_px": 917,
-      "p50": 8.213404655456543,
-      "p95": 20.27469253540039,
-      "max": 35.943626403808594,
+      "p95_all": 36.843109130859375,
+      "same_material_px": 744,
+      "p50": 8.425682067871094,
+      "p95": 27.968250274658203,
+      "max": 49.53694152832031,
       "worst_xy": [
-        511,
-        122
+        1013,
+        86
       ]
     },
     "side_left|top": {
       "band_px": 2139,
-      "p95_all": 69.92662048339844,
-      "same_material_px": 1311,
-      "p50": 11.930303573608398,
-      "p95": 36.77959442138672,
-      "max": 48.74626159667969,
+      "p95_all": 77.1100082397461,
+      "same_material_px": 1062,
+      "p50": 13.851457595825195,
+      "p95": 33.505149841308594,
+      "max": 51.36912536621094,
       "worst_xy": [
-        722,
-        810
+        687,
+        895
       ]
     },
     "side_right|top": {
       "band_px": 1979,
-      "p95_all": 77.56014251708984,
-      "same_material_px": 1138,
-      "p50": 12.194496154785156,
-      "p95": 34.52597427368164,
-      "max": 50.66804504394531,
+      "p95_all": 61.545658111572266,
+      "same_material_px": 1131,
+      "p50": 10.321115493774414,
+      "p95": 29.959197998046875,
+      "max": 50.98075866699219,
       "worst_xy": [
         290,
         431
@@ -289,76 +273,32 @@
     },
     "observed|fill": {
       "band_px": 27025,
-      "p95_all": 42.752193450927734,
-      "same_material_px": 21994,
-      "p50": 8.643844604492188,
-      "p95": 33.53180694580078,
-      "max": 53.3969841003418,
+      "p95_all": 47.93314743041992,
+      "same_material_px": 20925,
+      "p50": 11.507011413574219,
+      "p95": 42.447479248046875,
+      "max": 60.871768951416016,
       "worst_xy": [
         398,
-        21
+        29
       ]
     }
   },
   "facet_fill": {
-    "cellular_fraction": 0.014386136995259114,
-    "observed_cellular_fraction": 0.02770000245176159,
-    "flat_fraction": 0.020696419813634133,
+    "cellular_fraction": 0.02210233774726173,
+    "observed_cellular_fraction": 0.010866207369995341,
+    "flat_fraction": 0.03115906490109531,
     "blocks": [
       {
         "bbox": [
-          432,
-          880,
-          438,
-          886
-        ],
-        "area": 26,
-        "vertices": 7,
-        "solidity": 0.917
-      },
-      {
-        "bbox": [
-          407,
-          883,
-          417,
-          892
-        ],
-        "area": 30,
-        "vertices": 8,
-        "solidity": 0.614
-      },
-      {
-        "bbox": [
-          399,
-          886,
-          404,
-          896
+          576,
+          937,
+          584,
+          942
         ],
         "area": 27,
         "vertices": 8,
-        "solidity": 0.652
-      },
-      {
-        "bbox": [
-          518,
-          940,
-          529,
-          947
-        ],
-        "area": 55,
-        "vertices": 8,
-        "solidity": 0.798
-      },
-      {
-        "bbox": [
-          508,
-          943,
-          517,
-          948
-        ],
-        "area": 28,
-        "vertices": 8,
-        "solidity": 0.841
+        "solidity": 0.805
       }
     ]
   },
@@ -376,7 +316,7 @@
             "facet_field": false,
             "cellular_fraction": 0.0,
             "dark_smears": 0,
-            "dark_fraction": 0.0596
+            "dark_fraction": 0.069
           },
           "4x": {
             "fill_screen_fraction": 0.0,
@@ -384,7 +324,7 @@
             "facet_field": false,
             "cellular_fraction": 0.0,
             "dark_smears": 0,
-            "dark_fraction": 0.0426
+            "dark_fraction": 0.0458
           }
         }
       },
@@ -400,7 +340,7 @@
             "facet_field": false,
             "cellular_fraction": 0.0,
             "dark_smears": 0,
-            "dark_fraction": 0.0731
+            "dark_fraction": 0.0531
           },
           "4x": {
             "fill_screen_fraction": 0.0,
@@ -408,7 +348,7 @@
             "facet_field": false,
             "cellular_fraction": 0.0,
             "dark_smears": 0,
-            "dark_fraction": 0.0631
+            "dark_fraction": 0.0593
           }
         }
       },
@@ -424,7 +364,7 @@
             "facet_field": false,
             "cellular_fraction": 0.0,
             "dark_smears": 0,
-            "dark_fraction": 0.0479
+            "dark_fraction": 0.0526
           },
           "4x": {
             "fill_screen_fraction": 0.0,
@@ -432,7 +372,7 @@
             "facet_field": false,
             "cellular_fraction": 0.0,
             "dark_smears": 0,
-            "dark_fraction": 0.0329
+            "dark_fraction": 0.0381
           }
         }
       },
@@ -448,7 +388,7 @@
             "facet_field": false,
             "cellular_fraction": 0.0,
             "dark_smears": 0,
-            "dark_fraction": 0.0583
+            "dark_fraction": 0.0687
           },
           "4x": {
             "fill_screen_fraction": 0.0,
@@ -456,7 +396,7 @@
             "facet_field": false,
             "cellular_fraction": 0.0,
             "dark_smears": 0,
-            "dark_fraction": 0.0523
+            "dark_fraction": 0.0567
           }
         }
       },
@@ -472,7 +412,7 @@
             "facet_field": false,
             "cellular_fraction": 0.0,
             "dark_smears": 0,
-            "dark_fraction": 0.0453
+            "dark_fraction": 0.0548
           },
           "4x": {
             "fill_screen_fraction": 0.0,
@@ -480,7 +420,7 @@
             "facet_field": false,
             "cellular_fraction": 0.0,
             "dark_smears": 0,
-            "dark_fraction": 0.0186
+            "dark_fraction": 0.0283
           }
         }
       },
@@ -496,7 +436,7 @@
             "facet_field": false,
             "cellular_fraction": 0.0,
             "dark_smears": 0,
-            "dark_fraction": 0.0685
+            "dark_fraction": 0.0709
           },
           "4x": {
             "fill_screen_fraction": 0.0,
@@ -504,15 +444,15 @@
             "facet_field": false,
             "cellular_fraction": 0.0,
             "dark_smears": 0,
-            "dark_fraction": 0.0625
+            "dark_fraction": 0.0559
           }
         }
       },
       {
         "probe": "concavity_07",
         "kind": "concavity",
-        "azimuth": 28.8,
-        "elevation": -4.2,
+        "azimuth": 27.8,
+        "elevation": -9.8,
         "zooms": {
           "2x": {
             "fill_screen_fraction": 0.0,
@@ -520,7 +460,7 @@
             "facet_field": false,
             "cellular_fraction": 0.0,
             "dark_smears": 0,
-            "dark_fraction": 0.0596
+            "dark_fraction": 0.0738
           },
           "4x": {
             "fill_screen_fraction": 0.0,
@@ -528,31 +468,31 @@
             "facet_field": false,
             "cellular_fraction": 0.0,
             "dark_smears": 0,
-            "dark_fraction": 0.0578
+            "dark_fraction": 0.0628
           }
         }
       },
       {
         "probe": "concavity_08",
         "kind": "concavity",
-        "azimuth": -122.5,
-        "elevation": -32.5,
+        "azimuth": -160.1,
+        "elevation": -27.9,
         "zooms": {
           "2x": {
-            "fill_screen_fraction": 0.1719,
-            "facet_cells": 11,
+            "fill_screen_fraction": 0.1662,
+            "facet_cells": 3,
             "facet_field": false,
-            "cellular_fraction": 0.0286,
+            "cellular_fraction": 0.0078,
             "dark_smears": 0,
-            "dark_fraction": 0.0933
+            "dark_fraction": 0.0529
           },
           "4x": {
-            "fill_screen_fraction": 0.1716,
-            "facet_cells": 40,
+            "fill_screen_fraction": 0.2936,
+            "facet_cells": 37,
             "facet_field": false,
-            "cellular_fraction": 0.1048,
+            "cellular_fraction": 0.0519,
             "dark_smears": 0,
-            "dark_fraction": 0.1941
+            "dark_fraction": 0.0595
           }
         }
       },
@@ -564,11 +504,11 @@
         "zooms": {
           "2x": {
             "fill_screen_fraction": 0.0691,
-            "facet_cells": 7,
+            "facet_cells": 13,
             "facet_field": false,
-            "cellular_fraction": 0.0459,
+            "cellular_fraction": 0.0466,
             "dark_smears": 0,
-            "dark_fraction": 0.081
+            "dark_fraction": 0.0801
           },
           "4x": {
             "fill_screen_fraction": 0.0,
@@ -576,7 +516,7 @@
             "facet_field": false,
             "cellular_fraction": 0.0,
             "dark_smears": 0,
-            "dark_fraction": 0.0972
+            "dark_fraction": 0.1294
           }
         }
       },
@@ -588,19 +528,19 @@
         "zooms": {
           "2x": {
             "fill_screen_fraction": 0.3649,
-            "facet_cells": 31,
+            "facet_cells": 22,
             "facet_field": false,
-            "cellular_fraction": 0.0738,
+            "cellular_fraction": 0.0524,
             "dark_smears": 0,
-            "dark_fraction": 0.1232
+            "dark_fraction": 0.0793
           },
           "4x": {
             "fill_screen_fraction": 0.6667,
-            "facet_cells": 214,
+            "facet_cells": 108,
             "facet_field": false,
-            "cellular_fraction": 0.198,
+            "cellular_fraction": 0.1062,
             "dark_smears": 0,
-            "dark_fraction": 0.0175
+            "dark_fraction": 0.0241
           }
         }
       }
@@ -609,11 +549,11 @@
     "dark_smears_4x": 0
   },
   "brightness": {
-    "viewer_truth_median_lum": 113.0,
-    "factor_ignoring_median_lum": 113.0,
+    "viewer_truth_median_lum": 111.0,
+    "factor_ignoring_median_lum": 111.0,
     "photo_median_lum": 129.0,
     "photo_foreground_method": "matte_robust",
-    "brightness_ratio": 0.876
+    "brightness_ratio": 0.86
   },
   "thresholds": {
     "metallic_max": 0.05,

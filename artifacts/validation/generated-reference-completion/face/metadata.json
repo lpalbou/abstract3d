@@ -9,8 +9,8 @@
  "scarcity_rescue": "auto",
  "compositing": "auto",
  "reference_count": 4,
- "bake_seconds": 211.862,
- "texture_png_md5": "5d00600419c78e6962e975ff33400a3d",
+ "bake_seconds": 444.092,
+ "texture_png_md5": "fa2842718ce1690c6486b1963461624d",
  "stats": {
   "camera_distance": 3.0,
   "source_pose": {
@@ -40,22 +40,22 @@
     "ortho_half_extent": 1.1904
    },
    {
-    "applied": true,
-    "scale": 0.96,
+    "applied": false,
+    "scale": 1.0,
     "shift_x": 0.0,
-    "shift_y": -0.06,
-    "iou_before": 0.814,
-    "iou_after": 0.8702,
-    "score_before": -3.0366,
-    "score_after": -2.1476,
+    "shift_y": 0.0,
+    "iou_before": 0.9285,
+    "iou_after": 0.9305,
+    "score_before": -1.2475,
+    "score_after": -1.2353,
     "overlap_alignment": {
      "applied": true,
-     "scale": 0.98,
-     "shift_x": -0.05,
-     "shift_y": -0.08,
+     "scale": 1.04,
+     "shift_x": -0.01,
+     "shift_y": 0.05,
      "overlap": 22899,
-     "err_before": 0.4462,
-     "err_after": 0.4073
+     "err_before": 0.4146,
+     "err_after": 0.402
     },
     "dense_flow": {
      "applied": false,
@@ -64,57 +64,10 @@
     "label": "back",
     "photometric": {
      "applied": true,
-     "scale": 1.21,
-     "shift_x": 0.0289,
-     "shift_y": 0.0828,
-     "profile_error": 0.0792
-    },
-    "pose": {
-     "refined": false
-    },
-    "ortho_half_extent": 1.172
-   },
-   {
-    "applied": true,
-    "scale": 1.0,
-    "shift_x": -0.02,
-    "shift_y": -0.04,
-    "iou_before": 0.8862,
-    "iou_after": 0.9058,
-    "score_before": -1.8845,
-    "score_after": -1.4728,
-    "overlap_alignment": {
-     "applied": true,
-     "scale": 0.98,
-     "shift_x": 0.03,
-     "shift_y": 0.08,
-     "overlap": 22899,
-     "err_before": 0.1758,
-     "err_after": 0.1263
-    },
-    "dense_flow": {
-     "applied": true,
-     "reason": "accepted",
-     "gains": [
-      0.9018,
-      0.8443,
-      0.8429
-     ],
-     "err_before": 0.11437,
-     "err_after": 0.10127,
-     "flow_p50_px": 0.0,
-     "flow_max_px": 10.24,
-     "band_px": 24454,
-     "cells_kept": 7,
-     "cells_evaluated": 37
-    },
-    "label": "side_left",
-    "photometric": {
-     "applied": true,
-     "scale": 1.13,
-     "shift_x": 0.0662,
-     "shift_y": 0.0552,
-     "profile_error": 0.0526
+     "scale": 1.05,
+     "shift_x": 0.0,
+     "shift_y": 0.0158,
+     "profile_error": 0.032
     },
     "pose": {
      "refined": false
@@ -126,18 +79,65 @@
     "scale": 1.0,
     "shift_x": 0.0,
     "shift_y": 0.0,
-    "iou_before": 0.9679,
-    "iou_after": 0.9679,
-    "score_before": -0.5255,
-    "score_after": -0.5255,
+    "iou_before": 0.9751,
+    "iou_after": 0.9751,
+    "score_before": -0.4227,
+    "score_after": -0.4227,
     "overlap_alignment": {
      "applied": true,
      "scale": 0.98,
-     "shift_x": 0.01,
-     "shift_y": 0.03,
+     "shift_x": -0.0,
+     "shift_y": -0.04,
      "overlap": 22899,
-     "err_before": 0.1438,
-     "err_after": 0.1313
+     "err_before": 0.2928,
+     "err_after": 0.2785
+    },
+    "dense_flow": {
+     "applied": true,
+     "reason": "accepted",
+     "gains": [
+      1.4744,
+      1.4482,
+      1.4762
+     ],
+     "err_before": 0.22936,
+     "err_after": 0.19787,
+     "flow_p50_px": 5.6,
+     "flow_max_px": 10.24,
+     "band_px": 26671,
+     "cells_kept": 10,
+     "cells_evaluated": 38
+    },
+    "label": "side_left",
+    "photometric": {
+     "applied": true,
+     "scale": 1.03,
+     "shift_x": 0.0081,
+     "shift_y": 0.0074,
+     "profile_error": 0.0262
+    },
+    "pose": {
+     "refined": false
+    },
+    "ortho_half_extent": 1.172
+   },
+   {
+    "applied": false,
+    "scale": 1.0,
+    "shift_x": 0.0,
+    "shift_y": 0.0,
+    "iou_before": 0.8937,
+    "iou_after": 0.8937,
+    "score_before": -1.9763,
+    "score_after": -1.9763,
+    "overlap_alignment": {
+     "applied": true,
+     "scale": 0.98,
+     "shift_x": -0.08,
+     "shift_y": -0.0,
+     "overlap": 22899,
+     "err_before": 0.3368,
+     "err_after": 0.2599
     },
     "dense_flow": {
      "applied": false,
@@ -146,10 +146,10 @@
     "label": "side_right",
     "photometric": {
      "applied": true,
-     "scale": 1.01,
-     "shift_x": -0.0028,
-     "shift_y": -0.001,
-     "profile_error": 0.0272
+     "scale": 1.09,
+     "shift_x": -0.0092,
+     "shift_y": 0.0325,
+     "profile_error": 0.0812
     },
     "pose": {
      "refined": false
@@ -158,45 +158,45 @@
    },
    {
     "applied": true,
-    "scale": 1.04,
-    "shift_x": -0.02,
-    "shift_y": -0.02,
-    "iou_before": 0.7822,
-    "iou_after": 0.8085,
-    "score_before": -3.5468,
-    "score_after": -3.1112,
+    "scale": 0.96,
+    "shift_x": 0.0,
+    "shift_y": -0.04,
+    "iou_before": 0.7802,
+    "iou_after": 0.8066,
+    "score_before": -3.699,
+    "score_after": -3.0556,
     "overlap_alignment": {
      "applied": true,
-     "scale": 1.04,
-     "shift_x": 0.08,
-     "shift_y": 0.08,
+     "scale": 0.98,
+     "shift_x": -0.0,
+     "shift_y": -0.08,
      "overlap": 22899,
-     "err_before": 0.3337,
-     "err_after": 0.227
+     "err_before": 0.4307,
+     "err_after": 0.4196
     },
     "dense_flow": {
-     "applied": true,
-     "reason": "accepted",
+     "applied": false,
+     "reason": "no_improvement",
      "gains": [
-      0.9315,
-      0.9784,
-      1.0027
+      1.6,
+      1.6,
+      1.6
      ],
-     "err_before": 0.27886,
-     "err_after": 0.25883,
-     "flow_p50_px": 2.56,
+     "err_before": 0.37104,
+     "err_after": 0.36248,
+     "flow_p50_px": 0.0,
      "flow_max_px": 10.24,
-     "band_px": 26043,
-     "cells_kept": 4,
-     "cells_evaluated": 31
+     "band_px": 18831,
+     "cells_kept": 2,
+     "cells_evaluated": 22
     },
     "label": "top",
     "photometric": {
      "applied": true,
-     "scale": 0.97,
-     "shift_x": 0.0001,
-     "shift_y": -0.0178,
-     "profile_error": 0.1259
+     "scale": 1.11,
+     "shift_x": -0.072,
+     "shift_y": 0.0409,
+     "profile_error": 0.0666
     },
     "pose": {
      "refined": false
@@ -214,54 +214,54 @@
     "label": "back"
    },
    {
-    "overlap_texels": 13115,
+    "overlap_texels": 13493,
     "harmonized": true,
     "gains": [
-     0.9059,
-     0.8534,
-     0.8412
+     1.1765,
+     1.1844,
+     1.2309
     ],
-    "disagreement": 0.0971,
+    "disagreement": 0.1866,
     "weight_scale": 1.0,
-    "gain_ratio_spread": 0.5176,
+    "gain_ratio_spread": 0.6743,
     "label": "side_left"
    },
    {
-    "overlap_texels": 890,
+    "overlap_texels": 907,
     "harmonized": false,
     "gains": null,
-    "disagreement": 0.202,
+    "disagreement": 0.1213,
     "weight_scale": 1.0,
-    "gain_ratio_spread": 1.1424,
+    "gain_ratio_spread": 1.2534,
     "label": "side_right"
    },
    {
-    "overlap_texels": 9909,
+    "overlap_texels": 6502,
     "harmonized": false,
     "gains": null,
-    "disagreement": 0.3455,
-    "weight_scale": 0.3407,
-    "gain_ratio_spread": 1.6917,
+    "disagreement": 0.2949,
+    "weight_scale": 0.6567,
+    "gain_ratio_spread": 1.0904,
     "label": "top",
     "conflict_resolution": {
-     "conflict_texels": 5547,
+     "conflict_texels": 6784,
      "zeroed_by_view": {
-      "front": 1316,
-      "back": 128,
-      "side_left": 1166,
-      "side_right": 290,
-      "top": 3050
+      "front": 2154,
+      "back": 113,
+      "side_left": 2418,
+      "side_right": 62,
+      "top": 2416
      }
     }
    }
   ],
   "outlier_filter": {
-   "dropped_texels": 1593
+   "dropped_texels": 1378
   },
   "texture_padding": 4,
   "projection_mode": "projection_multiview_plus_symmetry_plus_fill3d",
   "unseen_fill_mode": "mesh_harmonic",
-  "observed_coverage_ratio": 0.6725,
+  "observed_coverage_ratio": 0.655,
   "observed_view_stats": [
    {
     "index": 1,
@@ -277,7 +277,7 @@
     "azimuth_deg": 180.0,
     "elevation_deg": 0.0,
     "generated": true,
-    "coverage_ratio": 0.1503
+    "coverage_ratio": 0.18
    },
    {
     "index": 3,
@@ -285,7 +285,7 @@
     "azimuth_deg": 90.0,
     "elevation_deg": 0.0,
     "generated": true,
-    "coverage_ratio": 0.2081
+    "coverage_ratio": 0.2049
    },
    {
     "index": 4,
@@ -293,7 +293,7 @@
     "azimuth_deg": -90.0,
     "elevation_deg": 0.0,
     "generated": true,
-    "coverage_ratio": 0.2155
+    "coverage_ratio": 0.1614
    },
    {
     "index": 5,
@@ -301,97 +301,97 @@
     "azimuth_deg": 0.0,
     "elevation_deg": 55.0,
     "generated": true,
-    "coverage_ratio": 0.1418
+    "coverage_ratio": 0.1329
    }
   ],
   "leverage": {
    "available": true,
    "surface_texels": 260760,
-   "potential_union_ratio": 0.724,
-   "direct_painted_ratio": 0.6524,
-   "leverage_ratio": 0.9011,
-   "surrendered_visible_ratio": 0.0724,
-   "unobservable_ratio": 0.276,
+   "potential_union_ratio": 0.7161,
+   "direct_painted_ratio": 0.6405,
+   "leverage_ratio": 0.8944,
+   "surrendered_visible_ratio": 0.0784,
+   "unobservable_ratio": 0.2839,
    "views": [
     {
      "label": "front",
      "facing_threshold": 0.2,
      "potential_texels": 59894,
      "potential_ratio": 0.2297,
-     "painted_texels": 47197,
-     "painted_ratio": 0.181,
-     "won_texels": 31827,
-     "won_ratio": 0.1221,
+     "painted_texels": 46369,
+     "painted_ratio": 0.1778,
+     "won_texels": 33688,
+     "won_ratio": 0.1292,
      "rescued_texels": 0,
      "surrendered_facing_gate": 7865,
      "surrendered_zone_gate": 2401,
-     "surrendered_downstream": 1316,
-     "surrendered_union_drop": 1218
+     "surrendered_downstream": 2154,
+     "surrendered_union_drop": 1207
     },
     {
      "label": "back",
      "facing_threshold": 0.2,
-     "potential_texels": 46732,
-     "potential_ratio": 0.1792,
-     "painted_texels": 37947,
-     "painted_ratio": 0.1455,
-     "won_texels": 33894,
-     "won_ratio": 0.13,
+     "potential_texels": 56049,
+     "potential_ratio": 0.2149,
+     "painted_texels": 45563,
+     "painted_ratio": 0.1747,
+     "won_texels": 40222,
+     "won_ratio": 0.1542,
      "rescued_texels": 1,
-     "surrendered_facing_gate": 6099,
-     "surrendered_zone_gate": 1600,
-     "surrendered_downstream": 129,
-     "surrendered_union_drop": 1091
+     "surrendered_facing_gate": 6320,
+     "surrendered_zone_gate": 2872,
+     "surrendered_downstream": 113,
+     "surrendered_union_drop": 1255
     },
     {
      "label": "side_left",
      "facing_threshold": 0.2,
-     "potential_texels": 58109,
-     "potential_ratio": 0.2228,
-     "painted_texels": 51775,
-     "painted_ratio": 0.1986,
-     "won_texels": 38198,
-     "won_ratio": 0.1465,
+     "potential_texels": 61938,
+     "potential_ratio": 0.2375,
+     "painted_texels": 49406,
+     "painted_ratio": 0.1895,
+     "won_texels": 35194,
+     "won_ratio": 0.135,
      "rescued_texels": 1,
-     "surrendered_facing_gate": 4146,
-     "surrendered_zone_gate": 37,
-     "surrendered_downstream": 1159,
-     "surrendered_union_drop": 1314
+     "surrendered_facing_gate": 5829,
+     "surrendered_zone_gate": 2911,
+     "surrendered_downstream": 2416,
+     "surrendered_union_drop": 1595
     },
     {
      "label": "side_right",
      "facing_threshold": 0.2,
-     "potential_texels": 60637,
-     "potential_ratio": 0.2325,
-     "painted_texels": 54115,
-     "painted_ratio": 0.2075,
-     "won_texels": 49191,
-     "won_ratio": 0.1886,
+     "potential_texels": 47254,
+     "potential_ratio": 0.1812,
+     "painted_texels": 40790,
+     "painted_ratio": 0.1564,
+     "won_texels": 38064,
+     "won_ratio": 0.146,
      "rescued_texels": 0,
-     "surrendered_facing_gate": 4480,
-     "surrendered_zone_gate": 183,
-     "surrendered_downstream": 290,
-     "surrendered_union_drop": 1758
+     "surrendered_facing_gate": 3605,
+     "surrendered_zone_gate": 2239,
+     "surrendered_downstream": 62,
+     "surrendered_union_drop": 1211
     },
     {
      "label": "top",
      "facing_threshold": 0.2,
-     "potential_texels": 45739,
-     "potential_ratio": 0.1754,
-     "painted_texels": 31900,
-     "painted_ratio": 0.1223,
-     "won_texels": 16855,
-     "won_ratio": 0.0646,
+     "potential_texels": 45196,
+     "potential_ratio": 0.1733,
+     "painted_texels": 30383,
+     "painted_ratio": 0.1165,
+     "won_texels": 19794,
+     "won_ratio": 0.0759,
      "rescued_texels": 0,
-     "surrendered_facing_gate": 8587,
-     "surrendered_zone_gate": 346,
-     "surrendered_downstream": 3049,
-     "surrendered_union_drop": 1994
+     "surrendered_facing_gate": 9883,
+     "surrendered_zone_gate": 867,
+     "surrendered_downstream": 2404,
+     "surrendered_union_drop": 1831
     }
    ],
-   "shipped_direct_ratio": 0.6386,
-   "mirror_completed_ratio": 0.0152,
-   "mirror_over_photo_visible_ratio": 0.0046
+   "shipped_direct_ratio": 0.6349,
+   "mirror_completed_ratio": 0.0145,
+   "mirror_over_photo_visible_ratio": 0.0036
   },
   "scarcity_rescue": {
    "requested": "auto",
@@ -404,26 +404,26 @@
    "applied": true,
    "gain": 0.7,
    "energy_calibration": {
-    "observed_energy": 0.745,
-    "target_energy": 0.522,
-    "fill_energy_at_1": 1.001,
-    "fill_energy_base": 0.25,
-    "fill_energy_final": 1.001,
-    "sigma_observed_band": 0.1131,
-    "sigma_at_scale": 0.0871,
+    "observed_energy": 0.914,
+    "target_energy": 0.64,
+    "fill_energy_at_1": 0.783,
+    "fill_energy_base": 0.248,
+    "fill_energy_final": 0.783,
+    "sigma_observed_band": 0.1479,
+    "sigma_at_scale": 0.1111,
     "scale": 1.0
    }
   },
   "fill_floor": {
    "applied": true,
-   "lifted_texels": 9005,
+   "lifted_texels": 9514,
    "evidence_exempt_components": 27,
-   "mean_lift": 0.1527,
-   "p99_lift": 0.8453,
-   "consensus_texels": 19
+   "mean_lift": 0.2037,
+   "p99_lift": 1.4,
+   "consensus_texels": 205
   },
   "delight": {
-   "applied": false,
+   "applied": true,
    "views": [
     {
      "index": 1,
@@ -434,36 +434,36 @@
     {
      "index": 2,
      "label": "side_left",
-     "overlap_texels": 11819,
-     "applied": false,
-     "disagreement_before": 0.1441,
-     "disagreement_after": 0.1457,
-     "field_p95": 0.5928,
-     "exclusive_mean_abs_delta": 0.0935
+     "overlap_texels": 11981,
+     "applied": true,
+     "disagreement_before": 0.2816,
+     "disagreement_after": 0.2144,
+     "field_p95": 0.4815,
+     "exclusive_mean_abs_delta": 0.0326
     },
     {
      "index": 3,
      "label": "side_right",
-     "overlap_texels": 298,
+     "overlap_texels": 14,
      "applied": false
     },
     {
      "index": 4,
      "label": "top",
-     "overlap_texels": 8927,
-     "applied": false,
-     "disagreement_before": 0.3353,
-     "disagreement_after": 0.3378,
+     "overlap_texels": 5995,
+     "applied": true,
+     "disagreement_before": 0.4187,
+     "disagreement_after": 0.3024,
      "field_p95": 1.0,
-     "exclusive_mean_abs_delta": 0.1128
+     "exclusive_mean_abs_delta": 0.0707
     }
    ]
   },
   "symmetry_completion": {
    "mode": "mirror_symmetry",
    "geometry_symmetry_score": 0.966,
-   "coverage_ratio": 0.0152,
-   "tone_matched_texels": 467,
+   "coverage_ratio": 0.0145,
+   "tone_matched_texels": 1554,
    "applied": true
   },
   "mirror_rescue": {
@@ -471,60 +471,31 @@
    "discs": [
     {
      "center": [
-      0.6314470171928406,
-      -0.26569563150405884,
-      0.2306756228208542
+      0.6305899620056152,
+      -0.26847973465919495,
+      0.23169495165348053
      ],
      "source_center": [
-      0.6314470171928406,
-      0.26569563150405884,
-      0.2306756228208542
+      0.6305899620056152,
+      0.26847973465919495,
+      0.23169495165348053
      ],
-     "radius": 0.17861455976963045,
+     "radius": 0.1787503755092621,
      "placement_shift": [
       0.0,
-      0.024850720539689064,
+      0.010303318500518799,
       0.0
      ],
-     "core_texels": 173,
-     "own_blob_response": 0.2444,
-     "twin_blob_response": 0.1124,
-     "own_witness": 0.5406,
-     "twin_witness": 0.1329,
+     "core_texels": 183,
+     "own_blob_response": 0.2485,
+     "twin_blob_response": 0.1234,
+     "own_witness": 0.5355,
+     "twin_witness": 0.0752,
      "rescued_texels": 1990,
      "tone_offset": [
-      -0.0187,
-      -0.0236,
-      -0.0284
-     ]
-    },
-    {
-     "center": [
-      0.060101740062236786,
-      -0.3943648934364319,
-      -0.8903531432151794
-     ],
-     "source_center": [
-      0.060101740062236786,
-      0.3943648934364319,
-      -0.8903531432151794
-     ],
-     "radius": 0.17861455976963045,
-     "placement_shift": [
-      0.0,
-      0.0,
-      0.0
-     ],
-     "core_texels": 72,
-     "own_blob_response": 0.2594,
-     "twin_blob_response": 0.0092,
-     "own_witness": 0.4101,
-     "twin_witness": 0.1115,
-     "rescued_texels": 2710,
-     "tone_offset": [
-      0.0175,
-      0.0426,
-      0.0358
+      -0.2703,
+      -0.2621,
+      -0.2815
      ]
     }
    ],
@@ -532,111 +503,51 @@
   },
   "trace_deposits": {
    "applied": true,
-   "committed_texels": 1342,
-   "rim_feathered": 1303,
-   "swept_islands": 24,
-   "blob_count": 33
+   "committed_texels": 6522,
+   "swept_islands": 532,
+   "rim_feathered": 3633,
+   "blob_count": 178
   },
   "pale_chips": {
    "applied": true,
-   "committed_texels": 4363,
-   "blobs": 324,
+   "committed_texels": 969,
+   "blobs": 74,
    "refused": {
-    "area": 1784,
+    "area": 1127,
     "w90": 0,
-    "ring": 30,
-    "isolation": 18,
-    "cover": 478
+    "ring": 9,
+    "isolation": 11,
+    "cover": 631
    }
   },
   "bottom_cap": {
    "applied": true,
    "cap_texels": 21327,
-   "rim_anchors": 106
+   "rim_anchors": 111
   },
   "feature_fringe_repair": {
    "applied": true,
-   "stamps": [
-    {
-     "complex": 5,
-     "mode": "full",
-     "veto": "texel:new_dark_blob a66 az-22.5el0"
-    },
-    {
-     "complex": 5,
-     "mode": "trace",
-     "texels": 735,
-     "centroid": [
-      -0.056,
-      0.523,
-      0.048
-     ],
-     "radius": 0.204
-    },
-    {
-     "complex": 6,
-     "mode": "full",
-     "veto": "texel:new_dark_blob a58 az+0.0el0"
-    },
-    {
-     "complex": 6,
-     "mode": "trace",
-     "veto": "texel:new_dark_blob a58 az+0.0el0"
-    },
-    {
-     "complex": 8,
-     "mode": "full",
-     "texels": 462,
-     "centroid": [
-      0.279,
-      0.472,
-      0.139
-     ],
-     "radius": 0.053
-    },
-    {
-     "complex": 9,
-     "mode": "full",
-     "veto": "render:az-35.0el0 lost blob a1429"
-    },
-    {
-     "complex": 9,
-     "mode": "trace",
-     "veto": "render:az-35.0el0 lost blob a1429"
-    },
-    {
-     "complex": 10,
-     "mode": "full",
-     "veto": "render:az-35.0el0 lost blob a1429"
-    },
-    {
-     "complex": 10,
-     "mode": "trace",
-     "veto": "render:az-35.0el0 lost blob a1429"
-    }
-   ],
-   "patches": 26,
-   "recopies": 7,
+   "stamps": [],
+   "patches": 5,
+   "recopies": 6,
    "disc_refreshed": true,
    "registration": [
-    1.025,
-    0.06,
+    1.0,
+    0.065,
     -0.0125
    ],
-   "speck_lifted_texels": 148,
-   "repaired_texels": 4369
+   "speck_lifted_texels": 0,
+   "repaired_texels": 1034
   },
   "film_band": {
-   "applied": true,
-   "band_texels": 83805,
-   "commit_texels": 156,
-   "vacated_claims": 133,
-   "rim_demoted": 233,
+   "applied": false,
+   "band_texels": 131040,
+   "commit_texels": 0,
+   "vacated_claims": 0,
+   "rim_demoted": 358,
    "retone": {
-    "applied": true,
-    "retoned_texels": 115,
-    "dark_anchors": 100202,
-    "mean_commit_weight": 0.989
+    "applied": false,
+    "retoned_texels": 0
    }
   },
   "seam_leveling": {
@@ -646,22 +557,22 @@
    "requested": "auto",
    "mode": "gradient_domain",
    "applied": true,
-   "solve_seconds": 6.95,
+   "solve_seconds": 10.24,
    "solver": {
-    "nodes": 170117,
-    "edges": 353721,
-    "cg_iterations": 142,
-    "final_relative_residual": 1.0526627720647802e-05,
+    "nodes": 167016,
+    "edges": 347771,
+    "cg_iterations": 119,
+    "final_relative_residual": 1.0252656538221517e-05,
     "edge_kind_counts": {
-     "grid": 279123,
-     "stitch": 74598,
-     "line_constraint": 88747
+     "grid": 271230,
+     "stitch": 76541,
+     "line_constraint": 82777
     },
     "mg_level_sizes": [
-     170117,
-     25963,
-     3036,
-     319
+     167016,
+     25264,
+     2940,
+     322
     ],
     "gradient_rule": "max_confidence",
     "anchor_lambda_scale": 0.003,
@@ -669,39 +580,29 @@
     "specular_reconcile": {
      "applied": true,
      "view": 0,
-     "texels": 175,
+     "texels": 616,
      "components": [
       {
-       "texels": 60,
-       "edge_p85": 0.66
+       "texels": 117,
+       "edge_p85": 0.39
       },
       {
-       "texels": 65,
-       "edge_p85": 0.58
+       "texels": 44,
+       "edge_p85": 0.8
       },
       {
-       "texels": 50,
-       "edge_p85": 0.11
+       "texels": 286,
+       "edge_p85": 1.15
+      },
+      {
+       "texels": 169,
+       "edge_p85": 1.04
       }
      ],
-     "max_abs_delta": 0.3591
+     "max_abs_delta": 0.1691
     },
     "shadow_reconcile": {
-     "applied": true,
-     "texels": 121,
-     "components": [
-      {
-       "texels": 121,
-       "edge_p85": 0.59
-      }
-     ],
-     "gauges": {
-      "1": 0.0,
-      "2": 0.0292,
-      "3": -0.2261,
-      "4": -0.0301
-     },
-     "scale_floor": 0.45
+     "applied": false
     }
    }
   },
@@ -710,6 +611,71 @@
   "vertex_mapping_count": 99532,
   "uv_vertex_count": 99532,
   "face_count": 119999
+ },
+ "texture_artifacts": {
+  "observed_view_stats": [
+   {
+    "index": 1,
+    "label": "front",
+    "azimuth_deg": 20.0,
+    "elevation_deg": 8.0,
+    "generated": false,
+    "coverage_ratio": 0.1907
+   },
+   {
+    "index": 2,
+    "label": "back",
+    "azimuth_deg": 180.0,
+    "elevation_deg": 0.0,
+    "generated": true,
+    "coverage_ratio": 0.18
+   },
+   {
+    "index": 3,
+    "label": "side_left",
+    "azimuth_deg": 90.0,
+    "elevation_deg": 0.0,
+    "generated": true,
+    "coverage_ratio": 0.2049
+   },
+   {
+    "index": 4,
+    "label": "side_right",
+    "azimuth_deg": -90.0,
+    "elevation_deg": 0.0,
+    "generated": true,
+    "coverage_ratio": 0.1614
+   },
+   {
+    "index": 5,
+    "label": "top",
+    "azimuth_deg": 0.0,
+    "elevation_deg": 55.0,
+    "generated": true,
+    "coverage_ratio": 0.1329
+   }
+  ],
+  "source_pose": {
+   "azimuth_deg": 20.0,
+   "elevation_deg": 8.0,
+   "silhouette_iou": 0.0,
+   "method": "gradient_ncc",
+   "score": 0.0152,
+   "estimated": true
+  },
+  "source_registration": {
+   "method": "photo_bbox_center"
+  },
+  "camera_distance": 3.0,
+  "observed_coverage_ratio": 0.655,
+  "texture_completion": "mirror_symmetry",
+  "symmetry_completion": {
+   "mode": "mirror_symmetry",
+   "geometry_symmetry_score": 0.966,
+   "coverage_ratio": 0.0145,
+   "tone_matched_texels": 1554,
+   "applied": true
+  }
  },
  "generated_references": {
   "angles": [
@@ -720,30 +686,38 @@
     "attempts": [
      {
       "seed": 11,
-      "silhouette_iou": 0.8337
+      "silhouette_iou": 0.9215,
+      "registration": {
+       "applied": true,
+       "iou": 0.9215,
+       "scale": 1.0,
+       "fx": 0.04,
+       "fy": 0.0
+      }
      }
     ],
     "accepted": true,
     "clay_renderer": "moderngl",
-    "prompt": "a young woman with long dark brown hair, portrait bust, seen directly from behind, the same physical object with consistent materials and colors, photographed on a plain dark background, soft diffuse even studio lighting, matte finish, no harsh specular highlights or reflections, product photography, sharp focus",
-    "silhouette_iou": 0.8337,
-    "accepted_image_md5": "4d2d5fce691855823d3d5155e69e4c26",
-    "specular_suppressed_fraction": 0.0016,
+    "prompt": "The left image shows a young woman with long dark brown hair, portrait bust. The right image is an untextured 3D render of the SAME object seen directly from behind. Repaint the right image with the exact materials, colors and surface pattern of the left object. Keep the right image's exact shape and pose. Return only the repainted right view on a plain dark background, soft even studio lighting, matte finish, no reflections.",
+    "conditioning": "composite",
+    "silhouette_iou": 0.9215,
+    "accepted_image_md5": "3d6cebbbfa6cf74d361ee26455d11203",
+    "specular_suppressed_fraction": 0.0008,
     "tone_match": {
      "applied": true,
      "pre_match_distance": [
-      41.84,
-      3.23,
-      7.91
+      41.49,
+      8.07,
+      10.6
      ],
      "applied_shift": [
       15.0,
-      3.23,
-      7.91
+      8.07,
+      10.0
      ],
      "clipped": true
     },
-    "seconds": 62.5
+    "seconds": 150.4
    },
    {
     "label": "side_left",
@@ -752,30 +726,38 @@
     "attempts": [
      {
       "seed": 11,
-      "silhouette_iou": 0.8838
+      "silhouette_iou": 0.965,
+      "registration": {
+       "applied": true,
+       "iou": 0.965,
+       "scale": 1.0,
+       "fx": 0.02,
+       "fy": 0.0
+      }
      }
     ],
     "accepted": true,
     "clay_renderer": "moderngl",
-    "prompt": "a young woman with long dark brown hair, portrait bust, seen from its left side profile, the same physical object with consistent materials and colors, photographed on a plain dark background, soft diffuse even studio lighting, matte finish, no harsh specular highlights or reflections, product photography, sharp focus",
-    "silhouette_iou": 0.8838,
-    "accepted_image_md5": "ea50cfa5f48a614bcef6b10488e51711",
-    "specular_suppressed_fraction": 0.0032,
+    "prompt": "The left image shows a young woman with long dark brown hair, portrait bust. The right image is an untextured 3D render of the SAME object seen from its left side profile. Repaint the right image with the exact materials, colors and surface pattern of the left object. Keep the right image's exact shape and pose. Return only the repainted right view on a plain dark background, soft even studio lighting, matte finish, no reflections.",
+    "conditioning": "composite",
+    "silhouette_iou": 0.965,
+    "accepted_image_md5": "5b9ac5d3c7de27eabc0cc7596f16fbfb",
+    "specular_suppressed_fraction": 0.0045,
     "tone_match": {
      "applied": true,
      "pre_match_distance": [
-      17.23,
-      -0.72,
-      0.58
+      32.55,
+      6.06,
+      6.14
      ],
      "applied_shift": [
       15.0,
-      -0.72,
-      0.58
+      6.06,
+      6.14
      ],
      "clipped": true
     },
-    "seconds": 55.1
+    "seconds": 129.8
    },
    {
     "label": "side_right",
@@ -784,30 +766,38 @@
     "attempts": [
      {
       "seed": 11,
-      "silhouette_iou": 0.9784
+      "silhouette_iou": 0.885,
+      "registration": {
+       "applied": true,
+       "iou": 0.885,
+       "scale": 1.0,
+       "fx": 0.02,
+       "fy": 0.0
+      }
      }
     ],
     "accepted": true,
     "clay_renderer": "moderngl",
-    "prompt": "a young woman with long dark brown hair, portrait bust, seen from its right side profile, the same physical object with consistent materials and colors, photographed on a plain dark background, soft diffuse even studio lighting, matte finish, no harsh specular highlights or reflections, product photography, sharp focus",
-    "silhouette_iou": 0.9784,
-    "accepted_image_md5": "5df363210a1e8ee1ba5e92cdfae76167",
-    "specular_suppressed_fraction": 0.0015,
+    "prompt": "The left image shows a young woman with long dark brown hair, portrait bust. The right image is an untextured 3D render of the SAME object seen from its right side profile. Repaint the right image with the exact materials, colors and surface pattern of the left object. Keep the right image's exact shape and pose. Return only the repainted right view on a plain dark background, soft even studio lighting, matte finish, no reflections.",
+    "conditioning": "composite",
+    "silhouette_iou": 0.885,
+    "accepted_image_md5": "2ee4829c46e02465547946836c5b472e",
+    "specular_suppressed_fraction": 0.0021,
     "tone_match": {
      "applied": true,
      "pre_match_distance": [
-      17.02,
-      -1.35,
-      -0.64
+      34.09,
+      6.88,
+      8.3
      ],
      "applied_shift": [
       15.0,
-      -1.35,
-      -0.64
+      6.88,
+      8.3
      ],
      "clipped": true
     },
-    "seconds": 56.0
+    "seconds": 130.5
    },
    {
     "label": "top",
@@ -816,30 +806,38 @@
     "attempts": [
      {
       "seed": 11,
-      "silhouette_iou": 0.78
+      "silhouette_iou": 0.8025,
+      "registration": {
+       "applied": true,
+       "iou": 0.8025,
+       "scale": 1.12,
+       "fx": 0.1,
+       "fy": 0.02
+      }
      }
     ],
     "accepted": true,
     "clay_renderer": "moderngl",
-    "prompt": "a young woman with long dark brown hair, portrait bust, seen from a high angle, looking down at its top, the same physical object with consistent materials and colors, photographed on a plain dark background, soft diffuse even studio lighting, matte finish, no harsh specular highlights or reflections, product photography, sharp focus",
-    "silhouette_iou": 0.78,
-    "accepted_image_md5": "b205b0d220b9e6ebe70c1ec32d38dc77",
-    "specular_suppressed_fraction": 0.0018,
+    "prompt": "The left image shows a young woman with long dark brown hair, portrait bust. The right image is an untextured 3D render of the SAME object seen from a high angle, looking down at its top. Repaint the right image with the exact materials, colors and surface pattern of the left object. Keep the right image's exact shape and pose. Return only the repainted right view on a plain dark background, soft even studio lighting, matte finish, no reflections.",
+    "conditioning": "composite",
+    "silhouette_iou": 0.8025,
+    "accepted_image_md5": "783f07c1ed322b47f2434e1be196f026",
+    "specular_suppressed_fraction": 0.0002,
     "tone_match": {
      "applied": true,
      "pre_match_distance": [
-      24.72,
-      1.64,
-      5.27
+      31.2,
+      8.53,
+      11.52
      ],
      "applied_shift": [
       15.0,
-      1.64,
-      5.27
+      8.53,
+      10.0
      ],
      "clipped": true
     },
-    "seconds": 55.3
+    "seconds": 131.7
    }
   ],
   "accepted": 4,
@@ -850,6 +848,7 @@
   },
   "subject_hint": "a young woman with long dark brown hair, portrait bust",
   "negative_prompt": "glossy shine, specular highlights, strong reflections, rim lighting, lens flare, harsh shadows, dramatic lighting",
+  "conditioning": "composite",
   "base_seed": 11,
   "silhouette_iou_min": 0.75
  }

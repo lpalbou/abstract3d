@@ -1,0 +1,480 @@
+{
+  "bundle": "/private/tmp/refgen2/ship_composite",
+  "verdict": "PASS",
+  "failed": [],
+  "gates": [
+    {
+      "name": "material.glb.base_color_factor",
+      "passed": true,
+      "measured": "[1.0, 1.0, 1.0, 1.0]",
+      "requirement": "== [1,1,1,1] (viewer multiplies texture by this; 1.00 ships 0% darker)",
+      "evidence": null
+    },
+    {
+      "name": "material.glb.metallic_factor",
+      "passed": true,
+      "measured": "0.0000",
+      "requirement": "present and <= 0.05 (non-metal diffuse)",
+      "evidence": null
+    },
+    {
+      "name": "material.glb.roughness_factor",
+      "passed": true,
+      "measured": "1.0000",
+      "requirement": "in [0.4, 1.0]",
+      "evidence": null
+    },
+    {
+      "name": "material.glb.base_color_texture",
+      "passed": true,
+      "measured": "present=True size=1024x1024",
+      "requirement": "texture present, >= 512px",
+      "evidence": null
+    },
+    {
+      "name": "material.glb.texture_matches_sidecar",
+      "passed": true,
+      "measured": "mean|diff|=0.00",
+      "requirement": "GLB texture == texture.png",
+      "evidence": null
+    },
+    {
+      "name": "texel.fill_gradient_energy_ratio",
+      "passed": true,
+      "measured": "0.737 (observed 246, synthesized 181, coarse ratio 0.594)",
+      "requirement": "in [0.5, 2.5] (synthesized detail vs projected photo detail; upper bound rejects noise)",
+      "evidence": null
+    },
+    {
+      "name": "texel.facet_cellular",
+      "passed": true,
+      "measured": "fill 0.000 vs observed 0.043 (0 straight-edged cells)",
+      "requirement": "fill cellular fraction <= 0.087 (max(2.0 x observed, 0.08))",
+      "evidence": null
+    },
+    {
+      "name": "texel.seam_steps",
+      "passed": true,
+      "measured": "worst p95 deltaE 23.1 at observed|fill; worst median 7.2 at front|back",
+      "requirement": "p95 <= 60.0 and median <= 23.9 (photo-calibrated x 1.35)",
+      "evidence": null
+    },
+    {
+      "name": "viewer.brightness_ratio",
+      "passed": true,
+      "measured": "0.891 (render 115 vs photo 129 [matte_robust]; factor-ignoring renderer shows 115)",
+      "requirement": "in [0.72, 1.4] with baseColorFactor applied",
+      "evidence": "viewer_truth_vs_repo_render.png"
+    },
+    {
+      "name": "close.facet_fields_4x",
+      "passed": true,
+      "measured": "0 probe crop(s) show a faceted fill field at 4x",
+      "requirement": "<= 0",
+      "evidence": null
+    },
+    {
+      "name": "close.dark_smears_4x",
+      "passed": true,
+      "measured": "0 spurious dark fragments across 4x crops",
+      "requirement": "<= 0",
+      "evidence": null
+    }
+  ],
+  "projection": {
+    "projection_model": "orthographic",
+    "camera_distance": 3.0,
+    "declared_view_stats": [
+      {
+        "index": 1,
+        "label": "front",
+        "azimuth_deg": 30.0,
+        "elevation_deg": 15.0,
+        "generated": false,
+        "coverage_ratio": 0.1871
+      },
+      {
+        "index": 2,
+        "label": "bottom",
+        "azimuth_deg": 0.0,
+        "elevation_deg": -75.0,
+        "generated": true,
+        "coverage_ratio": 0.2057
+      },
+      {
+        "index": 3,
+        "label": "back",
+        "azimuth_deg": 180.0,
+        "elevation_deg": 0.0,
+        "generated": true,
+        "coverage_ratio": 0.0276
+      }
+    ],
+    "symmetry": {
+      "mode": "mirror_symmetry",
+      "geometry_symmetry_score": 0.9826,
+      "coverage_ratio": 0.0267,
+      "tone_matched_texels": 797,
+      "applied": true
+    },
+    "unseen_fill_mode": null,
+    "observed_coverage_ratio": 0.4484
+  },
+  "leverage": null,
+  "coverage_reconciliation": [
+    {
+      "label": "front",
+      "azimuth_deg": 30.0,
+      "reconstructed_coverage": 0.2196,
+      "metadata_coverage": 0.1871
+    },
+    {
+      "label": "bottom",
+      "azimuth_deg": 0.0,
+      "reconstructed_coverage": 0.3891,
+      "metadata_coverage": 0.2057
+    },
+    {
+      "label": "back",
+      "azimuth_deg": 180.0,
+      "reconstructed_coverage": 0.0833,
+      "metadata_coverage": 0.0276
+    }
+  ],
+  "fill_character": {
+    "observed_energy": 246.0897979736328,
+    "unobserved_energy": 181.43936157226562,
+    "fill_energy": 137.3326873779297,
+    "symmetry_energy": 182.9959259033203,
+    "fill_to_observed_ratio": 0.7372892459024485,
+    "coarse_ratio": 0.5937232129852703,
+    "unobserved_texels": 162977,
+    "fill_texels": 3786,
+    "observed_texels": 324496
+  },
+  "seam_allowance": {
+    "allowance": 60.041912630081185,
+    "median_allowance": 23.900324189186097,
+    "photo_p99": 44.47549083709717,
+    "photo_p50": 31.166894912719727,
+    "photo_median_p99": 17.703943843841554,
+    "bands": 58
+  },
+  "seams": {
+    "front|bottom": {
+      "band_px": 1096,
+      "p95_all": 28.827877044677734,
+      "same_material_px": 732,
+      "p50": 6.056556701660156,
+      "p95": 20.095428466796875,
+      "max": 27.483720779418945,
+      "worst_xy": [
+        355,
+        600
+      ]
+    },
+    "front|back": {
+      "band_px": 1141,
+      "p95_all": 39.29668426513672,
+      "same_material_px": 779,
+      "p50": 7.1918625831604,
+      "p95": 20.107589721679688,
+      "max": 37.265296936035156,
+      "worst_xy": [
+        754,
+        755
+      ]
+    },
+    "bottom|back": {
+      "band_px": 2573,
+      "p95_all": 55.390899658203125,
+      "same_material_px": 1831,
+      "p50": 5.793005466461182,
+      "p95": 20.869300842285156,
+      "max": 41.13264846801758,
+      "worst_xy": [
+        579,
+        1011
+      ]
+    },
+    "observed|fill": {
+      "band_px": 122024,
+      "p95_all": 37.24995803833008,
+      "same_material_px": 94887,
+      "p50": 5.274458408355713,
+      "p95": 23.138113021850586,
+      "max": 53.93373107910156,
+      "worst_xy": [
+        623,
+        451
+      ]
+    }
+  },
+  "facet_fill": {
+    "cellular_fraction": 0.0,
+    "observed_cellular_fraction": 0.043498973722220814,
+    "flat_fraction": 0.01733102253032929,
+    "blocks": []
+  },
+  "close_zoom": {
+    "probes": [
+      {
+        "probe": "concavity_01",
+        "kind": "concavity",
+        "azimuth": -138.0,
+        "elevation": -1.7,
+        "zooms": {
+          "2x": {
+            "fill_screen_fraction": 0.0099,
+            "facet_cells": 0,
+            "facet_field": false,
+            "cellular_fraction": 0.0,
+            "dark_smears": 0,
+            "dark_fraction": 0.0799
+          },
+          "4x": {
+            "fill_screen_fraction": 0.0121,
+            "facet_cells": 1,
+            "facet_field": false,
+            "cellular_fraction": 0.0841,
+            "dark_smears": 0,
+            "dark_fraction": 0.0615
+          }
+        }
+      },
+      {
+        "probe": "concavity_02",
+        "kind": "concavity",
+        "azimuth": 93.8,
+        "elevation": 42.1,
+        "zooms": {
+          "2x": {
+            "fill_screen_fraction": 0.0141,
+            "facet_cells": 0,
+            "facet_field": false,
+            "cellular_fraction": 0.0,
+            "dark_smears": 0,
+            "dark_fraction": 0.0511
+          },
+          "4x": {
+            "fill_screen_fraction": 0.0184,
+            "facet_cells": 0,
+            "facet_field": false,
+            "cellular_fraction": 0.0,
+            "dark_smears": 0,
+            "dark_fraction": 0.0407
+          }
+        }
+      },
+      {
+        "probe": "concavity_03",
+        "kind": "concavity",
+        "azimuth": -122.0,
+        "elevation": 15.0,
+        "zooms": {
+          "2x": {
+            "fill_screen_fraction": 0.0111,
+            "facet_cells": 0,
+            "facet_field": false,
+            "cellular_fraction": 0.0,
+            "dark_smears": 0,
+            "dark_fraction": 0.0204
+          },
+          "4x": {
+            "fill_screen_fraction": 0.0108,
+            "facet_cells": 0,
+            "facet_field": false,
+            "cellular_fraction": 0.0,
+            "dark_smears": 0,
+            "dark_fraction": 0.0249
+          }
+        }
+      },
+      {
+        "probe": "concavity_04",
+        "kind": "concavity",
+        "azimuth": -43.2,
+        "elevation": -12.9,
+        "zooms": {
+          "2x": {
+            "fill_screen_fraction": 0.0046,
+            "facet_cells": 0,
+            "facet_field": false,
+            "cellular_fraction": 0.0,
+            "dark_smears": 0,
+            "dark_fraction": 0.0975
+          },
+          "4x": {
+            "fill_screen_fraction": 0.0069,
+            "facet_cells": 0,
+            "facet_field": false,
+            "cellular_fraction": 0.0,
+            "dark_smears": 0,
+            "dark_fraction": 0.1388
+          }
+        }
+      },
+      {
+        "probe": "concavity_05",
+        "kind": "concavity",
+        "azimuth": 33.8,
+        "elevation": 4.2,
+        "zooms": {
+          "2x": {
+            "fill_screen_fraction": 0.0,
+            "facet_cells": 0,
+            "facet_field": false,
+            "cellular_fraction": 0.0,
+            "dark_smears": 0,
+            "dark_fraction": 0.0872
+          },
+          "4x": {
+            "fill_screen_fraction": 0.0,
+            "facet_cells": 0,
+            "facet_field": false,
+            "cellular_fraction": 0.0,
+            "dark_smears": 0,
+            "dark_fraction": 0.1025
+          }
+        }
+      },
+      {
+        "probe": "concavity_06",
+        "kind": "concavity",
+        "azimuth": -27.3,
+        "elevation": -40.2,
+        "zooms": {
+          "2x": {
+            "fill_screen_fraction": 0.0,
+            "facet_cells": 0,
+            "facet_field": false,
+            "cellular_fraction": 0.0,
+            "dark_smears": 0,
+            "dark_fraction": 0.1036
+          },
+          "4x": {
+            "fill_screen_fraction": 0.0,
+            "facet_cells": 0,
+            "facet_field": false,
+            "cellular_fraction": 0.0,
+            "dark_smears": 0,
+            "dark_fraction": 0.0137
+          }
+        }
+      },
+      {
+        "probe": "concavity_07",
+        "kind": "concavity",
+        "azimuth": -95.3,
+        "elevation": -60.0,
+        "zooms": {
+          "2x": {
+            "fill_screen_fraction": 0.0001,
+            "facet_cells": 0,
+            "facet_field": false,
+            "cellular_fraction": 0.0,
+            "dark_smears": 0,
+            "dark_fraction": 0.1012
+          },
+          "4x": {
+            "fill_screen_fraction": 0.0001,
+            "facet_cells": 0,
+            "facet_field": false,
+            "cellular_fraction": 0.0,
+            "dark_smears": 0,
+            "dark_fraction": 0.1565
+          }
+        }
+      },
+      {
+        "probe": "concavity_08",
+        "kind": "concavity",
+        "azimuth": 143.6,
+        "elevation": -2.5,
+        "zooms": {
+          "2x": {
+            "fill_screen_fraction": 0.017,
+            "facet_cells": 0,
+            "facet_field": false,
+            "cellular_fraction": 0.0,
+            "dark_smears": 0,
+            "dark_fraction": 0.0355
+          },
+          "4x": {
+            "fill_screen_fraction": 0.0251,
+            "facet_cells": 1,
+            "facet_field": false,
+            "cellular_fraction": 0.0982,
+            "dark_smears": 0,
+            "dark_fraction": 0.0267
+          }
+        }
+      },
+      {
+        "probe": "concavity_09",
+        "kind": "concavity",
+        "azimuth": -160.5,
+        "elevation": -1.2,
+        "zooms": {
+          "2x": {
+            "fill_screen_fraction": 0.0074,
+            "facet_cells": 0,
+            "facet_field": false,
+            "cellular_fraction": 0.0,
+            "dark_smears": 0,
+            "dark_fraction": 0.073
+          },
+          "4x": {
+            "fill_screen_fraction": 0.0129,
+            "facet_cells": 2,
+            "facet_field": false,
+            "cellular_fraction": 0.0872,
+            "dark_smears": 0,
+            "dark_fraction": 0.0721
+          }
+        }
+      }
+    ],
+    "facet_fields_4x": 0,
+    "dark_smears_4x": 0
+  },
+  "brightness": {
+    "viewer_truth_median_lum": 115.0,
+    "factor_ignoring_median_lum": 115.0,
+    "photo_median_lum": 129.0,
+    "photo_foreground_method": "matte_robust",
+    "brightness_ratio": 0.891
+  },
+  "thresholds": {
+    "metallic_max": 0.05,
+    "base_color_factor_min": 0.99,
+    "roughness_range": [
+      0.4,
+      1.0
+    ],
+    "texture_min_px": 512,
+    "mtl_kd_min": 0.99,
+    "mtl_ks_max": 0.25,
+    "brightness_ratio_range": [
+      0.72,
+      1.4
+    ],
+    "fill_energy_ratio_min": 0.5,
+    "fill_energy_ratio_max": 2.5,
+    "facet_flat_std": 1.6,
+    "facet_cell_min_px": 24,
+    "facet_cell_max_frac": 0.03,
+    "facet_field_min_cells": 4,
+    "facet_field_flat_min": 0.6,
+    "cellular_ratio_max": 2.0,
+    "cellular_floor": 0.08,
+    "facet_fields_4x_max": 0,
+    "seam_margin": 1.35,
+    "seam_floor": 10.0,
+    "seam_material_gap": 35.0,
+    "smear_dark_ratio": 0.45,
+    "smear_min_area_frac": 0.0008,
+    "smear_max_area_frac": 0.02,
+    "smear_blocks_4x_max": 0
+  }
+}

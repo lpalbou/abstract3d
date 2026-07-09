@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+### Changed (generated references v2 — composite conditioning for source coherence)
+
+- A coherence audit showed clay-only conditioning produced shape-correct
+  but materially unfaithful views (the owl came back pale cream: LAB
+  distance 28.4 from the source, hue correlation 0.44) — the i2i model
+  never saw the source photo. The conditioning image is now a COMPOSITE:
+  source photo (left panel) + clay render (right panel) with a
+  texture-transfer instruction. Same model, coherence doubled: LAB
+  distance 7.4, hue correlation 0.82; texture QA PASS on all three proof
+  bundles including the previously-open fill-energy gate
+  (`artifacts/validation/generated-reference-completion/`, v2).
+- New `register_matte_to_clay` similarity registration (downsampled IoU
+  search, winning transform applied at full resolution) absorbs the
+  editor's small reframing before the acceptance gate, keeping the shape
+  lock (raw composite IoU 0.74-0.83 -> registered 0.89-0.97).
+- `conditioning` strategy parameter ("composite" default, "clay" and
+  "rotate" available); provenance now records the strategy and per-attempt
+  registration. Model notes: FLUX.2-klein-9B is HF-gated (stored token
+  expired — refresh to enable); Qwen-Image-Edit-2511 8-bit downloads and
+  registers but did not produce a first denoise step within 8 minutes on
+  this host and is parked with the "rotate" strategy ready for it.
+
 ### Added (generated reference views — single-photo coverage completion)
 
 - `abstract3d.reference_generation`: when a caller provides only ONE photo,

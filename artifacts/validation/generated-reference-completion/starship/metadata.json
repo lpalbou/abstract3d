@@ -12,8 +12,8 @@
  "scarcity_rescue": "auto",
  "compositing": "auto",
  "reference_count": 2,
- "bake_seconds": 178.215,
- "texture_png_md5": "136e83ea7628831aba66153c2f5224a5",
+ "bake_seconds": 186.45,
+ "texture_png_md5": "871352ad8084d8542e562ba732a31136",
  "stats": {
   "camera_distance": 3.0,
   "source_pose": {
@@ -48,22 +48,22 @@
     "frame_center_dy_px": -27.94
    },
    {
-    "applied": true,
-    "scale": 1.04,
+    "applied": false,
+    "scale": 1.0,
     "shift_x": 0.0,
-    "shift_y": 0.06,
-    "iou_before": 0.1614,
-    "iou_after": 0.1886,
-    "score_before": -11.1733,
-    "score_after": -9.9293,
+    "shift_y": 0.0,
+    "iou_before": 0.9017,
+    "iou_after": 0.9243,
+    "score_before": -0.8516,
+    "score_after": -0.7402,
     "overlap_alignment": {
      "applied": true,
-     "scale": 1.04,
-     "shift_x": -0.05,
-     "shift_y": 0.06,
+     "scale": 1.02,
+     "shift_x": -0.08,
+     "shift_y": -0.02,
      "overlap": 4970,
-     "err_before": 0.3137,
-     "err_after": 0.0978
+     "err_before": 0.2638,
+     "err_after": 0.1304
     },
     "dense_flow": {
      "applied": false,
@@ -72,10 +72,10 @@
     "label": "bottom",
     "photometric": {
      "applied": true,
-     "scale": 0.45,
-     "shift_x": -0.0002,
-     "shift_y": -0.2358,
-     "profile_error": 0.1268
+     "scale": 1.03,
+     "shift_x": 0.0,
+     "shift_y": 0.0074,
+     "profile_error": 0.029
     },
     "pose": {
      "refined": false
@@ -89,18 +89,18 @@
     "scale": 1.0,
     "shift_x": 0.0,
     "shift_y": 0.0,
-    "iou_before": 0.7691,
-    "iou_after": 0.7869,
-    "score_before": -1.5214,
-    "score_after": -1.3961,
+    "iou_before": 0.9154,
+    "iou_after": 0.9154,
+    "score_before": -0.5312,
+    "score_after": -0.5312,
     "overlap_alignment": {
      "applied": true,
-     "scale": 0.98,
-     "shift_x": 0.07,
+     "scale": 1.04,
+     "shift_x": -0.03,
      "shift_y": -0.08,
      "overlap": 4970,
-     "err_before": 0.4036,
-     "err_after": 0.2575
+     "err_before": 0.2886,
+     "err_after": 0.2055
     },
     "dense_flow": {
      "applied": false,
@@ -109,10 +109,10 @@
     "label": "back",
     "photometric": {
      "applied": true,
-     "scale": 0.85,
-     "shift_x": 0.0,
-     "shift_y": -0.0017,
-     "profile_error": 0.087
+     "scale": 1.05,
+     "shift_x": 0.0026,
+     "shift_y": 0.0025,
+     "profile_error": 0.0191
     },
     "pose": {
      "refined": false
@@ -124,7 +124,7 @@
   ],
   "view_consistency": [
    {
-    "overlap_texels": 0,
+    "overlap_texels": 6,
     "harmonized": false,
     "gains": null,
     "disagreement": null,
@@ -139,18 +139,20 @@
     "weight_scale": 1.0,
     "label": "back",
     "conflict_resolution": {
-     "conflict_texels": 0,
-     "zeroed_by_view": {}
+     "conflict_texels": 2,
+     "zeroed_by_view": {
+      "bottom": 2
+     }
     }
    }
   ],
   "outlier_filter": {
-   "dropped_texels": 162
+   "dropped_texels": 122
   },
   "texture_padding": 4,
   "projection_mode": "projection_multiview_plus_symmetry_plus_fill3d",
   "unseen_fill_mode": "mesh_harmonic",
-  "observed_coverage_ratio": 0.2905,
+  "observed_coverage_ratio": 0.4484,
   "observed_view_stats": [
    {
     "index": 1,
@@ -166,7 +168,7 @@
     "azimuth_deg": 0.0,
     "elevation_deg": -75.0,
     "generated": true,
-    "coverage_ratio": 0.0664
+    "coverage_ratio": 0.2057
    },
    {
     "index": 3,
@@ -174,67 +176,67 @@
     "azimuth_deg": 180.0,
     "elevation_deg": 0.0,
     "generated": true,
-    "coverage_ratio": 0.0242
+    "coverage_ratio": 0.0276
    }
   ],
   "leverage": {
    "available": true,
    "surface_texels": 487473,
-   "potential_union_ratio": 0.4163,
-   "direct_painted_ratio": 0.2756,
-   "leverage_ratio": 0.662,
-   "surrendered_visible_ratio": 0.1438,
-   "unobservable_ratio": 0.5837,
+   "potential_union_ratio": 0.6155,
+   "direct_painted_ratio": 0.4175,
+   "leverage_ratio": 0.6784,
+   "surrendered_visible_ratio": 0.2011,
+   "unobservable_ratio": 0.3845,
    "views": [
     {
      "label": "front",
      "facing_threshold": 0.2,
      "potential_texels": 134662,
      "potential_ratio": 0.2762,
-     "painted_texels": 90555,
-     "painted_ratio": 0.1858,
-     "won_texels": 90051,
-     "won_ratio": 0.1847,
+     "painted_texels": 90486,
+     "painted_ratio": 0.1856,
+     "won_texels": 90010,
+     "won_ratio": 0.1846,
      "rescued_texels": 2,
      "surrendered_facing_gate": 31856,
      "surrendered_zone_gate": 11979,
      "surrendered_downstream": 0,
-     "surrendered_union_drop": 636
+     "surrendered_union_drop": 705
     },
     {
      "label": "bottom",
      "facing_threshold": 0.2,
-     "potential_texels": 39489,
-     "potential_ratio": 0.081,
-     "painted_texels": 32225,
-     "painted_ratio": 0.0661,
-     "won_texels": 32136,
-     "won_ratio": 0.0659,
-     "rescued_texels": 0,
-     "surrendered_facing_gate": 3443,
-     "surrendered_zone_gate": 4729,
-     "surrendered_downstream": 0,
-     "surrendered_union_drop": 122
+     "potential_texels": 129405,
+     "potential_ratio": 0.2655,
+     "painted_texels": 99900,
+     "painted_ratio": 0.2049,
+     "won_texels": 99735,
+     "won_ratio": 0.2046,
+     "rescued_texels": 1,
+     "surrendered_facing_gate": 8109,
+     "surrendered_zone_gate": 22010,
+     "surrendered_downstream": 41,
+     "surrendered_union_drop": 295
     },
     {
      "label": "back",
      "facing_threshold": 0.2,
-     "potential_texels": 30270,
-     "potential_ratio": 0.0621,
-     "painted_texels": 11572,
-     "painted_ratio": 0.0237,
-     "won_texels": 11408,
-     "won_ratio": 0.0234,
-     "rescued_texels": 0,
-     "surrendered_facing_gate": 12570,
-     "surrendered_zone_gate": 6034,
+     "potential_texels": 37038,
+     "potential_ratio": 0.076,
+     "painted_texels": 13159,
+     "painted_ratio": 0.027,
+     "won_texels": 12996,
+     "won_ratio": 0.0267,
+     "rescued_texels": 1,
+     "surrendered_facing_gate": 14984,
+     "surrendered_zone_gate": 8839,
      "surrendered_downstream": 0,
-     "surrendered_union_drop": 212
+     "surrendered_union_drop": 271
     }
    ],
-   "shipped_direct_ratio": 0.2756,
-   "mirror_completed_ratio": 0.0137,
-   "mirror_over_photo_visible_ratio": 0.0034
+   "shipped_direct_ratio": 0.4175,
+   "mirror_completed_ratio": 0.0267,
+   "mirror_over_photo_visible_ratio": 0.004
   },
   "scarcity_rescue": {
    "requested": "auto",
@@ -247,23 +249,23 @@
    "applied": true,
    "gain": 0.7,
    "energy_calibration": {
-    "observed_energy": 1.325,
-    "target_energy": 0.928,
-    "fill_energy_at_1": 0.68,
-    "fill_energy_base": 0.127,
-    "fill_energy_final": 0.921,
-    "sigma_observed_band": 0.2397,
-    "sigma_at_scale": 0.1584,
-    "scale": 2.183
+    "observed_energy": 1.031,
+    "target_energy": 0.722,
+    "fill_energy_at_1": 0.751,
+    "fill_energy_base": 0.234,
+    "fill_energy_final": 0.751,
+    "sigma_observed_band": 0.2181,
+    "sigma_at_scale": 0.1107,
+    "scale": 1.0
    }
   },
   "fill_floor": {
    "applied": true,
-   "lifted_texels": 74085,
-   "evidence_exempt_components": 14,
-   "mean_lift": 0.1784,
+   "lifted_texels": 26368,
+   "evidence_exempt_components": 19,
+   "mean_lift": 0.3752,
    "p99_lift": 1.4,
-   "consensus_texels": 1983
+   "consensus_texels": 3647
   },
   "delight": {
    "applied": false,
@@ -272,8 +274,8 @@
   "symmetry_completion": {
    "mode": "mirror_symmetry",
    "geometry_symmetry_score": 0.9826,
-   "coverage_ratio": 0.0137,
-   "tone_matched_texels": 1225,
+   "coverage_ratio": 0.0267,
+   "tone_matched_texels": 797,
    "applied": true
   },
   "mirror_rescue": {
@@ -283,21 +285,21 @@
   },
   "trace_deposits": {
    "applied": true,
-   "committed_texels": 3202,
-   "swept_islands": 65,
-   "rim_feathered": 1610,
-   "blob_count": 80
+   "committed_texels": 4975,
+   "swept_islands": 145,
+   "rim_feathered": 3120,
+   "blob_count": 64
   },
   "pale_chips": {
    "applied": true,
-   "committed_texels": 1298,
-   "blobs": 55,
+   "committed_texels": 1469,
+   "blobs": 48,
    "refused": {
-    "area": 86,
+    "area": 159,
     "w90": 0,
-    "ring": 3,
-    "isolation": 36,
-    "cover": 62
+    "ring": 12,
+    "isolation": 55,
+    "cover": 99
    }
   },
   "bottom_cap": {
@@ -310,67 +312,75 @@
     {
      "complex": 2,
      "mode": "full",
-     "texels": 3966,
+     "veto": "render:az+35.0el0 new blob a1445"
+    },
+    {
+     "complex": 2,
+     "mode": "trace",
+     "veto": "render:az+35.0el0 new blob a1445"
+    },
+    {
+     "complex": 8,
+     "mode": "full",
+     "texels": 6395,
      "centroid": [
-      -0.212,
-      0.162,
-      0.065
+      0.519,
+      0.124,
+      0.035
      ],
-     "radius": 0.016
+     "radius": 0.041
     },
     {
-     "complex": 4,
+     "complex": 9,
      "mode": "full",
-     "veto": "texel:new_dark_blob a60 az+22.5el0"
+     "veto": "texel:new_dark_blob a106 az+0.0el0"
     },
     {
-     "complex": 4,
+     "complex": 9,
      "mode": "trace",
-     "veto": "texel:new_dark_blob a60 az+22.5el0"
+     "veto": "texel:new_dark_blob a106 az+0.0el0"
     },
     {
-     "complex": 5,
+     "complex": 10,
      "mode": "full",
-     "veto": "texel:new_dark_blob a65 az+0.0el0"
+     "veto": "texel:new_dark_blob a81 az+0.0el0"
     },
     {
-     "complex": 5,
+     "complex": 10,
      "mode": "trace",
-     "veto": "texel:new_dark_blob a65 az+0.0el0"
-    },
-    {
-     "complex": 6,
-     "mode": "full",
-     "veto": "texel:new_dark_blob a496 az+0.0el10"
-    },
-    {
-     "complex": 6,
-     "mode": "trace",
-     "veto": "texel:new_dark_blob a496 az+0.0el10"
+     "veto": "texel:new_dark_blob a49 az+0.0el0"
     }
    ],
-   "patches": 44,
+   "patches": 66,
    "recopies": 0,
    "disc_refreshed": false,
    "registration": [
-    1.125,
-    -0.005,
-    0.0475
+    1.075,
+    0.02,
+    0.0425
    ],
-   "speck_lifted_texels": 524,
-   "repaired_texels": 13091
+   "speck_lifted_texels": 144,
+   "repaired_texels": 14356
   },
   "film_band": {
    "applied": true,
-   "band_texels": 102970,
-   "commit_texels": 219,
-   "vacated_claims": 0,
-   "rim_demoted": 470,
-   "retone": {
+   "band_texels": 158967,
+   "commit_texels": 2033,
+   "vacated_claims": 747,
+   "rim_demoted": 637,
+   "mirror_destinations_removed": 87,
+   "gradient_repaint": {
     "applied": true,
-    "retoned_texels": 218,
-    "dark_anchors": 39634,
-    "mean_commit_weight": 0.364
+    "field_support_transitions": 6.0,
+    "authority_texels": 20914,
+    "gap_texels": 758,
+    "clamp_texels": 34913,
+    "guard_dark_reverted": 1022,
+    "guard_bright_killed": 302,
+    "mass_nodes": 34689,
+    "base_ring_nodes": 186204,
+    "displaced_dark_vetoed": 347,
+    "displaced_refilled": 347
    }
   },
   "seam_leveling": {
@@ -380,22 +390,23 @@
    "requested": "auto",
    "mode": "gradient_domain",
    "applied": true,
-   "solve_seconds": 2.7,
+   "solve_seconds": 2.97,
    "solver": {
-    "nodes": 134344,
-    "edges": 278870,
-    "cg_iterations": 68,
-    "final_relative_residual": 1.088740260422609e-05,
+    "nodes": 203537,
+    "edges": 419870,
+    "cg_iterations": 53,
+    "final_relative_residual": 9.995660905750652e-06,
     "edge_kind_counts": {
-     "grid": 246002,
-     "stitch": 32868,
-     "line_constraint": 172504
+     "grid": 378643,
+     "stitch": 41227,
+     "line_constraint": 191604
     },
     "mg_level_sizes": [
-     134344,
-     18895,
-     2643,
-     395
+     203537,
+     28578,
+     3932,
+     564,
+     71
     ],
     "gradient_rule": "max_confidence",
     "anchor_lambda_scale": 0.003,
@@ -414,6 +425,58 @@
   "uv_vertex_count": 75248,
   "face_count": 120000
  },
+ "texture_artifacts": {
+  "observed_view_stats": [
+   {
+    "index": 1,
+    "label": "front",
+    "azimuth_deg": 30.0,
+    "elevation_deg": 15.0,
+    "generated": false,
+    "coverage_ratio": 0.1871
+   },
+   {
+    "index": 2,
+    "label": "bottom",
+    "azimuth_deg": 0.0,
+    "elevation_deg": -75.0,
+    "generated": true,
+    "coverage_ratio": 0.2057
+   },
+   {
+    "index": 3,
+    "label": "back",
+    "azimuth_deg": 180.0,
+    "elevation_deg": 0.0,
+    "generated": true,
+    "coverage_ratio": 0.0276
+   }
+  ],
+  "source_pose": {
+   "azimuth_deg": 30.0,
+   "elevation_deg": 15.0,
+   "silhouette_iou": 0.0,
+   "method": "override",
+   "score": null,
+   "estimated": false
+  },
+  "source_registration": {
+   "method": "mesh_bbox_center",
+   "frame_center_dx_px": 54.24,
+   "frame_center_dy_px": -27.94,
+   "frame_size": 1024
+  },
+  "camera_distance": 3.0,
+  "observed_coverage_ratio": 0.4484,
+  "texture_completion": "mirror_symmetry",
+  "symmetry_completion": {
+   "mode": "mirror_symmetry",
+   "geometry_symmetry_score": 0.9826,
+   "coverage_ratio": 0.0267,
+   "tone_matched_texels": 797,
+   "applied": true
+  }
+ },
  "generated_references": {
   "angles": [
    {
@@ -423,30 +486,35 @@
     "attempts": [
      {
       "seed": 11,
-      "silhouette_iou": 0.7654
+      "silhouette_iou": 0.899,
+      "registration": {
+       "applied": false,
+       "iou": 0.9002
+      }
      }
     ],
     "accepted": true,
     "clay_renderer": "moderngl",
-    "prompt": "a white and grey sci-fi starship with hull panels and engine detail, seen from directly underneath, the same physical object with consistent materials and colors, photographed on a plain dark background, soft diffuse even studio lighting, matte finish, no harsh specular highlights or reflections, product photography, sharp focus",
-    "silhouette_iou": 0.7654,
-    "accepted_image_md5": "f0b350ed3791ff12acfe10fb204e6900",
-    "specular_suppressed_fraction": 0.0041,
+    "prompt": "The left image shows a white and grey sci-fi starship with detailed hull panels and engine blocks. The right image is an untextured 3D render of the SAME object seen from directly underneath. Repaint the right image with the exact materials, colors and surface pattern of the left object. Keep the right image's exact shape and pose. Return only the repainted right view on a plain dark background, soft even studio lighting, matte finish, no reflections.",
+    "conditioning": "composite",
+    "silhouette_iou": 0.899,
+    "accepted_image_md5": "d7a7cfff6c55d9d55cc172072c856e13",
+    "specular_suppressed_fraction": 0.0036,
     "tone_match": {
      "applied": true,
      "pre_match_distance": [
-      -22.36,
-      -0.61,
-      -3.51
+      -18.68,
+      -0.79,
+      -3.66
      ],
      "applied_shift": [
       -15.0,
-      -0.61,
-      -3.51
+      -0.79,
+      -3.66
      ],
      "clipped": true
     },
-    "seconds": 61.8
+    "seconds": 349.5
    },
    {
     "label": "back",
@@ -455,30 +523,38 @@
     "attempts": [
      {
       "seed": 11,
-      "silhouette_iou": 0.7662
+      "silhouette_iou": 0.9456,
+      "registration": {
+       "applied": true,
+       "iou": 0.9456,
+       "scale": 1.0,
+       "fx": 0.02,
+       "fy": 0.0
+      }
      }
     ],
     "accepted": true,
     "clay_renderer": "moderngl",
-    "prompt": "a white and grey sci-fi starship with hull panels and engine detail, seen directly from behind, the same physical object with consistent materials and colors, photographed on a plain dark background, soft diffuse even studio lighting, matte finish, no harsh specular highlights or reflections, product photography, sharp focus",
-    "silhouette_iou": 0.7662,
-    "accepted_image_md5": "26588e2307d71025f3b42ca6fea11dea",
-    "specular_suppressed_fraction": 0.0008,
+    "prompt": "The left image shows a white and grey sci-fi starship with detailed hull panels and engine blocks. The right image is an untextured 3D render of the SAME object seen directly from behind. Repaint the right image with the exact materials, colors and surface pattern of the left object. Keep the right image's exact shape and pose. Return only the repainted right view on a plain dark background, soft even studio lighting, matte finish, no reflections.",
+    "conditioning": "composite",
+    "silhouette_iou": 0.9456,
+    "accepted_image_md5": "21fb3e37c46616f00c99ceb69cdcdaa7",
+    "specular_suppressed_fraction": 0.0024,
     "tone_match": {
      "applied": true,
      "pre_match_distance": [
-      -34.12,
-      -0.65,
-      -2.95
+      -18.17,
+      -0.92,
+      -2.97
      ],
      "applied_shift": [
       -15.0,
-      -0.65,
-      -2.95
+      -0.92,
+      -2.97
      ],
      "clipped": true
     },
-    "seconds": 55.8
+    "seconds": 439.8
    }
   ],
   "accepted": 2,
@@ -487,8 +563,9 @@
    "provider": "mlx-gen",
    "model": "AbstractFramework/flux.2-klein-4b-8bit"
   },
-  "subject_hint": "a white and grey sci-fi starship with hull panels and engine detail",
+  "subject_hint": "a white and grey sci-fi starship with detailed hull panels and engine blocks",
   "negative_prompt": "glossy shine, specular highlights, strong reflections, rim lighting, lens flare, harsh shadows, dramatic lighting",
+  "conditioning": "composite",
   "base_seed": 11,
   "silhouette_iou_min": 0.75
  }

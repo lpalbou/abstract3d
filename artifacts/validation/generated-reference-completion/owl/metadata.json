@@ -9,8 +9,8 @@
  "scarcity_rescue": "auto",
  "compositing": "auto",
  "reference_count": 4,
- "bake_seconds": 273.024,
- "texture_png_md5": "9e4e7a8bda05d5a3475da4fb331eae1a",
+ "bake_seconds": 1017.306,
+ "texture_png_md5": "d2ca0268f9a5bc32c3fdf3fb98b176ec",
  "stats": {
   "camera_distance": 3.0,
   "source_pose": {
@@ -44,18 +44,18 @@
     "scale": 1.0,
     "shift_x": 0.0,
     "shift_y": 0.0,
-    "iou_before": 0.91,
-    "iou_after": 0.91,
-    "score_before": -1.1042,
-    "score_after": -1.1042,
+    "iou_before": 0.9504,
+    "iou_after": 0.9504,
+    "score_before": -0.6357,
+    "score_after": -0.6357,
     "overlap_alignment": {
      "applied": true,
-     "scale": 1.02,
-     "shift_x": 0.04,
-     "shift_y": -0.08,
+     "scale": 1.04,
+     "shift_x": -0.01,
+     "shift_y": 0.03,
      "overlap": 70154,
-     "err_before": 0.2438,
-     "err_after": 0.2231
+     "err_before": 0.2255,
+     "err_after": 0.207
     },
     "dense_flow": {
      "applied": false,
@@ -64,10 +64,10 @@
     "label": "back",
     "photometric": {
      "applied": true,
-     "scale": 1.01,
+     "scale": 1.03,
      "shift_x": 0.0,
-     "shift_y": -0.001,
-     "profile_error": 0.0588
+     "shift_y": 0.0074,
+     "profile_error": 0.0267
     },
     "pose": {
      "refined": false
@@ -79,42 +79,42 @@
     "scale": 1.0,
     "shift_x": 0.0,
     "shift_y": 0.0,
-    "iou_before": 0.96,
-    "iou_after": 0.96,
-    "score_before": -0.5458,
-    "score_after": -0.5458,
+    "iou_before": 0.9513,
+    "iou_after": 0.9513,
+    "score_before": -0.6556,
+    "score_after": -0.6556,
     "overlap_alignment": {
-     "applied": true,
-     "scale": 1.02,
-     "shift_x": -0.08,
-     "shift_y": -0.08,
+     "applied": false,
+     "scale": 1.0,
+     "shift_x": 0.0,
+     "shift_y": 0.0,
      "overlap": 70154,
-     "err_before": 0.2241,
-     "err_after": 0.1953
+     "err_before": 0.1902,
+     "err_after": 0.186
     },
     "dense_flow": {
      "applied": true,
      "reason": "accepted",
      "gains": [
-      0.8011,
-      0.7024,
-      0.676
+      1.0594,
+      1.0595,
+      0.6815
      ],
-     "err_before": 0.18385,
-     "err_after": 0.13618,
-     "flow_p50_px": 9.45,
-     "flow_max_px": 10.24,
-     "band_px": 994,
-     "cells_kept": 4,
-     "cells_evaluated": 7
+     "err_before": 0.19776,
+     "err_after": 0.12186,
+     "flow_p50_px": 8.48,
+     "flow_max_px": 9.55,
+     "band_px": 878,
+     "cells_kept": 3,
+     "cells_evaluated": 6
     },
     "label": "side_left",
     "photometric": {
      "applied": true,
      "scale": 1.01,
-     "shift_x": 0.0027,
+     "shift_x": 0.0058,
      "shift_y": -0.001,
-     "profile_error": 0.0143
+     "profile_error": 0.0224
     },
     "pose": {
      "refined": false
@@ -122,93 +122,93 @@
     "ortho_half_extent": 1.1727
    },
    {
-    "applied": false,
+    "applied": true,
     "scale": 1.0,
     "shift_x": 0.0,
-    "shift_y": 0.0,
-    "iou_before": 0.9537,
-    "iou_after": 0.9537,
-    "score_before": -0.6396,
-    "score_after": -0.6396,
+    "shift_y": -0.04,
+    "iou_before": 0.9091,
+    "iou_after": 0.9246,
+    "score_before": -1.208,
+    "score_after": -0.9501,
     "overlap_alignment": {
-     "applied": false,
-     "scale": 1.0,
-     "shift_x": 0.0,
-     "shift_y": 0.0,
-     "overlap": 70154,
-     "err_before": 0.2198,
-     "err_after": 0.2104
-    },
-    "dense_flow": {
-     "applied": false,
-     "reason": "no_improvement",
-     "gains": [
-      0.8908,
-      0.8431,
-      0.8554
-     ],
-     "err_before": 0.13182,
-     "err_after": 0.12211,
-     "flow_p50_px": 0.28,
-     "flow_max_px": 7.2,
-     "band_px": 877,
-     "cells_kept": 2,
-     "cells_evaluated": 7
-    },
-    "label": "side_right",
-    "photometric": {
      "applied": true,
-     "scale": 1.01,
-     "shift_x": -0.003,
-     "shift_y": -0.001,
-     "profile_error": 0.0197
-    },
-    "pose": {
-     "refined": false
-    },
-    "ortho_half_extent": 1.1727
-   },
-   {
-    "applied": false,
-    "scale": 1.0,
-    "shift_x": 0.0,
-    "shift_y": 0.0,
-    "iou_before": 0.976,
-    "iou_after": 0.976,
-    "score_before": -0.3816,
-    "score_after": -0.3816,
-    "overlap_alignment": {
-     "applied": false,
-     "scale": 1.0,
-     "shift_x": 0.0,
-     "shift_y": 0.0,
+     "scale": 1.04,
+     "shift_x": 0.08,
+     "shift_y": -0.04,
      "overlap": 70154,
-     "err_before": 0.211,
-     "err_after": 0.2023
+     "err_before": 0.2386,
+     "err_after": 0.1901
     },
     "dense_flow": {
      "applied": true,
      "reason": "accepted",
      "gains": [
-      1.0371,
-      1.0187,
-      1.0342
+      0.9177,
+      0.8159,
+      0.7078
      ],
-     "err_before": 0.17369,
-     "err_after": 0.14472,
-     "flow_p50_px": 6.97,
+     "err_before": 0.15385,
+     "err_after": 0.12253,
+     "flow_p50_px": 0.45,
      "flow_max_px": 10.24,
-     "band_px": 27921,
-     "cells_kept": 13,
-     "cells_evaluated": 35
+     "band_px": 957,
+     "cells_kept": 3,
+     "cells_evaluated": 7
+    },
+    "label": "side_right",
+    "photometric": {
+     "applied": true,
+     "scale": 1.05,
+     "shift_x": -0.0026,
+     "shift_y": 0.0158,
+     "profile_error": 0.0257
+    },
+    "pose": {
+     "refined": false
+    },
+    "ortho_half_extent": 1.1727
+   },
+   {
+    "applied": false,
+    "scale": 1.0,
+    "shift_x": 0.0,
+    "shift_y": 0.0,
+    "iou_before": 0.8954,
+    "iou_after": 0.8954,
+    "score_before": -1.5889,
+    "score_after": -1.5889,
+    "overlap_alignment": {
+     "applied": true,
+     "scale": 0.98,
+     "shift_x": 0.07,
+     "shift_y": 0.08,
+     "overlap": 70154,
+     "err_before": 0.2377,
+     "err_after": 0.2242
+    },
+    "dense_flow": {
+     "applied": true,
+     "reason": "accepted",
+     "gains": [
+      1.1357,
+      1.1088,
+      0.9539
+     ],
+     "err_before": 0.22239,
+     "err_after": 0.20913,
+     "flow_p50_px": 1.01,
+     "flow_max_px": 10.24,
+     "band_px": 25408,
+     "cells_kept": 4,
+     "cells_evaluated": 33
     },
     "label": "top",
     "photometric": {
      "applied": true,
      "scale": 1.01,
-     "shift_x": -0.0026,
+     "shift_x": 0.0053,
      "shift_y": 0.0563,
-     "profile_error": 0.0198
+     "profile_error": 0.0413
     },
     "pose": {
      "refined": false
@@ -226,50 +226,50 @@
     "label": "back"
    },
    {
-    "overlap_texels": 8202,
+    "overlap_texels": 12782,
     "harmonized": false,
     "gains": null,
-    "disagreement": 0.1949,
+    "disagreement": 0.1687,
     "weight_scale": 1.0,
-    "gain_ratio_spread": 1.568,
+    "gain_ratio_spread": 1.106,
     "label": "side_left"
    },
    {
-    "overlap_texels": 12340,
+    "overlap_texels": 7693,
     "harmonized": false,
     "gains": null,
-    "disagreement": 0.1475,
+    "disagreement": 0.193,
     "weight_scale": 1.0,
-    "gain_ratio_spread": 0.8514,
+    "gain_ratio_spread": 1.1081,
     "label": "side_right"
    },
    {
-    "overlap_texels": 39675,
+    "overlap_texels": 34996,
     "harmonized": false,
     "gains": null,
-    "disagreement": 0.1699,
+    "disagreement": 0.2276,
     "weight_scale": 1.0,
-    "gain_ratio_spread": 0.8637,
+    "gain_ratio_spread": 1.2774,
     "label": "top",
     "conflict_resolution": {
-     "conflict_texels": 12519,
+     "conflict_texels": 18211,
      "zeroed_by_view": {
-      "front": 3957,
-      "back": 212,
-      "side_left": 1647,
-      "side_right": 877,
-      "top": 6161
+      "front": 5517,
+      "back": 511,
+      "side_left": 2031,
+      "side_right": 1317,
+      "top": 9223
      }
     }
    }
   ],
   "outlier_filter": {
-   "dropped_texels": 460
+   "dropped_texels": 747
   },
   "texture_padding": 4,
   "projection_mode": "projection_multiview_plus_symmetry_plus_fill3d",
   "unseen_fill_mode": "mesh_harmonic",
-  "observed_coverage_ratio": 0.8377,
+  "observed_coverage_ratio": 0.8492,
   "observed_view_stats": [
    {
     "index": 1,
@@ -285,7 +285,7 @@
     "azimuth_deg": 180.0,
     "elevation_deg": 0.0,
     "generated": true,
-    "coverage_ratio": 0.2195
+    "coverage_ratio": 0.2601
    },
    {
     "index": 3,
@@ -293,7 +293,7 @@
     "azimuth_deg": 90.0,
     "elevation_deg": 0.0,
     "generated": true,
-    "coverage_ratio": 0.2114
+    "coverage_ratio": 0.2664
    },
    {
     "index": 4,
@@ -301,7 +301,7 @@
     "azimuth_deg": -90.0,
     "elevation_deg": 0.0,
     "generated": true,
-    "coverage_ratio": 0.2714
+    "coverage_ratio": 0.2183
    },
    {
     "index": 5,
@@ -309,97 +309,97 @@
     "azimuth_deg": 0.0,
     "elevation_deg": 55.0,
     "generated": true,
-    "coverage_ratio": 0.2085
+    "coverage_ratio": 0.1618
    }
   ],
   "leverage": {
    "available": true,
    "surface_texels": 552004,
-   "potential_union_ratio": 0.8566,
-   "direct_painted_ratio": 0.8333,
-   "leverage_ratio": 0.9728,
-   "surrendered_visible_ratio": 0.0249,
-   "unobservable_ratio": 0.1434,
+   "potential_union_ratio": 0.8832,
+   "direct_painted_ratio": 0.8468,
+   "leverage_ratio": 0.9587,
+   "surrendered_visible_ratio": 0.0374,
+   "unobservable_ratio": 0.1168,
    "views": [
     {
      "label": "front",
      "facing_threshold": 0.2,
      "potential_texels": 195230,
      "potential_ratio": 0.3537,
-     "painted_texels": 157898,
-     "painted_ratio": 0.286,
-     "won_texels": 105110,
-     "won_ratio": 0.1904,
+     "painted_texels": 156241,
+     "painted_ratio": 0.283,
+     "won_texels": 107501,
+     "won_ratio": 0.1947,
      "rescued_texels": 0,
      "surrendered_facing_gate": 20633,
      "surrendered_zone_gate": 12213,
-     "surrendered_downstream": 3978,
-     "surrendered_union_drop": 573
+     "surrendered_downstream": 5563,
+     "surrendered_union_drop": 642
     },
     {
      "label": "back",
      "facing_threshold": 0.2,
-     "potential_texels": 133966,
-     "potential_ratio": 0.2427,
-     "painted_texels": 120962,
-     "painted_ratio": 0.2191,
-     "won_texels": 101238,
-     "won_ratio": 0.1834,
+     "potential_texels": 170988,
+     "potential_ratio": 0.3098,
+     "painted_texels": 142959,
+     "painted_ratio": 0.259,
+     "won_texels": 116762,
+     "won_ratio": 0.2115,
      "rescued_texels": 0,
-     "surrendered_facing_gate": 12264,
-     "surrendered_zone_gate": 1118,
-     "surrendered_downstream": 211,
-     "surrendered_union_drop": 11
+     "surrendered_facing_gate": 18545,
+     "surrendered_zone_gate": 9255,
+     "surrendered_downstream": 511,
+     "surrendered_union_drop": 91
     },
     {
      "label": "side_left",
      "facing_threshold": 0.2,
-     "potential_texels": 127359,
-     "potential_ratio": 0.2307,
-     "painted_texels": 114934,
-     "painted_ratio": 0.2082,
-     "won_texels": 89828,
-     "won_ratio": 0.1627,
+     "potential_texels": 173807,
+     "potential_ratio": 0.3149,
+     "painted_texels": 144797,
+     "painted_ratio": 0.2623,
+     "won_texels": 108592,
+     "won_ratio": 0.1967,
      "rescued_texels": 1,
-     "surrendered_facing_gate": 9849,
-     "surrendered_zone_gate": 1541,
-     "surrendered_downstream": 1647,
-     "surrendered_union_drop": 127
+     "surrendered_facing_gate": 19006,
+     "surrendered_zone_gate": 7882,
+     "surrendered_downstream": 2028,
+     "surrendered_union_drop": 233
     },
     {
      "label": "side_right",
      "facing_threshold": 0.2,
-     "potential_texels": 174855,
-     "potential_ratio": 0.3168,
-     "painted_texels": 148625,
-     "painted_ratio": 0.2692,
-     "won_texels": 109802,
-     "won_ratio": 0.1989,
-     "rescued_texels": 3,
-     "surrendered_facing_gate": 18411,
-     "surrendered_zone_gate": 6774,
-     "surrendered_downstream": 980,
-     "surrendered_union_drop": 186
+     "potential_texels": 134564,
+     "potential_ratio": 0.2438,
+     "painted_texels": 118956,
+     "painted_ratio": 0.2155,
+     "won_texels": 97053,
+     "won_ratio": 0.1758,
+     "rescued_texels": 2,
+     "surrendered_facing_gate": 9861,
+     "surrendered_zone_gate": 4924,
+     "surrendered_downstream": 1316,
+     "surrendered_union_drop": 193
     },
     {
      "label": "top",
      "facing_threshold": 0.2,
-     "potential_texels": 158897,
-     "potential_ratio": 0.2879,
-     "painted_texels": 108749,
-     "painted_ratio": 0.197,
-     "won_texels": 53848,
-     "won_ratio": 0.0976,
-     "rescued_texels": 2,
-     "surrendered_facing_gate": 28523,
-     "surrendered_zone_gate": 15293,
-     "surrendered_downstream": 6161,
-     "surrendered_union_drop": 177
+     "potential_texels": 122271,
+     "potential_ratio": 0.2215,
+     "painted_texels": 79737,
+     "painted_ratio": 0.1445,
+     "won_texels": 37404,
+     "won_ratio": 0.0678,
+     "rescued_texels": 1,
+     "surrendered_facing_gate": 20736,
+     "surrendered_zone_gate": 12621,
+     "surrendered_downstream": 9217,
+     "surrendered_union_drop": 358
     }
    ],
-   "shipped_direct_ratio": 0.8333,
-   "mirror_completed_ratio": 0.0042,
-   "mirror_over_photo_visible_ratio": 0.0012
+   "shipped_direct_ratio": 0.8468,
+   "mirror_completed_ratio": 0.0018,
+   "mirror_over_photo_visible_ratio": 0.0011
   },
   "scarcity_rescue": {
    "requested": "auto",
@@ -412,23 +412,23 @@
    "applied": true,
    "gain": 0.7,
    "energy_calibration": {
-    "observed_energy": 0.932,
-    "target_energy": 0.652,
-    "fill_energy_at_1": 0.365,
-    "fill_energy_base": 0.202,
-    "fill_energy_final": 0.518,
-    "sigma_observed_band": 0.1334,
-    "sigma_at_scale": 0.1479,
-    "scale": 2.705
+    "observed_energy": 1.438,
+    "target_energy": 1.007,
+    "fill_energy_at_1": 0.789,
+    "fill_energy_base": 0.18,
+    "fill_energy_final": 0.994,
+    "sigma_observed_band": 0.2109,
+    "sigma_at_scale": 0.1798,
+    "scale": 2.168
    }
   },
   "fill_floor": {
    "applied": true,
-   "lifted_texels": 10399,
-   "evidence_exempt_components": 20,
-   "mean_lift": 0.3255,
+   "lifted_texels": 11952,
+   "evidence_exempt_components": 35,
+   "mean_lift": 0.3598,
    "p99_lift": 1.4,
-   "consensus_texels": 665
+   "consensus_texels": 639
   },
   "delight": {
    "applied": true,
@@ -442,40 +442,40 @@
     {
      "index": 2,
      "label": "side_left",
-     "overlap_texels": 8106,
+     "overlap_texels": 7445,
      "applied": true,
-     "disagreement_before": 0.225,
-     "disagreement_after": 0.195,
-     "field_p95": 0.5799,
-     "exclusive_mean_abs_delta": 0.0469
+     "disagreement_before": 0.1838,
+     "disagreement_after": 0.1715,
+     "field_p95": 0.5396,
+     "exclusive_mean_abs_delta": 0.0133
     },
     {
      "index": 3,
      "label": "side_right",
-     "overlap_texels": 7595,
+     "overlap_texels": 7525,
      "applied": true,
-     "disagreement_before": 0.1751,
-     "disagreement_after": 0.1468,
-     "field_p95": 0.3046,
-     "exclusive_mean_abs_delta": 0.0281
+     "disagreement_before": 0.1962,
+     "disagreement_after": 0.1933,
+     "field_p95": 0.2772,
+     "exclusive_mean_abs_delta": 0.0127
     },
     {
      "index": 4,
      "label": "top",
-     "overlap_texels": 36432,
-     "applied": true,
-     "disagreement_before": 0.1794,
-     "disagreement_after": 0.1688,
-     "field_p95": 0.3582,
-     "exclusive_mean_abs_delta": 0.1737
+     "overlap_texels": 32813,
+     "applied": false,
+     "disagreement_before": 0.2268,
+     "disagreement_after": 0.2385,
+     "field_p95": 0.4998,
+     "exclusive_mean_abs_delta": 0.1084
     }
    ]
   },
   "symmetry_completion": {
    "mode": "mirror_symmetry",
    "geometry_symmetry_score": 0.9789,
-   "coverage_ratio": 0.0042,
-   "tone_matched_texels": 690,
+   "coverage_ratio": 0.0018,
+   "tone_matched_texels": 457,
    "applied": true
   },
   "mirror_rescue": {
@@ -485,71 +485,74 @@
   },
   "trace_deposits": {
    "applied": true,
-   "committed_texels": 2952,
+   "committed_texels": 4962,
+   "rim_feathered": 3357,
    "swept_islands": 47,
-   "rim_feathered": 1739,
-   "blob_count": 15
+   "blob_count": 29
   },
   "pale_chips": {
    "applied": true,
-   "committed_texels": 3317,
-   "blobs": 113,
+   "committed_texels": 1319,
+   "blobs": 60,
    "refused": {
-    "area": 392,
+    "area": 172,
     "w90": 0,
-    "ring": 63,
-    "isolation": 84,
-    "cover": 126
+    "ring": 1,
+    "isolation": 92,
+    "cover": 140
    }
   },
   "bottom_cap": {
    "applied": true,
    "cap_texels": 37112,
-   "rim_anchors": 122
+   "rim_anchors": 219
   },
   "feature_fringe_repair": {
    "applied": true,
    "stamps": [
     {
-     "complex": 4,
+     "complex": 7,
      "mode": "full",
-     "veto": "texel:lost_dark_blob a51 az+22.5el0"
+     "veto": "texel:new_dark_blob a74 az+0.0el0"
     },
     {
-     "complex": 4,
+     "complex": 8,
+     "mode": "full",
+     "veto": "texel:new_dark_blob a59 az+0.0el0"
+    },
+    {
+     "complex": 10,
+     "mode": "full",
+     "veto": "texel:new_dark_blob a74 az+0.0el0"
+    },
+    {
+     "complex": 10,
      "mode": "trace",
-     "veto": "texel:lost_dark_blob a51 az+22.5el0"
+     "veto": "texel:new_dark_blob a74 az+0.0el0"
     }
    ],
-   "patches": 18,
+   "patches": 45,
    "recopies": 0,
    "disc_refreshed": false,
    "registration": [
-    1.125,
-    0.12,
-    0.115
+    1.05,
+    0.075,
+    0.06
    ],
-   "speck_lifted_texels": 37,
-   "repaired_texels": 3989
+   "speck_lifted_texels": 305,
+   "repaired_texels": 6315
   },
   "film_band": {
    "applied": true,
-   "band_texels": 187023,
-   "commit_texels": 673,
-   "vacated_claims": 324,
-   "rim_demoted": 123,
-   "gradient_repaint": {
+   "band_texels": 223616,
+   "commit_texels": 784,
+   "vacated_claims": 811,
+   "rim_demoted": 214,
+   "retone": {
     "applied": true,
-    "field_support_transitions": 6.0,
-    "authority_texels": 13732,
-    "gap_texels": 718,
-    "clamp_texels": 25418,
-    "guard_dark_reverted": 58,
-    "guard_bright_killed": 695,
-    "mass_nodes": 101353,
-    "base_ring_nodes": 342244,
-    "displaced_dark_vetoed": 547,
-    "displaced_refilled": 547
+    "retoned_texels": 235,
+    "dark_anchors": 132076,
+    "mean_commit_weight": 1.0
    }
   },
   "seam_leveling": {
@@ -559,23 +562,23 @@
    "requested": "auto",
    "mode": "gradient_domain",
    "applied": true,
-   "solve_seconds": 7.68,
+   "solve_seconds": 9.07,
    "solver": {
-    "nodes": 459965,
-    "edges": 929072,
-    "cg_iterations": 53,
-    "final_relative_residual": 1.0479897103634601e-05,
+    "nodes": 467425,
+    "edges": 944737,
+    "cg_iterations": 55,
+    "final_relative_residual": 1.0028006537988066e-05,
     "edge_kind_counts": {
-     "grid": 893847,
-     "stitch": 35225,
-     "line_constraint": 105433
+     "grid": 906941,
+     "stitch": 37796,
+     "line_constraint": 107890
     },
     "mg_level_sizes": [
-     459965,
-     65137,
-     7999,
-     933,
-     108
+     467425,
+     66405,
+     8153,
+     957,
+     112
     ],
     "gradient_rule": "max_confidence",
     "anchor_lambda_scale": 0.003,
@@ -610,7 +613,7 @@
     "azimuth_deg": 180.0,
     "elevation_deg": 0.0,
     "generated": true,
-    "coverage_ratio": 0.2195
+    "coverage_ratio": 0.2601
    },
    {
     "index": 3,
@@ -618,7 +621,7 @@
     "azimuth_deg": 90.0,
     "elevation_deg": 0.0,
     "generated": true,
-    "coverage_ratio": 0.2114
+    "coverage_ratio": 0.2664
    },
    {
     "index": 4,
@@ -626,7 +629,7 @@
     "azimuth_deg": -90.0,
     "elevation_deg": 0.0,
     "generated": true,
-    "coverage_ratio": 0.2714
+    "coverage_ratio": 0.2183
    },
    {
     "index": 5,
@@ -634,7 +637,7 @@
     "azimuth_deg": 0.0,
     "elevation_deg": 55.0,
     "generated": true,
-    "coverage_ratio": 0.2085
+    "coverage_ratio": 0.1618
    }
   ],
   "source_pose": {
@@ -649,13 +652,13 @@
    "method": "photo_bbox_center"
   },
   "camera_distance": 3.0,
-  "observed_coverage_ratio": 0.8377,
+  "observed_coverage_ratio": 0.8492,
   "texture_completion": "mirror_symmetry",
   "symmetry_completion": {
    "mode": "mirror_symmetry",
    "geometry_symmetry_score": 0.9789,
-   "coverage_ratio": 0.0042,
-   "tone_matched_texels": 690,
+   "coverage_ratio": 0.0018,
+   "tone_matched_texels": 457,
    "applied": true
   }
  },
@@ -668,30 +671,38 @@
     "attempts": [
      {
       "seed": 11,
-      "silhouette_iou": 0.9154
+      "silhouette_iou": 0.9176,
+      "registration": {
+       "applied": true,
+       "iou": 0.9176,
+       "scale": 1.0,
+       "fx": 0.04,
+       "fy": 0.0
+      }
      }
     ],
     "accepted": true,
     "clay_renderer": "moderngl",
-    "prompt": "a carved ceramic owl figurine with warm cream and brown glaze, seen directly from behind, the same physical object with consistent materials and colors, photographed on a plain dark background, soft diffuse even studio lighting, matte finish, no harsh specular highlights or reflections, product photography, sharp focus",
-    "silhouette_iou": 0.9154,
-    "accepted_image_md5": "473889ff8d1b5666c67ce43875326474",
-    "specular_suppressed_fraction": 0.0111,
+    "prompt": "The left image shows a carved ceramic owl figurine with warm cream and brown glaze. The right image is an untextured 3D render of the SAME object seen directly from behind. Repaint the right image with the exact materials, colors and surface pattern of the left object. Keep the right image's exact shape and pose. Return only the repainted right view on a plain dark background, soft even studio lighting, matte finish, no reflections.",
+    "conditioning": "composite",
+    "silhouette_iou": 0.9176,
+    "accepted_image_md5": "a8c941fd02a48ff2ff3f764cb42160ba",
+    "specular_suppressed_fraction": 0.014,
     "tone_match": {
      "applied": true,
      "pre_match_distance": [
-      -27.47,
-      8.56,
-      -4.1
+      -3.05,
+      5.1,
+      7.37
      ],
      "applied_shift": [
-      -15.0,
-      8.56,
-      -4.1
+      -3.05,
+      5.1,
+      7.37
      ],
-     "clipped": true
+     "clipped": false
     },
-    "seconds": 68.7
+    "seconds": 262.6
    },
    {
     "label": "side_left",
@@ -700,30 +711,38 @@
     "attempts": [
      {
       "seed": 11,
-      "silhouette_iou": 0.9762
+      "silhouette_iou": 0.9222,
+      "registration": {
+       "applied": true,
+       "iou": 0.9222,
+       "scale": 1.0,
+       "fx": 0.04,
+       "fy": 0.0
+      }
      }
     ],
     "accepted": true,
     "clay_renderer": "moderngl",
-    "prompt": "a carved ceramic owl figurine with warm cream and brown glaze, seen from its left side profile, the same physical object with consistent materials and colors, photographed on a plain dark background, soft diffuse even studio lighting, matte finish, no harsh specular highlights or reflections, product photography, sharp focus",
-    "silhouette_iou": 0.9762,
-    "accepted_image_md5": "1f8d6382d85807fa6c868ddda652ff3f",
-    "specular_suppressed_fraction": 0.009,
+    "prompt": "The left image shows a carved ceramic owl figurine with warm cream and brown glaze. The right image is an untextured 3D render of the SAME object seen from its left side profile. Repaint the right image with the exact materials, colors and surface pattern of the left object. Keep the right image's exact shape and pose. Return only the repainted right view on a plain dark background, soft even studio lighting, matte finish, no reflections.",
+    "conditioning": "composite",
+    "silhouette_iou": 0.9222,
+    "accepted_image_md5": "87d48ee6a3caf6261fab90c88c5ea434",
+    "specular_suppressed_fraction": 0.0109,
     "tone_match": {
      "applied": true,
      "pre_match_distance": [
-      -17.53,
-      8.83,
-      0.42
+      -2.25,
+      10.3,
+      8.96
      ],
      "applied_shift": [
-      -15.0,
-      8.83,
-      0.42
+      -2.25,
+      10.0,
+      8.96
      ],
      "clipped": true
     },
-    "seconds": 58.6
+    "seconds": 154.1
    },
    {
     "label": "side_right",
@@ -732,30 +751,38 @@
     "attempts": [
      {
       "seed": 11,
-      "silhouette_iou": 0.9648
+      "silhouette_iou": 0.9214,
+      "registration": {
+       "applied": true,
+       "iou": 0.9214,
+       "scale": 1.0,
+       "fx": 0.04,
+       "fy": 0.0
+      }
      }
     ],
     "accepted": true,
     "clay_renderer": "moderngl",
-    "prompt": "a carved ceramic owl figurine with warm cream and brown glaze, seen from its right side profile, the same physical object with consistent materials and colors, photographed on a plain dark background, soft diffuse even studio lighting, matte finish, no harsh specular highlights or reflections, product photography, sharp focus",
-    "silhouette_iou": 0.9648,
-    "accepted_image_md5": "3ec04d87260d51db411c6a95135d1e8a",
-    "specular_suppressed_fraction": 0.006,
+    "prompt": "The left image shows a carved ceramic owl figurine with warm cream and brown glaze. The right image is an untextured 3D render of the SAME object seen from its right side profile. Repaint the right image with the exact materials, colors and surface pattern of the left object. Keep the right image's exact shape and pose. Return only the repainted right view on a plain dark background, soft even studio lighting, matte finish, no reflections.",
+    "conditioning": "composite",
+    "silhouette_iou": 0.9214,
+    "accepted_image_md5": "62ccf1d4110afe9f0acbbb21fcd54814",
+    "specular_suppressed_fraction": 0.0088,
     "tone_match": {
      "applied": true,
      "pre_match_distance": [
-      -21.43,
-      8.99,
-      -5.17
+      -3.59,
+      10.7,
+      7.64
      ],
      "applied_shift": [
-      -15.0,
-      8.99,
-      -5.17
+      -3.59,
+      10.0,
+      7.64
      ],
      "clipped": true
     },
-    "seconds": 58.7
+    "seconds": 203.6
    },
    {
     "label": "top",
@@ -764,30 +791,38 @@
     "attempts": [
      {
       "seed": 11,
-      "silhouette_iou": 0.9631
+      "silhouette_iou": 0.8861,
+      "registration": {
+       "applied": true,
+       "iou": 0.8861,
+       "scale": 1.06,
+       "fx": 0.06,
+       "fy": 0.02
+      }
      }
     ],
     "accepted": true,
     "clay_renderer": "moderngl",
-    "prompt": "a carved ceramic owl figurine with warm cream and brown glaze, seen from a high angle, looking down at its top, the same physical object with consistent materials and colors, photographed on a plain dark background, soft diffuse even studio lighting, matte finish, no harsh specular highlights or reflections, product photography, sharp focus",
-    "silhouette_iou": 0.9631,
-    "accepted_image_md5": "28abd090d90a0d20ea4c3ed1d1b72391",
-    "specular_suppressed_fraction": 0.0111,
+    "prompt": "The left image shows a carved ceramic owl figurine with warm cream and brown glaze. The right image is an untextured 3D render of the SAME object seen from a high angle, looking down at its top. Repaint the right image with the exact materials, colors and surface pattern of the left object. Keep the right image's exact shape and pose. Return only the repainted right view on a plain dark background, soft even studio lighting, matte finish, no reflections.",
+    "conditioning": "composite",
+    "silhouette_iou": 0.8861,
+    "accepted_image_md5": "60000621fb6597ac1a9c4c8123a6b153",
+    "specular_suppressed_fraction": 0.0209,
     "tone_match": {
      "applied": true,
      "pre_match_distance": [
-      -23.25,
-      5.15,
-      -10.21
+      -3.22,
+      6.24,
+      4.08
      ],
      "applied_shift": [
-      -15.0,
-      5.15,
-      -10.0
+      -3.22,
+      6.24,
+      4.08
      ],
-     "clipped": true
+     "clipped": false
     },
-    "seconds": 58.3
+    "seconds": 176.9
    }
   ],
   "accepted": 4,
@@ -798,6 +833,7 @@
   },
   "subject_hint": "a carved ceramic owl figurine with warm cream and brown glaze",
   "negative_prompt": "glossy shine, specular highlights, strong reflections, rim lighting, lens flare, harsh shadows, dramatic lighting",
+  "conditioning": "composite",
   "base_seed": 11,
   "silhouette_iou_min": 0.75
  }

@@ -229,6 +229,58 @@ def test_rebake_bundle_generates_when_single_view(tmp_path, monkeypatch) -> None
     assert (out_dir / "generated_back_clay.png").exists()
 
 
+def test_composite_conditioning_pairs_source_with_clay(monkeypatch) -> None:
+    """The composite canvas must carry the SOURCE photo (left) and the clay
+    render (right), and a model that echoes the full canvas back gets its
+    right half taken as the generation."""
+
+    mesh = sphere_mesh()
+    seen = {}
+
+    def echo_generator(prompt, image, **kwargs):
+        seen["prompt"] = prompt
+        seen["image_bytes"] = image
+        return image  # echo the two-panel canvas back
+
+    monkeypatch.setattr(
+        "abstract3d.segmentation.remove_background_robust",
+        lambda img: img.convert("RGBA"))
+    source = solid_rgba((200, 40, 40), size=96)  # distinct red source
+    views, report = refgen.generate_reference_views(
+        mesh, source,
+        image_generator=echo_generator,
+        angles=[("back", 180.0, 0.0)],
+        subject_hint="a red sphere",
+        conditioning="composite",
+        render_size=96,
+        silhouette_iou_min=0.0,  # the echoed clay panel passes trivially
+    )
+    assert report["conditioning"] == "composite"
+    assert "Repaint the right image" in seen["prompt"]
+    canvas = Image.open(io.BytesIO(seen["image_bytes"]))
+    assert canvas.width == canvas.height * 2  # two panels
+    left = np.asarray(canvas)[:, : canvas.width // 2]
+    assert left[:, :, 0].mean() > 150  # source photo present on the left
+    assert len(views) == 1
+    # the accepted view is the right panel, not the full canvas
+    assert views[0]["rgba"].width == views[0]["rgba"].height
+
+
+def test_register_matte_to_clay_recovers_shift() -> None:
+    mesh = sphere_mesh()
+    clay = render_like_clay(mesh, 180.0)
+    aligned = clay_matching_generation(mesh, 180.0)
+    # shift the generation by 8% — below the gate without registration
+    shifted = Image.new("RGBA", aligned.size, (0, 0, 0, 0))
+    shifted.paste(aligned, (int(aligned.width * 0.08), 0))
+    before = refgen.silhouette_iou(shifted, clay)
+    registered, stats = refgen.register_matte_to_clay(shifted, clay)
+    after = refgen.silhouette_iou(registered, clay)
+    assert stats["applied"] is True
+    assert after > before
+    assert after > 0.9
+
+
 def test_clay_and_projector_azimuth_conventions_agree() -> None:
     """The property that makes synthesis safe: a view generated from the
     mesh's az-A clay render projects back at exactly az A.
