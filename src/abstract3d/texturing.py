@@ -2009,6 +2009,7 @@ def blend_projections(
                 "label": str(projection.get("label") or f"view_{index:02d}"),
                 "azimuth_deg": float(projection.get("azimuth_deg", 0.0)),
                 "elevation_deg": float(projection.get("elevation_deg", 0.0)),
+                "generated": bool(projection.get("generated", False)),
                 "coverage_ratio": round(float(projection.get("coverage_ratio") or 0.0), 4),
             }
         )
@@ -4918,6 +4919,7 @@ def bake_projection_texture(
     compositing: str = "auto",
     source_pose_override: Optional[Tuple[float, float]] = None,
     scarcity_rescue: str = "auto",
+    generated_reference_weight: float = 0.6,
 ) -> Tuple[Any, Dict[str, Any]]:
     """Bake a UV base-color texture for `mesh` from observed views.
 
@@ -5136,6 +5138,9 @@ def bake_projection_texture(
             )
     projections: List[Dict[str, Any]] = []
     registration_stats: List[Dict[str, Any]] = []
+    has_real_references = any(
+        not view.get("generated") for view in views[1:]
+    )
     for index, view in enumerate(views, start=1):
         rgba_image = view["rgba"].convert("RGBA")
         view_azimuth = float(view.get("azimuth_deg", 0.0))
@@ -5331,12 +5336,30 @@ def bake_projection_texture(
             # witness, so the source stops painting earlier. Single-view
             # and perspective bakes keep the wide threshold — stretched
             # content beats no content when nothing else covers the area.
-            facing_threshold=0.4 if (orthographic and index == 1 and len(views) > 1) else 0.2,
+            # GENERATED references do not tighten the source's gate: a
+            # real photo's stretched rim content still outranks plausible
+            # synthesis, so the source keeps single-view semantics unless
+            # at least one REAL reference photo exists.
+            facing_threshold=(
+                0.4 if (orthographic and index == 1 and has_real_references) else 0.2
+            ),
         )
         projection["label"] = str(view.get("label") or f"view_{index:02d}")
         projection["azimuth_deg"] = view_azimuth
         projection["elevation_deg"] = view_elevation
         projection["role"] = str(view.get("role") or ("source" if index == 1 else "reference"))
+        if view.get("generated"):
+            # Synthesized views are plausible witnesses, not photographs:
+            # they must lose every per-texel contest against real photo
+            # content, and only own texels no real view covers. A uniform
+            # weight attenuation keeps them subordinate in blending and
+            # conflict resolution while leaving their exclusive-region
+            # coverage intact.
+            projection["generated"] = True
+            projection["weight"] = (
+                np.asarray(projection["weight"], dtype=np.float32)
+                * float(generated_reference_weight)
+            )
         projections.append(projection)
 
     # Remove per-view baked-in shading DIFFERENCES before any tone gating:
@@ -5578,8 +5601,12 @@ def bake_projection_texture(
     # candidates too); film-committed texels are excluded (surrender +
     # commitment is one coupled decision).
     scarcity_requested = str(scarcity_rescue or "auto").strip().lower()
+    # "auto" keys on REAL reference photos: generated views must not flip
+    # the single-photo canaries into the rescue regime (the bake docstring
+    # pins that regime change behind its own A/B).
     scarcity_enabled = (
-        len(projections) > 1 if scarcity_requested == "auto"
+        (len(projections) > 1 and has_real_references)
+        if scarcity_requested == "auto"
         else scarcity_requested in ("on", "true", "1", "yes")
     )
     scarcity_stats: Dict[str, Any] = {

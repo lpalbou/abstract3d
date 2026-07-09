@@ -1,0 +1,804 @@
+{
+ "schema_version": 1,
+ "kind": "rebake",
+ "source_bundle": "/Users/albou/abstract3d/artifacts/validation/final-proof/hunyuan-owl",
+ "texture_resolution": 1024,
+ "texture_completion": "auto",
+ "projection_model": "orthographic",
+ "source_pose_override": null,
+ "scarcity_rescue": "auto",
+ "compositing": "auto",
+ "reference_count": 4,
+ "bake_seconds": 273.024,
+ "texture_png_md5": "9e4e7a8bda05d5a3475da4fb331eae1a",
+ "stats": {
+  "camera_distance": 3.0,
+  "source_pose": {
+   "azimuth_deg": 0.0,
+   "elevation_deg": 0.0,
+   "silhouette_iou": 0.0,
+   "method": "gradient_ncc",
+   "score": 0.0528,
+   "estimated": false
+  },
+  "source_registration": {
+   "method": "photo_bbox_center"
+  },
+  "view_registration": [
+   {
+    "applied": false,
+    "scale": 1.0,
+    "shift_x": 0.0,
+    "shift_y": 0.0,
+    "label": "front",
+    "photometric": {
+     "applied": false
+    },
+    "pose": {
+     "refined": false
+    },
+    "ortho_half_extent": 1.1727
+   },
+   {
+    "applied": false,
+    "scale": 1.0,
+    "shift_x": 0.0,
+    "shift_y": 0.0,
+    "iou_before": 0.91,
+    "iou_after": 0.91,
+    "score_before": -1.1042,
+    "score_after": -1.1042,
+    "overlap_alignment": {
+     "applied": true,
+     "scale": 1.02,
+     "shift_x": 0.04,
+     "shift_y": -0.08,
+     "overlap": 70154,
+     "err_before": 0.2438,
+     "err_after": 0.2231
+    },
+    "dense_flow": {
+     "applied": false,
+     "reason": "no_overlap"
+    },
+    "label": "back",
+    "photometric": {
+     "applied": true,
+     "scale": 1.01,
+     "shift_x": 0.0,
+     "shift_y": -0.001,
+     "profile_error": 0.0588
+    },
+    "pose": {
+     "refined": false
+    },
+    "ortho_half_extent": 1.1727
+   },
+   {
+    "applied": false,
+    "scale": 1.0,
+    "shift_x": 0.0,
+    "shift_y": 0.0,
+    "iou_before": 0.96,
+    "iou_after": 0.96,
+    "score_before": -0.5458,
+    "score_after": -0.5458,
+    "overlap_alignment": {
+     "applied": true,
+     "scale": 1.02,
+     "shift_x": -0.08,
+     "shift_y": -0.08,
+     "overlap": 70154,
+     "err_before": 0.2241,
+     "err_after": 0.1953
+    },
+    "dense_flow": {
+     "applied": true,
+     "reason": "accepted",
+     "gains": [
+      0.8011,
+      0.7024,
+      0.676
+     ],
+     "err_before": 0.18385,
+     "err_after": 0.13618,
+     "flow_p50_px": 9.45,
+     "flow_max_px": 10.24,
+     "band_px": 994,
+     "cells_kept": 4,
+     "cells_evaluated": 7
+    },
+    "label": "side_left",
+    "photometric": {
+     "applied": true,
+     "scale": 1.01,
+     "shift_x": 0.0027,
+     "shift_y": -0.001,
+     "profile_error": 0.0143
+    },
+    "pose": {
+     "refined": false
+    },
+    "ortho_half_extent": 1.1727
+   },
+   {
+    "applied": false,
+    "scale": 1.0,
+    "shift_x": 0.0,
+    "shift_y": 0.0,
+    "iou_before": 0.9537,
+    "iou_after": 0.9537,
+    "score_before": -0.6396,
+    "score_after": -0.6396,
+    "overlap_alignment": {
+     "applied": false,
+     "scale": 1.0,
+     "shift_x": 0.0,
+     "shift_y": 0.0,
+     "overlap": 70154,
+     "err_before": 0.2198,
+     "err_after": 0.2104
+    },
+    "dense_flow": {
+     "applied": false,
+     "reason": "no_improvement",
+     "gains": [
+      0.8908,
+      0.8431,
+      0.8554
+     ],
+     "err_before": 0.13182,
+     "err_after": 0.12211,
+     "flow_p50_px": 0.28,
+     "flow_max_px": 7.2,
+     "band_px": 877,
+     "cells_kept": 2,
+     "cells_evaluated": 7
+    },
+    "label": "side_right",
+    "photometric": {
+     "applied": true,
+     "scale": 1.01,
+     "shift_x": -0.003,
+     "shift_y": -0.001,
+     "profile_error": 0.0197
+    },
+    "pose": {
+     "refined": false
+    },
+    "ortho_half_extent": 1.1727
+   },
+   {
+    "applied": false,
+    "scale": 1.0,
+    "shift_x": 0.0,
+    "shift_y": 0.0,
+    "iou_before": 0.976,
+    "iou_after": 0.976,
+    "score_before": -0.3816,
+    "score_after": -0.3816,
+    "overlap_alignment": {
+     "applied": false,
+     "scale": 1.0,
+     "shift_x": 0.0,
+     "shift_y": 0.0,
+     "overlap": 70154,
+     "err_before": 0.211,
+     "err_after": 0.2023
+    },
+    "dense_flow": {
+     "applied": true,
+     "reason": "accepted",
+     "gains": [
+      1.0371,
+      1.0187,
+      1.0342
+     ],
+     "err_before": 0.17369,
+     "err_after": 0.14472,
+     "flow_p50_px": 6.97,
+     "flow_max_px": 10.24,
+     "band_px": 27921,
+     "cells_kept": 13,
+     "cells_evaluated": 35
+    },
+    "label": "top",
+    "photometric": {
+     "applied": true,
+     "scale": 1.01,
+     "shift_x": -0.0026,
+     "shift_y": 0.0563,
+     "profile_error": 0.0198
+    },
+    "pose": {
+     "refined": false
+    },
+    "ortho_half_extent": 0.9548
+   }
+  ],
+  "view_consistency": [
+   {
+    "overlap_texels": 0,
+    "harmonized": false,
+    "gains": null,
+    "disagreement": null,
+    "weight_scale": 1.0,
+    "label": "back"
+   },
+   {
+    "overlap_texels": 8202,
+    "harmonized": false,
+    "gains": null,
+    "disagreement": 0.1949,
+    "weight_scale": 1.0,
+    "gain_ratio_spread": 1.568,
+    "label": "side_left"
+   },
+   {
+    "overlap_texels": 12340,
+    "harmonized": false,
+    "gains": null,
+    "disagreement": 0.1475,
+    "weight_scale": 1.0,
+    "gain_ratio_spread": 0.8514,
+    "label": "side_right"
+   },
+   {
+    "overlap_texels": 39675,
+    "harmonized": false,
+    "gains": null,
+    "disagreement": 0.1699,
+    "weight_scale": 1.0,
+    "gain_ratio_spread": 0.8637,
+    "label": "top",
+    "conflict_resolution": {
+     "conflict_texels": 12519,
+     "zeroed_by_view": {
+      "front": 3957,
+      "back": 212,
+      "side_left": 1647,
+      "side_right": 877,
+      "top": 6161
+     }
+    }
+   }
+  ],
+  "outlier_filter": {
+   "dropped_texels": 460
+  },
+  "texture_padding": 4,
+  "projection_mode": "projection_multiview_plus_symmetry_plus_fill3d",
+  "unseen_fill_mode": "mesh_harmonic",
+  "observed_coverage_ratio": 0.8377,
+  "observed_view_stats": [
+   {
+    "index": 1,
+    "label": "front",
+    "azimuth_deg": 0.0,
+    "elevation_deg": 0.0,
+    "generated": false,
+    "coverage_ratio": 0.2943
+   },
+   {
+    "index": 2,
+    "label": "back",
+    "azimuth_deg": 180.0,
+    "elevation_deg": 0.0,
+    "generated": true,
+    "coverage_ratio": 0.2195
+   },
+   {
+    "index": 3,
+    "label": "side_left",
+    "azimuth_deg": 90.0,
+    "elevation_deg": 0.0,
+    "generated": true,
+    "coverage_ratio": 0.2114
+   },
+   {
+    "index": 4,
+    "label": "side_right",
+    "azimuth_deg": -90.0,
+    "elevation_deg": 0.0,
+    "generated": true,
+    "coverage_ratio": 0.2714
+   },
+   {
+    "index": 5,
+    "label": "top",
+    "azimuth_deg": 0.0,
+    "elevation_deg": 55.0,
+    "generated": true,
+    "coverage_ratio": 0.2085
+   }
+  ],
+  "leverage": {
+   "available": true,
+   "surface_texels": 552004,
+   "potential_union_ratio": 0.8566,
+   "direct_painted_ratio": 0.8333,
+   "leverage_ratio": 0.9728,
+   "surrendered_visible_ratio": 0.0249,
+   "unobservable_ratio": 0.1434,
+   "views": [
+    {
+     "label": "front",
+     "facing_threshold": 0.2,
+     "potential_texels": 195230,
+     "potential_ratio": 0.3537,
+     "painted_texels": 157898,
+     "painted_ratio": 0.286,
+     "won_texels": 105110,
+     "won_ratio": 0.1904,
+     "rescued_texels": 0,
+     "surrendered_facing_gate": 20633,
+     "surrendered_zone_gate": 12213,
+     "surrendered_downstream": 3978,
+     "surrendered_union_drop": 573
+    },
+    {
+     "label": "back",
+     "facing_threshold": 0.2,
+     "potential_texels": 133966,
+     "potential_ratio": 0.2427,
+     "painted_texels": 120962,
+     "painted_ratio": 0.2191,
+     "won_texels": 101238,
+     "won_ratio": 0.1834,
+     "rescued_texels": 0,
+     "surrendered_facing_gate": 12264,
+     "surrendered_zone_gate": 1118,
+     "surrendered_downstream": 211,
+     "surrendered_union_drop": 11
+    },
+    {
+     "label": "side_left",
+     "facing_threshold": 0.2,
+     "potential_texels": 127359,
+     "potential_ratio": 0.2307,
+     "painted_texels": 114934,
+     "painted_ratio": 0.2082,
+     "won_texels": 89828,
+     "won_ratio": 0.1627,
+     "rescued_texels": 1,
+     "surrendered_facing_gate": 9849,
+     "surrendered_zone_gate": 1541,
+     "surrendered_downstream": 1647,
+     "surrendered_union_drop": 127
+    },
+    {
+     "label": "side_right",
+     "facing_threshold": 0.2,
+     "potential_texels": 174855,
+     "potential_ratio": 0.3168,
+     "painted_texels": 148625,
+     "painted_ratio": 0.2692,
+     "won_texels": 109802,
+     "won_ratio": 0.1989,
+     "rescued_texels": 3,
+     "surrendered_facing_gate": 18411,
+     "surrendered_zone_gate": 6774,
+     "surrendered_downstream": 980,
+     "surrendered_union_drop": 186
+    },
+    {
+     "label": "top",
+     "facing_threshold": 0.2,
+     "potential_texels": 158897,
+     "potential_ratio": 0.2879,
+     "painted_texels": 108749,
+     "painted_ratio": 0.197,
+     "won_texels": 53848,
+     "won_ratio": 0.0976,
+     "rescued_texels": 2,
+     "surrendered_facing_gate": 28523,
+     "surrendered_zone_gate": 15293,
+     "surrendered_downstream": 6161,
+     "surrendered_union_drop": 177
+    }
+   ],
+   "shipped_direct_ratio": 0.8333,
+   "mirror_completed_ratio": 0.0042,
+   "mirror_over_photo_visible_ratio": 0.0012
+  },
+  "scarcity_rescue": {
+   "requested": "auto",
+   "enabled": false,
+   "applied": false
+  },
+  "texture_completion": "mirror_symmetry",
+  "texture_completion_requested": "auto",
+  "fill_detail": {
+   "applied": true,
+   "gain": 0.7,
+   "energy_calibration": {
+    "observed_energy": 0.932,
+    "target_energy": 0.652,
+    "fill_energy_at_1": 0.365,
+    "fill_energy_base": 0.202,
+    "fill_energy_final": 0.518,
+    "sigma_observed_band": 0.1334,
+    "sigma_at_scale": 0.1479,
+    "scale": 2.705
+   }
+  },
+  "fill_floor": {
+   "applied": true,
+   "lifted_texels": 10399,
+   "evidence_exempt_components": 20,
+   "mean_lift": 0.3255,
+   "p99_lift": 1.4,
+   "consensus_texels": 665
+  },
+  "delight": {
+   "applied": true,
+   "views": [
+    {
+     "index": 1,
+     "label": "back",
+     "overlap_texels": 0,
+     "applied": false
+    },
+    {
+     "index": 2,
+     "label": "side_left",
+     "overlap_texels": 8106,
+     "applied": true,
+     "disagreement_before": 0.225,
+     "disagreement_after": 0.195,
+     "field_p95": 0.5799,
+     "exclusive_mean_abs_delta": 0.0469
+    },
+    {
+     "index": 3,
+     "label": "side_right",
+     "overlap_texels": 7595,
+     "applied": true,
+     "disagreement_before": 0.1751,
+     "disagreement_after": 0.1468,
+     "field_p95": 0.3046,
+     "exclusive_mean_abs_delta": 0.0281
+    },
+    {
+     "index": 4,
+     "label": "top",
+     "overlap_texels": 36432,
+     "applied": true,
+     "disagreement_before": 0.1794,
+     "disagreement_after": 0.1688,
+     "field_p95": 0.3582,
+     "exclusive_mean_abs_delta": 0.1737
+    }
+   ]
+  },
+  "symmetry_completion": {
+   "mode": "mirror_symmetry",
+   "geometry_symmetry_score": 0.9789,
+   "coverage_ratio": 0.0042,
+   "tone_matched_texels": 690,
+   "applied": true
+  },
+  "mirror_rescue": {
+   "applied": false,
+   "discs": [],
+   "geometry_symmetry_score": 0.9789
+  },
+  "trace_deposits": {
+   "applied": true,
+   "committed_texels": 2952,
+   "swept_islands": 47,
+   "rim_feathered": 1739,
+   "blob_count": 15
+  },
+  "pale_chips": {
+   "applied": true,
+   "committed_texels": 3317,
+   "blobs": 113,
+   "refused": {
+    "area": 392,
+    "w90": 0,
+    "ring": 63,
+    "isolation": 84,
+    "cover": 126
+   }
+  },
+  "bottom_cap": {
+   "applied": true,
+   "cap_texels": 37112,
+   "rim_anchors": 122
+  },
+  "feature_fringe_repair": {
+   "applied": true,
+   "stamps": [
+    {
+     "complex": 4,
+     "mode": "full",
+     "veto": "texel:lost_dark_blob a51 az+22.5el0"
+    },
+    {
+     "complex": 4,
+     "mode": "trace",
+     "veto": "texel:lost_dark_blob a51 az+22.5el0"
+    }
+   ],
+   "patches": 18,
+   "recopies": 0,
+   "disc_refreshed": false,
+   "registration": [
+    1.125,
+    0.12,
+    0.115
+   ],
+   "speck_lifted_texels": 37,
+   "repaired_texels": 3989
+  },
+  "film_band": {
+   "applied": true,
+   "band_texels": 187023,
+   "commit_texels": 673,
+   "vacated_claims": 324,
+   "rim_demoted": 123,
+   "gradient_repaint": {
+    "applied": true,
+    "field_support_transitions": 6.0,
+    "authority_texels": 13732,
+    "gap_texels": 718,
+    "clamp_texels": 25418,
+    "guard_dark_reverted": 58,
+    "guard_bright_killed": 695,
+    "mass_nodes": 101353,
+    "base_ring_nodes": 342244,
+    "displaced_dark_vetoed": 547,
+    "displaced_refilled": 547
+   }
+  },
+  "seam_leveling": {
+   "applied": false
+  },
+  "compositing": {
+   "requested": "auto",
+   "mode": "gradient_domain",
+   "applied": true,
+   "solve_seconds": 7.68,
+   "solver": {
+    "nodes": 459965,
+    "edges": 929072,
+    "cg_iterations": 53,
+    "final_relative_residual": 1.0479897103634601e-05,
+    "edge_kind_counts": {
+     "grid": 893847,
+     "stitch": 35225,
+     "line_constraint": 105433
+    },
+    "mg_level_sizes": [
+     459965,
+     65137,
+     7999,
+     933,
+     108
+    ],
+    "gradient_rule": "max_confidence",
+    "anchor_lambda_scale": 0.003,
+    "line_edge_weight": 1.0,
+    "specular_reconcile": {
+     "applied": false
+    },
+    "shadow_reconcile": {
+     "applied": false
+    }
+   }
+  },
+  "blend_sharpness": 3.0,
+  "feather_texels": 6.0,
+  "vertex_mapping_count": 68270,
+  "uv_vertex_count": 68270,
+  "face_count": 120000
+ },
+ "texture_artifacts": {
+  "observed_view_stats": [
+   {
+    "index": 1,
+    "label": "front",
+    "azimuth_deg": 0.0,
+    "elevation_deg": 0.0,
+    "generated": false,
+    "coverage_ratio": 0.2943
+   },
+   {
+    "index": 2,
+    "label": "back",
+    "azimuth_deg": 180.0,
+    "elevation_deg": 0.0,
+    "generated": true,
+    "coverage_ratio": 0.2195
+   },
+   {
+    "index": 3,
+    "label": "side_left",
+    "azimuth_deg": 90.0,
+    "elevation_deg": 0.0,
+    "generated": true,
+    "coverage_ratio": 0.2114
+   },
+   {
+    "index": 4,
+    "label": "side_right",
+    "azimuth_deg": -90.0,
+    "elevation_deg": 0.0,
+    "generated": true,
+    "coverage_ratio": 0.2714
+   },
+   {
+    "index": 5,
+    "label": "top",
+    "azimuth_deg": 0.0,
+    "elevation_deg": 55.0,
+    "generated": true,
+    "coverage_ratio": 0.2085
+   }
+  ],
+  "source_pose": {
+   "azimuth_deg": 0.0,
+   "elevation_deg": 0.0,
+   "silhouette_iou": 0.0,
+   "method": "gradient_ncc",
+   "score": 0.0528,
+   "estimated": false
+  },
+  "source_registration": {
+   "method": "photo_bbox_center"
+  },
+  "camera_distance": 3.0,
+  "observed_coverage_ratio": 0.8377,
+  "texture_completion": "mirror_symmetry",
+  "symmetry_completion": {
+   "mode": "mirror_symmetry",
+   "geometry_symmetry_score": 0.9789,
+   "coverage_ratio": 0.0042,
+   "tone_matched_texels": 690,
+   "applied": true
+  }
+ },
+ "generated_references": {
+  "angles": [
+   {
+    "label": "back",
+    "azimuth_deg": 180.0,
+    "elevation_deg": 0.0,
+    "attempts": [
+     {
+      "seed": 11,
+      "silhouette_iou": 0.9154
+     }
+    ],
+    "accepted": true,
+    "clay_renderer": "moderngl",
+    "prompt": "a carved ceramic owl figurine with warm cream and brown glaze, seen directly from behind, the same physical object with consistent materials and colors, photographed on a plain dark background, soft diffuse even studio lighting, matte finish, no harsh specular highlights or reflections, product photography, sharp focus",
+    "silhouette_iou": 0.9154,
+    "accepted_image_md5": "473889ff8d1b5666c67ce43875326474",
+    "specular_suppressed_fraction": 0.0111,
+    "tone_match": {
+     "applied": true,
+     "pre_match_distance": [
+      -27.47,
+      8.56,
+      -4.1
+     ],
+     "applied_shift": [
+      -15.0,
+      8.56,
+      -4.1
+     ],
+     "clipped": true
+    },
+    "seconds": 68.7
+   },
+   {
+    "label": "side_left",
+    "azimuth_deg": 90.0,
+    "elevation_deg": 0.0,
+    "attempts": [
+     {
+      "seed": 11,
+      "silhouette_iou": 0.9762
+     }
+    ],
+    "accepted": true,
+    "clay_renderer": "moderngl",
+    "prompt": "a carved ceramic owl figurine with warm cream and brown glaze, seen from its left side profile, the same physical object with consistent materials and colors, photographed on a plain dark background, soft diffuse even studio lighting, matte finish, no harsh specular highlights or reflections, product photography, sharp focus",
+    "silhouette_iou": 0.9762,
+    "accepted_image_md5": "1f8d6382d85807fa6c868ddda652ff3f",
+    "specular_suppressed_fraction": 0.009,
+    "tone_match": {
+     "applied": true,
+     "pre_match_distance": [
+      -17.53,
+      8.83,
+      0.42
+     ],
+     "applied_shift": [
+      -15.0,
+      8.83,
+      0.42
+     ],
+     "clipped": true
+    },
+    "seconds": 58.6
+   },
+   {
+    "label": "side_right",
+    "azimuth_deg": -90.0,
+    "elevation_deg": 0.0,
+    "attempts": [
+     {
+      "seed": 11,
+      "silhouette_iou": 0.9648
+     }
+    ],
+    "accepted": true,
+    "clay_renderer": "moderngl",
+    "prompt": "a carved ceramic owl figurine with warm cream and brown glaze, seen from its right side profile, the same physical object with consistent materials and colors, photographed on a plain dark background, soft diffuse even studio lighting, matte finish, no harsh specular highlights or reflections, product photography, sharp focus",
+    "silhouette_iou": 0.9648,
+    "accepted_image_md5": "3ec04d87260d51db411c6a95135d1e8a",
+    "specular_suppressed_fraction": 0.006,
+    "tone_match": {
+     "applied": true,
+     "pre_match_distance": [
+      -21.43,
+      8.99,
+      -5.17
+     ],
+     "applied_shift": [
+      -15.0,
+      8.99,
+      -5.17
+     ],
+     "clipped": true
+    },
+    "seconds": 58.7
+   },
+   {
+    "label": "top",
+    "azimuth_deg": 0.0,
+    "elevation_deg": 55.0,
+    "attempts": [
+     {
+      "seed": 11,
+      "silhouette_iou": 0.9631
+     }
+    ],
+    "accepted": true,
+    "clay_renderer": "moderngl",
+    "prompt": "a carved ceramic owl figurine with warm cream and brown glaze, seen from a high angle, looking down at its top, the same physical object with consistent materials and colors, photographed on a plain dark background, soft diffuse even studio lighting, matte finish, no harsh specular highlights or reflections, product photography, sharp focus",
+    "silhouette_iou": 0.9631,
+    "accepted_image_md5": "28abd090d90a0d20ea4c3ed1d1b72391",
+    "specular_suppressed_fraction": 0.0111,
+    "tone_match": {
+     "applied": true,
+     "pre_match_distance": [
+      -23.25,
+      5.15,
+      -10.21
+     ],
+     "applied_shift": [
+      -15.0,
+      5.15,
+      -10.0
+     ],
+     "clipped": true
+    },
+    "seconds": 58.3
+   }
+  ],
+  "accepted": 4,
+  "rejected": 0,
+  "image_request": {
+   "provider": "mlx-gen",
+   "model": "AbstractFramework/flux.2-klein-4b-8bit"
+  },
+  "subject_hint": "a carved ceramic owl figurine with warm cream and brown glaze",
+  "negative_prompt": "glossy shine, specular highlights, strong reflections, rim lighting, lens flare, harsh shadows, dramatic lighting",
+  "base_seed": 11,
+  "silhouette_iou_min": 0.75
+ }
+}

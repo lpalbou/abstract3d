@@ -175,6 +175,36 @@ asset):
   which is the natural substrate for agent-driven generate -> inspect ->
   critique loops)
 
+## Generated Reference Completion — Productized (2026-07-09)
+
+The manual generated-reference procedure below is now a first-class option:
+`texture_reference_generation` (auto/on/off, default auto) on the Hunyuan
+backend, `generate_references` on `abstract3d.bundle.rebake_bundle`, and
+matching CLI flags. When only one photo is provided, the pipeline clay-renders
+the reconstructed mesh from the target angles (back/left/right/top by
+default; `texture_reference_generation_angles` accepts labels or
+`label:azimuth,elevation` entries such as the starship's `bottom:0,-75`),
+conditions a local i2i generation on each render, gates acceptance on
+silhouette IoU >= 0.75, suppresses baked specular highlights, applies
+cap-limited LAB tone matching, and feeds accepted views into the certified
+bake as SUBORDINATED witnesses (attenuated weights; the real photo wins
+every contest; single-photo bake semantics preserved).
+
+Measured on the certified owl (single photo, product path): observed
+coverage 0.30 -> 0.84, all four angles accepted first-attempt (IoU
+0.92-0.98). Certified single-photo hashes stay bit-identical with the
+feature off (golden gate) and the feature cannot fire without an
+explicitly configured image provider AND a subject prompt ("auto" skips
+with an actionable warning; "on" overrides).
+
+Honest scope: a generated view is plausible synthesis, not ground truth.
+Content on fully unobserved regions is invented from the mesh shape, the
+subject prompt, and the source photo's tone; the three side views are
+generated independently. Every bundle records full provenance
+(provider/model, prompts, seeds, per-attempt IoU, accepted-image hashes,
+clay renderer, tone shifts) and persists the generated photos plus their
+clay conditions as `texture_reference_generated_*.png`.
+
 ## Generated Reference Views (2026-07-08)
 
 When a surface region is unobservable from the supplied photos, the pipeline can now

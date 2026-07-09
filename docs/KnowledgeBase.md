@@ -1145,6 +1145,34 @@ whenever the estimators disagree again.)
   statistics intermediates trimmed but did not move the peak's structure.
   Run one process per measured asset: a shared process carries the
   previous asset's high-water mark forward and corrupts attribution.
+- Generated reference views are registration-exact BY CONSTRUCTION in the
+  orthographic path: reference angles are subject-frame (the canonical
+  object frame IS the subject frame; the estimated source-pose offset
+  applies only to views[0]), and the clay-render camera uses the same eye
+  formula as the projector — so a view synthesized from the mesh's own
+  az-180 render projects back at exactly az 180. This is the property that
+  makes synthesis safe to productize; anything that applied the source
+  pose to all views (e.g. `estimate_source_pose=True` in the perspective
+  path) would break it, which is why the convention is pinned by test.
+- A synthesized witness must be SUBORDINATE: attenuate its projection
+  weight so real photo content wins every per-texel contest, keep the
+  source view's single-view facing semantics when all references are
+  generated, and leave scarcity rescue off. The multi-view regime's
+  tighter source gate exists because real references are better witnesses
+  at grazing angles — plausible synthesis is not.
+- Diffusion i2i output must be treated as lit rendering, not albedo: even
+  with matte-lighting prompts and negative prompts, FLUX bakes specular
+  highlights into glazed materials (the owl crown blob survived four-view
+  consensus). Detect highlights as lighter-AND-less-saturated than the
+  local diffuse body estimate (heavy masked Gaussian) and pull them toward
+  it before the bake ever sees the view.
+- Default-on generative features need two consent gates beyond
+  availability: the resolved provider must be EXPLICITLY configured (the
+  fallback route of a capability registry may be a remote paid API), and
+  the synthesis must have subject knowledge (a clay render carries shape,
+  not materials; with an empty hint the model invents identity for
+  exactly the default single-photo user). "auto" skips with an actionable
+  warning when either is missing; "on" is the explicit override.
 
 ## DEPRECATED
 

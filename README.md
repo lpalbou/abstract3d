@@ -71,10 +71,14 @@ which closed a six-cycle adversarial zero-defect program on 2026-07-07
 - crop-aware photo registration and photometric pose estimation
 - multi-view blending with per-texel conflict resolution and gradient-domain compositing
 - confidence-gated mirror completion and crease-aware mesh-graph harmonic fill
-- optional generated reference views: render the mesh from an unseen angle, synthesize a
-  matching photo through `abstractvision` `i2i` (shape-locked, silhouette-gated,
-  tone-matched), and feed it back into the bake
-  ([`artifacts/validation/generated-references/`](artifacts/validation/generated-references/))
+- generated reference completion (`texture_reference_generation`, default `auto`):
+  when only one photo is provided, render the mesh from the unseen angles, synthesize
+  matching photos through the configured `abstractvision` i2i provider (shape-locked,
+  silhouette-gated, despecularized, tone-capped), and feed them into the bake as
+  subordinated witnesses — measured on the certified owl: observed coverage 0.30 -> 0.84.
+  `auto` fires only with an explicitly configured image provider and a subject prompt;
+  generated views are plausible synthesis, not ground truth, and every bundle records
+  full provenance ([`artifacts/validation/generated-references/`](artifacts/validation/generated-references/))
 
 Texture color is exact where a photo observed the surface and reconstructed elsewhere;
 regions no photo can see remain approximations unless you add more views (real or generated).

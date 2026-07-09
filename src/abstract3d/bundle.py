@@ -138,6 +138,10 @@ def rebake_bundle(
     *,
     output_dir: Optional[Union[str, Path]] = None,
     references: Sequence[Mapping[str, Any]] = (),
+    generate_references: str = "off",
+    generation_angles: Optional[Sequence[Tuple[str, float, float]]] = None,
+    subject_hint: Optional[str] = None,
+    owner: Any = None,
     texture_resolution: Optional[int] = None,
     texture_completion: str = "auto",
     projection_model: str = "orthographic",
@@ -171,6 +175,40 @@ def rebake_bundle(
     )
     views = prepare_observed_views(loaded.input_path, references)
 
+    generation_report: Optional[Dict[str, Any]] = None
+    if generate_references in ("auto", "on") and len(views) == 1:
+        from .reference_generation import (
+            DEFAULT_ANGLES,
+            auto_generation_ready,
+            generate_reference_views,
+        )
+
+        ready, readiness_reason = auto_generation_ready(owner, subject_hint)
+        if generate_references == "auto" and not ready:
+            generation_report = {"skipped": readiness_reason}
+        else:
+            try:
+                generated_views, generation_report = generate_reference_views(
+                    mesh,
+                    views[0]["rgba"],
+                    owner=owner,
+                    angles=generation_angles or DEFAULT_ANGLES,
+                    subject_hint=subject_hint,
+                )
+                views.extend(generated_views)
+                try:
+                    from .backends.step1x_runtime import _release_mlx_generation_cache
+
+                    _release_mlx_generation_cache()
+                except Exception:
+                    pass
+            except Exception as exc:
+                if generate_references == "on":
+                    raise
+                generation_report = {
+                    "skipped": f"generation failed: {type(exc).__name__}: {exc}"
+                }
+
     started = time.perf_counter()
     textured, stats = texturing.bake_projection_texture(
         mesh,
@@ -198,6 +236,11 @@ def rebake_bundle(
             for k, v in stats.items()
             if k not in ("texture_image", "uv_preview", "vmapping", "indices", "uvs")
         }
+        # Copy the source photo so QA harnesses (scripts/texture_qa.py) can
+        # reconstruct per-view visibility on the rebake output.
+        if loaded.input_path.exists():
+            shutil_src = loaded.input_path.read_bytes()
+            (out / "input.png").write_bytes(shutil_src)
         metadata = {
             "schema_version": BUNDLE_SCHEMA_VERSION,
             "kind": "rebake",
@@ -212,7 +255,26 @@ def rebake_bundle(
             "bake_seconds": bake_seconds,
             "texture_png_md5": texture_md5,
             "stats": _json_safe(clean_stats),
+            # QA-harness compatibility: region reconstruction reads these
+            # keys from `texture_artifacts` (or the metadata root).
+            "texture_artifacts": _json_safe({
+                "observed_view_stats": clean_stats.get("observed_view_stats"),
+                "source_pose": clean_stats.get("source_pose"),
+                "source_registration": clean_stats.get("source_registration"),
+                "camera_distance": clean_stats.get("camera_distance"),
+                "observed_coverage_ratio": clean_stats.get("observed_coverage_ratio"),
+                "texture_completion": clean_stats.get("texture_completion"),
+                "symmetry_completion": clean_stats.get("symmetry_completion"),
+            }),
         }
+        if generation_report is not None:
+            metadata["generated_references"] = _json_safe(generation_report)
+            for view in views:
+                if view.get("generated"):
+                    view["rgba"].save(out / f"generated_{view['label']}.png")
+                    clay = view.get("clay_render")
+                    if clay is not None:
+                        clay.save(out / f"generated_{view['label']}_clay.png")
         (out / "metadata.json").write_text(json.dumps(metadata, indent=1, default=str))
     return textured, stats
 

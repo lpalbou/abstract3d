@@ -32,6 +32,15 @@ def _parser() -> argparse.ArgumentParser:
     common.add_argument("--texture-reference-remove-background", dest="texture_reference_remove_background", action="store_true")
     common.add_argument("--no-texture-reference-remove-background", dest="texture_reference_remove_background", action="store_false")
     common.set_defaults(texture_reference_remove_background=None)
+    common.add_argument("--texture-reference-generation", default=None,
+                        choices=["auto", "on", "off"],
+                        help="Synthesize unseen-angle reference photos from the mesh's own "
+                             "clay renders when only one image is provided (hunyuan3d21; "
+                             "default auto).")
+    common.add_argument("--texture-reference-generation-angles", default=None,
+                        help="Angles to synthesize: labels (back, side_left, top, bottom, ...) "
+                             "or explicit 'label:azimuth,elevation' entries separated by ';' "
+                             "(e.g. 'bottom:0,-75; back:180,0').")
     common.add_argument("--num-inference-steps", type=int, default=None)
     common.add_argument("--guidance-scale", type=float, default=None)
     common.add_argument("--octree-resolution", type=int, default=None,
@@ -120,6 +129,8 @@ def main(argv: list[str] | None = None) -> int:
             "chunk_size": args.chunk_size,
             "model": args.model,
             "model_subfolder": args.model_subfolder,
+            "texture_reference_generation": args.texture_reference_generation,
+            "texture_reference_generation_angles": args.texture_reference_generation_angles,
         }
         if args.command == "i23d":
             options.update(

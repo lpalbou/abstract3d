@@ -1,0 +1,856 @@
+{
+ "schema_version": 1,
+ "kind": "rebake",
+ "source_bundle": "/Users/albou/abstract3d/artifacts/validation/iter3-multiview-fixed/face-2mv",
+ "texture_resolution": 1024,
+ "texture_completion": "auto",
+ "projection_model": "orthographic",
+ "source_pose_override": null,
+ "scarcity_rescue": "auto",
+ "compositing": "auto",
+ "reference_count": 4,
+ "bake_seconds": 211.862,
+ "texture_png_md5": "5d00600419c78e6962e975ff33400a3d",
+ "stats": {
+  "camera_distance": 3.0,
+  "source_pose": {
+   "azimuth_deg": 20.0,
+   "elevation_deg": 8.0,
+   "silhouette_iou": 0.0,
+   "method": "gradient_ncc",
+   "score": 0.0152,
+   "estimated": true
+  },
+  "source_registration": {
+   "method": "photo_bbox_center"
+  },
+  "view_registration": [
+   {
+    "applied": false,
+    "scale": 1.0,
+    "shift_x": 0.0,
+    "shift_y": 0.0,
+    "label": "front",
+    "photometric": {
+     "applied": false
+    },
+    "pose": {
+     "refined": false
+    },
+    "ortho_half_extent": 1.1904
+   },
+   {
+    "applied": true,
+    "scale": 0.96,
+    "shift_x": 0.0,
+    "shift_y": -0.06,
+    "iou_before": 0.814,
+    "iou_after": 0.8702,
+    "score_before": -3.0366,
+    "score_after": -2.1476,
+    "overlap_alignment": {
+     "applied": true,
+     "scale": 0.98,
+     "shift_x": -0.05,
+     "shift_y": -0.08,
+     "overlap": 22899,
+     "err_before": 0.4462,
+     "err_after": 0.4073
+    },
+    "dense_flow": {
+     "applied": false,
+     "reason": "no_overlap"
+    },
+    "label": "back",
+    "photometric": {
+     "applied": true,
+     "scale": 1.21,
+     "shift_x": 0.0289,
+     "shift_y": 0.0828,
+     "profile_error": 0.0792
+    },
+    "pose": {
+     "refined": false
+    },
+    "ortho_half_extent": 1.172
+   },
+   {
+    "applied": true,
+    "scale": 1.0,
+    "shift_x": -0.02,
+    "shift_y": -0.04,
+    "iou_before": 0.8862,
+    "iou_after": 0.9058,
+    "score_before": -1.8845,
+    "score_after": -1.4728,
+    "overlap_alignment": {
+     "applied": true,
+     "scale": 0.98,
+     "shift_x": 0.03,
+     "shift_y": 0.08,
+     "overlap": 22899,
+     "err_before": 0.1758,
+     "err_after": 0.1263
+    },
+    "dense_flow": {
+     "applied": true,
+     "reason": "accepted",
+     "gains": [
+      0.9018,
+      0.8443,
+      0.8429
+     ],
+     "err_before": 0.11437,
+     "err_after": 0.10127,
+     "flow_p50_px": 0.0,
+     "flow_max_px": 10.24,
+     "band_px": 24454,
+     "cells_kept": 7,
+     "cells_evaluated": 37
+    },
+    "label": "side_left",
+    "photometric": {
+     "applied": true,
+     "scale": 1.13,
+     "shift_x": 0.0662,
+     "shift_y": 0.0552,
+     "profile_error": 0.0526
+    },
+    "pose": {
+     "refined": false
+    },
+    "ortho_half_extent": 1.172
+   },
+   {
+    "applied": false,
+    "scale": 1.0,
+    "shift_x": 0.0,
+    "shift_y": 0.0,
+    "iou_before": 0.9679,
+    "iou_after": 0.9679,
+    "score_before": -0.5255,
+    "score_after": -0.5255,
+    "overlap_alignment": {
+     "applied": true,
+     "scale": 0.98,
+     "shift_x": 0.01,
+     "shift_y": 0.03,
+     "overlap": 22899,
+     "err_before": 0.1438,
+     "err_after": 0.1313
+    },
+    "dense_flow": {
+     "applied": false,
+     "reason": "no_overlap"
+    },
+    "label": "side_right",
+    "photometric": {
+     "applied": true,
+     "scale": 1.01,
+     "shift_x": -0.0028,
+     "shift_y": -0.001,
+     "profile_error": 0.0272
+    },
+    "pose": {
+     "refined": false
+    },
+    "ortho_half_extent": 1.172
+   },
+   {
+    "applied": true,
+    "scale": 1.04,
+    "shift_x": -0.02,
+    "shift_y": -0.02,
+    "iou_before": 0.7822,
+    "iou_after": 0.8085,
+    "score_before": -3.5468,
+    "score_after": -3.1112,
+    "overlap_alignment": {
+     "applied": true,
+     "scale": 1.04,
+     "shift_x": 0.08,
+     "shift_y": 0.08,
+     "overlap": 22899,
+     "err_before": 0.3337,
+     "err_after": 0.227
+    },
+    "dense_flow": {
+     "applied": true,
+     "reason": "accepted",
+     "gains": [
+      0.9315,
+      0.9784,
+      1.0027
+     ],
+     "err_before": 0.27886,
+     "err_after": 0.25883,
+     "flow_p50_px": 2.56,
+     "flow_max_px": 10.24,
+     "band_px": 26043,
+     "cells_kept": 4,
+     "cells_evaluated": 31
+    },
+    "label": "top",
+    "photometric": {
+     "applied": true,
+     "scale": 0.97,
+     "shift_x": 0.0001,
+     "shift_y": -0.0178,
+     "profile_error": 0.1259
+    },
+    "pose": {
+     "refined": false
+    },
+    "ortho_half_extent": 1.0043
+   }
+  ],
+  "view_consistency": [
+   {
+    "overlap_texels": 0,
+    "harmonized": false,
+    "gains": null,
+    "disagreement": null,
+    "weight_scale": 1.0,
+    "label": "back"
+   },
+   {
+    "overlap_texels": 13115,
+    "harmonized": true,
+    "gains": [
+     0.9059,
+     0.8534,
+     0.8412
+    ],
+    "disagreement": 0.0971,
+    "weight_scale": 1.0,
+    "gain_ratio_spread": 0.5176,
+    "label": "side_left"
+   },
+   {
+    "overlap_texels": 890,
+    "harmonized": false,
+    "gains": null,
+    "disagreement": 0.202,
+    "weight_scale": 1.0,
+    "gain_ratio_spread": 1.1424,
+    "label": "side_right"
+   },
+   {
+    "overlap_texels": 9909,
+    "harmonized": false,
+    "gains": null,
+    "disagreement": 0.3455,
+    "weight_scale": 0.3407,
+    "gain_ratio_spread": 1.6917,
+    "label": "top",
+    "conflict_resolution": {
+     "conflict_texels": 5547,
+     "zeroed_by_view": {
+      "front": 1316,
+      "back": 128,
+      "side_left": 1166,
+      "side_right": 290,
+      "top": 3050
+     }
+    }
+   }
+  ],
+  "outlier_filter": {
+   "dropped_texels": 1593
+  },
+  "texture_padding": 4,
+  "projection_mode": "projection_multiview_plus_symmetry_plus_fill3d",
+  "unseen_fill_mode": "mesh_harmonic",
+  "observed_coverage_ratio": 0.6725,
+  "observed_view_stats": [
+   {
+    "index": 1,
+    "label": "front",
+    "azimuth_deg": 20.0,
+    "elevation_deg": 8.0,
+    "generated": false,
+    "coverage_ratio": 0.1907
+   },
+   {
+    "index": 2,
+    "label": "back",
+    "azimuth_deg": 180.0,
+    "elevation_deg": 0.0,
+    "generated": true,
+    "coverage_ratio": 0.1503
+   },
+   {
+    "index": 3,
+    "label": "side_left",
+    "azimuth_deg": 90.0,
+    "elevation_deg": 0.0,
+    "generated": true,
+    "coverage_ratio": 0.2081
+   },
+   {
+    "index": 4,
+    "label": "side_right",
+    "azimuth_deg": -90.0,
+    "elevation_deg": 0.0,
+    "generated": true,
+    "coverage_ratio": 0.2155
+   },
+   {
+    "index": 5,
+    "label": "top",
+    "azimuth_deg": 0.0,
+    "elevation_deg": 55.0,
+    "generated": true,
+    "coverage_ratio": 0.1418
+   }
+  ],
+  "leverage": {
+   "available": true,
+   "surface_texels": 260760,
+   "potential_union_ratio": 0.724,
+   "direct_painted_ratio": 0.6524,
+   "leverage_ratio": 0.9011,
+   "surrendered_visible_ratio": 0.0724,
+   "unobservable_ratio": 0.276,
+   "views": [
+    {
+     "label": "front",
+     "facing_threshold": 0.2,
+     "potential_texels": 59894,
+     "potential_ratio": 0.2297,
+     "painted_texels": 47197,
+     "painted_ratio": 0.181,
+     "won_texels": 31827,
+     "won_ratio": 0.1221,
+     "rescued_texels": 0,
+     "surrendered_facing_gate": 7865,
+     "surrendered_zone_gate": 2401,
+     "surrendered_downstream": 1316,
+     "surrendered_union_drop": 1218
+    },
+    {
+     "label": "back",
+     "facing_threshold": 0.2,
+     "potential_texels": 46732,
+     "potential_ratio": 0.1792,
+     "painted_texels": 37947,
+     "painted_ratio": 0.1455,
+     "won_texels": 33894,
+     "won_ratio": 0.13,
+     "rescued_texels": 1,
+     "surrendered_facing_gate": 6099,
+     "surrendered_zone_gate": 1600,
+     "surrendered_downstream": 129,
+     "surrendered_union_drop": 1091
+    },
+    {
+     "label": "side_left",
+     "facing_threshold": 0.2,
+     "potential_texels": 58109,
+     "potential_ratio": 0.2228,
+     "painted_texels": 51775,
+     "painted_ratio": 0.1986,
+     "won_texels": 38198,
+     "won_ratio": 0.1465,
+     "rescued_texels": 1,
+     "surrendered_facing_gate": 4146,
+     "surrendered_zone_gate": 37,
+     "surrendered_downstream": 1159,
+     "surrendered_union_drop": 1314
+    },
+    {
+     "label": "side_right",
+     "facing_threshold": 0.2,
+     "potential_texels": 60637,
+     "potential_ratio": 0.2325,
+     "painted_texels": 54115,
+     "painted_ratio": 0.2075,
+     "won_texels": 49191,
+     "won_ratio": 0.1886,
+     "rescued_texels": 0,
+     "surrendered_facing_gate": 4480,
+     "surrendered_zone_gate": 183,
+     "surrendered_downstream": 290,
+     "surrendered_union_drop": 1758
+    },
+    {
+     "label": "top",
+     "facing_threshold": 0.2,
+     "potential_texels": 45739,
+     "potential_ratio": 0.1754,
+     "painted_texels": 31900,
+     "painted_ratio": 0.1223,
+     "won_texels": 16855,
+     "won_ratio": 0.0646,
+     "rescued_texels": 0,
+     "surrendered_facing_gate": 8587,
+     "surrendered_zone_gate": 346,
+     "surrendered_downstream": 3049,
+     "surrendered_union_drop": 1994
+    }
+   ],
+   "shipped_direct_ratio": 0.6386,
+   "mirror_completed_ratio": 0.0152,
+   "mirror_over_photo_visible_ratio": 0.0046
+  },
+  "scarcity_rescue": {
+   "requested": "auto",
+   "enabled": false,
+   "applied": false
+  },
+  "texture_completion": "mirror_symmetry",
+  "texture_completion_requested": "auto",
+  "fill_detail": {
+   "applied": true,
+   "gain": 0.7,
+   "energy_calibration": {
+    "observed_energy": 0.745,
+    "target_energy": 0.522,
+    "fill_energy_at_1": 1.001,
+    "fill_energy_base": 0.25,
+    "fill_energy_final": 1.001,
+    "sigma_observed_band": 0.1131,
+    "sigma_at_scale": 0.0871,
+    "scale": 1.0
+   }
+  },
+  "fill_floor": {
+   "applied": true,
+   "lifted_texels": 9005,
+   "evidence_exempt_components": 27,
+   "mean_lift": 0.1527,
+   "p99_lift": 0.8453,
+   "consensus_texels": 19
+  },
+  "delight": {
+   "applied": false,
+   "views": [
+    {
+     "index": 1,
+     "label": "back",
+     "overlap_texels": 0,
+     "applied": false
+    },
+    {
+     "index": 2,
+     "label": "side_left",
+     "overlap_texels": 11819,
+     "applied": false,
+     "disagreement_before": 0.1441,
+     "disagreement_after": 0.1457,
+     "field_p95": 0.5928,
+     "exclusive_mean_abs_delta": 0.0935
+    },
+    {
+     "index": 3,
+     "label": "side_right",
+     "overlap_texels": 298,
+     "applied": false
+    },
+    {
+     "index": 4,
+     "label": "top",
+     "overlap_texels": 8927,
+     "applied": false,
+     "disagreement_before": 0.3353,
+     "disagreement_after": 0.3378,
+     "field_p95": 1.0,
+     "exclusive_mean_abs_delta": 0.1128
+    }
+   ]
+  },
+  "symmetry_completion": {
+   "mode": "mirror_symmetry",
+   "geometry_symmetry_score": 0.966,
+   "coverage_ratio": 0.0152,
+   "tone_matched_texels": 467,
+   "applied": true
+  },
+  "mirror_rescue": {
+   "applied": true,
+   "discs": [
+    {
+     "center": [
+      0.6314470171928406,
+      -0.26569563150405884,
+      0.2306756228208542
+     ],
+     "source_center": [
+      0.6314470171928406,
+      0.26569563150405884,
+      0.2306756228208542
+     ],
+     "radius": 0.17861455976963045,
+     "placement_shift": [
+      0.0,
+      0.024850720539689064,
+      0.0
+     ],
+     "core_texels": 173,
+     "own_blob_response": 0.2444,
+     "twin_blob_response": 0.1124,
+     "own_witness": 0.5406,
+     "twin_witness": 0.1329,
+     "rescued_texels": 1990,
+     "tone_offset": [
+      -0.0187,
+      -0.0236,
+      -0.0284
+     ]
+    },
+    {
+     "center": [
+      0.060101740062236786,
+      -0.3943648934364319,
+      -0.8903531432151794
+     ],
+     "source_center": [
+      0.060101740062236786,
+      0.3943648934364319,
+      -0.8903531432151794
+     ],
+     "radius": 0.17861455976963045,
+     "placement_shift": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "core_texels": 72,
+     "own_blob_response": 0.2594,
+     "twin_blob_response": 0.0092,
+     "own_witness": 0.4101,
+     "twin_witness": 0.1115,
+     "rescued_texels": 2710,
+     "tone_offset": [
+      0.0175,
+      0.0426,
+      0.0358
+     ]
+    }
+   ],
+   "geometry_symmetry_score": 0.966
+  },
+  "trace_deposits": {
+   "applied": true,
+   "committed_texels": 1342,
+   "rim_feathered": 1303,
+   "swept_islands": 24,
+   "blob_count": 33
+  },
+  "pale_chips": {
+   "applied": true,
+   "committed_texels": 4363,
+   "blobs": 324,
+   "refused": {
+    "area": 1784,
+    "w90": 0,
+    "ring": 30,
+    "isolation": 18,
+    "cover": 478
+   }
+  },
+  "bottom_cap": {
+   "applied": true,
+   "cap_texels": 21327,
+   "rim_anchors": 106
+  },
+  "feature_fringe_repair": {
+   "applied": true,
+   "stamps": [
+    {
+     "complex": 5,
+     "mode": "full",
+     "veto": "texel:new_dark_blob a66 az-22.5el0"
+    },
+    {
+     "complex": 5,
+     "mode": "trace",
+     "texels": 735,
+     "centroid": [
+      -0.056,
+      0.523,
+      0.048
+     ],
+     "radius": 0.204
+    },
+    {
+     "complex": 6,
+     "mode": "full",
+     "veto": "texel:new_dark_blob a58 az+0.0el0"
+    },
+    {
+     "complex": 6,
+     "mode": "trace",
+     "veto": "texel:new_dark_blob a58 az+0.0el0"
+    },
+    {
+     "complex": 8,
+     "mode": "full",
+     "texels": 462,
+     "centroid": [
+      0.279,
+      0.472,
+      0.139
+     ],
+     "radius": 0.053
+    },
+    {
+     "complex": 9,
+     "mode": "full",
+     "veto": "render:az-35.0el0 lost blob a1429"
+    },
+    {
+     "complex": 9,
+     "mode": "trace",
+     "veto": "render:az-35.0el0 lost blob a1429"
+    },
+    {
+     "complex": 10,
+     "mode": "full",
+     "veto": "render:az-35.0el0 lost blob a1429"
+    },
+    {
+     "complex": 10,
+     "mode": "trace",
+     "veto": "render:az-35.0el0 lost blob a1429"
+    }
+   ],
+   "patches": 26,
+   "recopies": 7,
+   "disc_refreshed": true,
+   "registration": [
+    1.025,
+    0.06,
+    -0.0125
+   ],
+   "speck_lifted_texels": 148,
+   "repaired_texels": 4369
+  },
+  "film_band": {
+   "applied": true,
+   "band_texels": 83805,
+   "commit_texels": 156,
+   "vacated_claims": 133,
+   "rim_demoted": 233,
+   "retone": {
+    "applied": true,
+    "retoned_texels": 115,
+    "dark_anchors": 100202,
+    "mean_commit_weight": 0.989
+   }
+  },
+  "seam_leveling": {
+   "applied": false
+  },
+  "compositing": {
+   "requested": "auto",
+   "mode": "gradient_domain",
+   "applied": true,
+   "solve_seconds": 6.95,
+   "solver": {
+    "nodes": 170117,
+    "edges": 353721,
+    "cg_iterations": 142,
+    "final_relative_residual": 1.0526627720647802e-05,
+    "edge_kind_counts": {
+     "grid": 279123,
+     "stitch": 74598,
+     "line_constraint": 88747
+    },
+    "mg_level_sizes": [
+     170117,
+     25963,
+     3036,
+     319
+    ],
+    "gradient_rule": "max_confidence",
+    "anchor_lambda_scale": 0.003,
+    "line_edge_weight": 1.0,
+    "specular_reconcile": {
+     "applied": true,
+     "view": 0,
+     "texels": 175,
+     "components": [
+      {
+       "texels": 60,
+       "edge_p85": 0.66
+      },
+      {
+       "texels": 65,
+       "edge_p85": 0.58
+      },
+      {
+       "texels": 50,
+       "edge_p85": 0.11
+      }
+     ],
+     "max_abs_delta": 0.3591
+    },
+    "shadow_reconcile": {
+     "applied": true,
+     "texels": 121,
+     "components": [
+      {
+       "texels": 121,
+       "edge_p85": 0.59
+      }
+     ],
+     "gauges": {
+      "1": 0.0,
+      "2": 0.0292,
+      "3": -0.2261,
+      "4": -0.0301
+     },
+     "scale_floor": 0.45
+    }
+   }
+  },
+  "blend_sharpness": 3.0,
+  "feather_texels": 6.0,
+  "vertex_mapping_count": 99532,
+  "uv_vertex_count": 99532,
+  "face_count": 119999
+ },
+ "generated_references": {
+  "angles": [
+   {
+    "label": "back",
+    "azimuth_deg": 180.0,
+    "elevation_deg": 0.0,
+    "attempts": [
+     {
+      "seed": 11,
+      "silhouette_iou": 0.8337
+     }
+    ],
+    "accepted": true,
+    "clay_renderer": "moderngl",
+    "prompt": "a young woman with long dark brown hair, portrait bust, seen directly from behind, the same physical object with consistent materials and colors, photographed on a plain dark background, soft diffuse even studio lighting, matte finish, no harsh specular highlights or reflections, product photography, sharp focus",
+    "silhouette_iou": 0.8337,
+    "accepted_image_md5": "4d2d5fce691855823d3d5155e69e4c26",
+    "specular_suppressed_fraction": 0.0016,
+    "tone_match": {
+     "applied": true,
+     "pre_match_distance": [
+      41.84,
+      3.23,
+      7.91
+     ],
+     "applied_shift": [
+      15.0,
+      3.23,
+      7.91
+     ],
+     "clipped": true
+    },
+    "seconds": 62.5
+   },
+   {
+    "label": "side_left",
+    "azimuth_deg": 90.0,
+    "elevation_deg": 0.0,
+    "attempts": [
+     {
+      "seed": 11,
+      "silhouette_iou": 0.8838
+     }
+    ],
+    "accepted": true,
+    "clay_renderer": "moderngl",
+    "prompt": "a young woman with long dark brown hair, portrait bust, seen from its left side profile, the same physical object with consistent materials and colors, photographed on a plain dark background, soft diffuse even studio lighting, matte finish, no harsh specular highlights or reflections, product photography, sharp focus",
+    "silhouette_iou": 0.8838,
+    "accepted_image_md5": "ea50cfa5f48a614bcef6b10488e51711",
+    "specular_suppressed_fraction": 0.0032,
+    "tone_match": {
+     "applied": true,
+     "pre_match_distance": [
+      17.23,
+      -0.72,
+      0.58
+     ],
+     "applied_shift": [
+      15.0,
+      -0.72,
+      0.58
+     ],
+     "clipped": true
+    },
+    "seconds": 55.1
+   },
+   {
+    "label": "side_right",
+    "azimuth_deg": -90.0,
+    "elevation_deg": 0.0,
+    "attempts": [
+     {
+      "seed": 11,
+      "silhouette_iou": 0.9784
+     }
+    ],
+    "accepted": true,
+    "clay_renderer": "moderngl",
+    "prompt": "a young woman with long dark brown hair, portrait bust, seen from its right side profile, the same physical object with consistent materials and colors, photographed on a plain dark background, soft diffuse even studio lighting, matte finish, no harsh specular highlights or reflections, product photography, sharp focus",
+    "silhouette_iou": 0.9784,
+    "accepted_image_md5": "5df363210a1e8ee1ba5e92cdfae76167",
+    "specular_suppressed_fraction": 0.0015,
+    "tone_match": {
+     "applied": true,
+     "pre_match_distance": [
+      17.02,
+      -1.35,
+      -0.64
+     ],
+     "applied_shift": [
+      15.0,
+      -1.35,
+      -0.64
+     ],
+     "clipped": true
+    },
+    "seconds": 56.0
+   },
+   {
+    "label": "top",
+    "azimuth_deg": 0.0,
+    "elevation_deg": 55.0,
+    "attempts": [
+     {
+      "seed": 11,
+      "silhouette_iou": 0.78
+     }
+    ],
+    "accepted": true,
+    "clay_renderer": "moderngl",
+    "prompt": "a young woman with long dark brown hair, portrait bust, seen from a high angle, looking down at its top, the same physical object with consistent materials and colors, photographed on a plain dark background, soft diffuse even studio lighting, matte finish, no harsh specular highlights or reflections, product photography, sharp focus",
+    "silhouette_iou": 0.78,
+    "accepted_image_md5": "b205b0d220b9e6ebe70c1ec32d38dc77",
+    "specular_suppressed_fraction": 0.0018,
+    "tone_match": {
+     "applied": true,
+     "pre_match_distance": [
+      24.72,
+      1.64,
+      5.27
+     ],
+     "applied_shift": [
+      15.0,
+      1.64,
+      5.27
+     ],
+     "clipped": true
+    },
+    "seconds": 55.3
+   }
+  ],
+  "accepted": 4,
+  "rejected": 0,
+  "image_request": {
+   "provider": "mlx-gen",
+   "model": "AbstractFramework/flux.2-klein-4b-8bit"
+  },
+  "subject_hint": "a young woman with long dark brown hair, portrait bust",
+  "negative_prompt": "glossy shine, specular highlights, strong reflections, rim lighting, lens flare, harsh shadows, dramatic lighting",
+  "base_seed": 11,
+  "silhouette_iou_min": 0.75
+ }
+}

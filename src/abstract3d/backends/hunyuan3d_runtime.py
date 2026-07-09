@@ -41,6 +41,7 @@ from ..errors import (
     Abstract3DError,
     CapabilityNotSupportedError,
     DependencyUnavailableError,
+    InvalidRequestError,
     SourceBootstrapError,
 )
 from ..image_composition import COMPOSITION_INSTALL_HINT, has_image_composer, pop_image_generation_request
@@ -766,9 +767,21 @@ class Hunyuan3DShapeBackend:
                 "num_inference_steps": {"type": "integer"},
                 "guidance_scale": {"type": "number"},
                 "octree_resolution": {"type": "integer"},
+                "max_facenum": {"type": "integer"},
                 "texture_mode": {"type": "string", "enum": ["baked_basecolor", "none"]},
                 "texture_resolution": {"type": "integer"},
                 "texture_completion": {"type": "string", "enum": ["none", "mirror_symmetry", "auto"]},
+                "texture_reference_generation": {
+                    "type": "string",
+                    "enum": ["auto", "on", "off"],
+                    "description": (
+                        "Synthesize unseen-angle reference photos from the mesh's "
+                        "clay renders when only one photo is provided. 'auto' "
+                        "(default) fires only with an explicitly configured image "
+                        "provider and a subject prompt; generated views are "
+                        "plausible synthesis, not ground truth."
+                    ),
+                },
                 "device": {"type": "string"},
                 "seed": {"type": "integer"},
             },
@@ -1130,6 +1143,32 @@ class Hunyuan3DShapeBackend:
         # a propagated fill is a characterless wash. Explicit "none" or
         # "mirror_symmetry" continue to force their modes.
         texture_completion = str(kwargs.pop("texture_completion", None) or "auto").strip().lower()
+        # Generated reference views: when the caller supplies only the one
+        # photo, synthesize the unseen angles from the mesh's own clay
+        # renders through the configured i2i provider ("auto" default;
+        # see reference_generation.py). "off" disables; "on" makes a
+        # missing image composer a hard error instead of a warning.
+        texture_reference_generation = str(
+            kwargs.pop("texture_reference_generation", None)
+            or _owner_cfg(self._owner, "scene3d_texture_reference_generation")
+            or _env("ABSTRACT3D_TEXTURE_REFERENCE_GENERATION")
+            or "auto"
+        ).strip().lower()
+        if texture_reference_generation not in {"auto", "on", "off"}:
+            raise InvalidRequestError(
+                "texture_reference_generation must be one of: auto, on, off "
+                f"(got {texture_reference_generation!r})"
+            )
+        from ..reference_generation import parse_generation_angles
+
+        try:
+            texture_reference_generation_angles = parse_generation_angles(
+                kwargs.pop("texture_reference_generation_angles", None)
+                or _owner_cfg(self._owner, "scene3d_texture_reference_generation_angles")
+                or _env("ABSTRACT3D_TEXTURE_REFERENCE_GENERATION_ANGLES")
+            )
+        except ValueError as exc:
+            raise InvalidRequestError(str(exc)) from exc
         from . import reject_unknown_options
 
         reject_unknown_options(self.backend_id, kwargs)
@@ -1202,9 +1241,82 @@ class Hunyuan3DShapeBackend:
                     "elevation_deg": 0.0,
                     "label": "front",
                     "role": "source",
+                    # The un-matted photo: multi-view bakes build the identity
+                    # correspondence against it (the matted rgba's tighter
+                    # silhouette snaps the registration into a different
+                    # basin — see the fringe-repair stage in texturing.py).
+                    "identity_image": original_preview,
                 }
             ]
             observed_views.extend(dict(reference) for reference in loaded_references)
+
+            # Single-photo runs: synthesize the unseen angles from the mesh's
+            # own clay renders (silhouette-locked i2i; IoU-gated; tone-matched)
+            # so the bake witnesses the whole surface instead of surrendering
+            # ~70% of it to mirror completion and fill.
+            reference_generation_report: Optional[Dict[str, Any]] = None
+            if (
+                texture_reference_generation in {"auto", "on"}
+                and not loaded_references
+            ):
+                from ..reference_generation import (
+                    auto_generation_ready,
+                    generate_reference_views,
+                )
+
+                subject_hint = str(prompt or "").strip() or None
+                ready, readiness_reason = auto_generation_ready(self._owner, subject_hint)
+                if texture_reference_generation == "auto" and not ready:
+                    # "auto" is a default: it must never silently go remote or
+                    # invent content without subject knowledge. The warning
+                    # tells the operator exactly how to opt in.
+                    postprocess_warnings.append(
+                        "texture_reference_generation=auto skipped: "
+                        f"{readiness_reason}. A single photo witnesses only part "
+                        "of the surface; pass a subject prompt and a configured "
+                        "image provider (or set texture_reference_generation=on) "
+                        "to synthesize the unseen angles."
+                    )
+                elif texture_reference_generation == "on" and not has_image_composer(self._owner):
+                    raise DependencyUnavailableError(
+                        "texture_reference_generation=on requires an image "
+                        f"composer. {COMPOSITION_INSTALL_HINT}"
+                    )
+                else:
+                    from ..image_composition import resolve_image_generation_request
+
+                    try:
+                        from ..reference_generation import DEFAULT_ANGLES
+
+                        generated_views, reference_generation_report = generate_reference_views(
+                            mesh,
+                            source_image.convert("RGBA"),
+                            owner=self._owner,
+                            angles=texture_reference_generation_angles or DEFAULT_ANGLES,
+                            subject_hint=subject_hint,
+                            seed=seed,
+                            image_request=resolve_image_generation_request(self._owner),
+                        )
+                        observed_views.extend(generated_views)
+                        if not generated_views:
+                            postprocess_warnings.append(
+                                "texture_reference_generation produced no accepted "
+                                "views (all angles rejected or errored); continuing "
+                                "with the single photo. See texture_artifacts."
+                                "reference_generation for per-angle reasons."
+                            )
+                        # Free the image model's accelerator pool before the
+                        # 2 GB bake allocates its atlas stacks.
+                        from .step1x_runtime import _release_mlx_generation_cache
+
+                        _release_mlx_generation_cache()
+                    except Exception as exc:
+                        if texture_reference_generation == "on":
+                            raise
+                        postprocess_warnings.append(
+                            "texture_reference_generation=auto failed, continuing "
+                            f"with the single photo: {type(exc).__name__}: {exc}"
+                        )
             try:
                 export_mesh, texture_stats = bake_projection_texture(
                     mesh,
@@ -1321,6 +1433,10 @@ class Hunyuan3DShapeBackend:
                 "vertex_mapping_count": texture_stats.get("vertex_mapping_count"),
                 "obj_sidecars": sorted(str(name) for name in obj_texture_sidecars.keys()),
             }
+            if reference_generation_report is not None:
+                runtime_meta["texture_artifacts"]["reference_generation"] = (
+                    reference_generation_report
+                )
 
         # Keep the contact sheet's source panel on the original background so
         # reviewers compare against what the caller actually provided.
@@ -1355,6 +1471,22 @@ class Hunyuan3DShapeBackend:
                         "uv_preview_path": str(uv_preview_path),
                     }
                 )
+                # Persist generated reference views (and the clay renders
+                # that conditioned them) so the synthesis is auditable and
+                # the bundle can be rebaked from the same witnesses.
+                generated_paths: List[str] = []
+                for view in observed_views:
+                    if not view.get("generated"):
+                        continue
+                    label = str(view.get("label") or "generated")
+                    generated_path = bundle_root / f"texture_reference_generated_{label}.png"
+                    view["rgba"].save(generated_path)
+                    generated_paths.append(str(generated_path))
+                    clay = view.get("clay_render")
+                    if clay is not None:
+                        clay.save(bundle_root / f"texture_reference_generated_{label}_clay.png")
+                if generated_paths:
+                    runtime_meta["texture_artifacts"]["generated_reference_paths"] = generated_paths
             runtime_meta["bundle_dir"] = str(bundle_root)
             for meta_key, bundle_key in (
                 ("preview_path", "preview_path"),

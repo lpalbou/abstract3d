@@ -1,0 +1,495 @@
+{
+ "schema_version": 1,
+ "kind": "rebake",
+ "source_bundle": "/Users/albou/abstract3d/artifacts/validation/final-proof/hunyuan-starship",
+ "texture_resolution": 1024,
+ "texture_completion": "auto",
+ "projection_model": "orthographic",
+ "source_pose_override": [
+  30.0,
+  15.0
+ ],
+ "scarcity_rescue": "auto",
+ "compositing": "auto",
+ "reference_count": 2,
+ "bake_seconds": 178.215,
+ "texture_png_md5": "136e83ea7628831aba66153c2f5224a5",
+ "stats": {
+  "camera_distance": 3.0,
+  "source_pose": {
+   "azimuth_deg": 30.0,
+   "elevation_deg": 15.0,
+   "silhouette_iou": 0.0,
+   "method": "override",
+   "score": null,
+   "estimated": false
+  },
+  "source_registration": {
+   "method": "mesh_bbox_center",
+   "frame_center_dx_px": 54.24,
+   "frame_center_dy_px": -27.94,
+   "frame_size": 1024
+  },
+  "view_registration": [
+   {
+    "applied": false,
+    "scale": 1.0,
+    "shift_x": 0.0,
+    "shift_y": 0.0,
+    "label": "front",
+    "photometric": {
+     "applied": false
+    },
+    "pose": {
+     "refined": false
+    },
+    "ortho_half_extent": 0.7639,
+    "frame_center_dx_px": 54.24,
+    "frame_center_dy_px": -27.94
+   },
+   {
+    "applied": true,
+    "scale": 1.04,
+    "shift_x": 0.0,
+    "shift_y": 0.06,
+    "iou_before": 0.1614,
+    "iou_after": 0.1886,
+    "score_before": -11.1733,
+    "score_after": -9.9293,
+    "overlap_alignment": {
+     "applied": true,
+     "scale": 1.04,
+     "shift_x": -0.05,
+     "shift_y": 0.06,
+     "overlap": 4970,
+     "err_before": 0.3137,
+     "err_after": 0.0978
+    },
+    "dense_flow": {
+     "applied": false,
+     "reason": "band_too_small"
+    },
+    "label": "bottom",
+    "photometric": {
+     "applied": true,
+     "scale": 0.45,
+     "shift_x": -0.0002,
+     "shift_y": -0.2358,
+     "profile_error": 0.1268
+    },
+    "pose": {
+     "refined": false
+    },
+    "ortho_half_extent": 1.1311,
+    "frame_center_dx_px": -1.28,
+    "frame_center_dy_px": 1.05
+   },
+   {
+    "applied": false,
+    "scale": 1.0,
+    "shift_x": 0.0,
+    "shift_y": 0.0,
+    "iou_before": 0.7691,
+    "iou_after": 0.7869,
+    "score_before": -1.5214,
+    "score_after": -1.3961,
+    "overlap_alignment": {
+     "applied": true,
+     "scale": 0.98,
+     "shift_x": 0.07,
+     "shift_y": -0.08,
+     "overlap": 4970,
+     "err_before": 0.4036,
+     "err_after": 0.2575
+    },
+    "dense_flow": {
+     "applied": false,
+     "reason": "no_overlap"
+    },
+    "label": "back",
+    "photometric": {
+     "applied": true,
+     "scale": 0.85,
+     "shift_x": 0.0,
+     "shift_y": -0.0017,
+     "profile_error": 0.087
+    },
+    "pose": {
+     "refined": false
+    },
+    "ortho_half_extent": 0.6163,
+    "frame_center_dx_px": 2.36,
+    "frame_center_dy_px": 3.2
+   }
+  ],
+  "view_consistency": [
+   {
+    "overlap_texels": 0,
+    "harmonized": false,
+    "gains": null,
+    "disagreement": null,
+    "weight_scale": 1.0,
+    "label": "bottom"
+   },
+   {
+    "overlap_texels": 0,
+    "harmonized": false,
+    "gains": null,
+    "disagreement": null,
+    "weight_scale": 1.0,
+    "label": "back",
+    "conflict_resolution": {
+     "conflict_texels": 0,
+     "zeroed_by_view": {}
+    }
+   }
+  ],
+  "outlier_filter": {
+   "dropped_texels": 162
+  },
+  "texture_padding": 4,
+  "projection_mode": "projection_multiview_plus_symmetry_plus_fill3d",
+  "unseen_fill_mode": "mesh_harmonic",
+  "observed_coverage_ratio": 0.2905,
+  "observed_view_stats": [
+   {
+    "index": 1,
+    "label": "front",
+    "azimuth_deg": 30.0,
+    "elevation_deg": 15.0,
+    "generated": false,
+    "coverage_ratio": 0.1871
+   },
+   {
+    "index": 2,
+    "label": "bottom",
+    "azimuth_deg": 0.0,
+    "elevation_deg": -75.0,
+    "generated": true,
+    "coverage_ratio": 0.0664
+   },
+   {
+    "index": 3,
+    "label": "back",
+    "azimuth_deg": 180.0,
+    "elevation_deg": 0.0,
+    "generated": true,
+    "coverage_ratio": 0.0242
+   }
+  ],
+  "leverage": {
+   "available": true,
+   "surface_texels": 487473,
+   "potential_union_ratio": 0.4163,
+   "direct_painted_ratio": 0.2756,
+   "leverage_ratio": 0.662,
+   "surrendered_visible_ratio": 0.1438,
+   "unobservable_ratio": 0.5837,
+   "views": [
+    {
+     "label": "front",
+     "facing_threshold": 0.2,
+     "potential_texels": 134662,
+     "potential_ratio": 0.2762,
+     "painted_texels": 90555,
+     "painted_ratio": 0.1858,
+     "won_texels": 90051,
+     "won_ratio": 0.1847,
+     "rescued_texels": 2,
+     "surrendered_facing_gate": 31856,
+     "surrendered_zone_gate": 11979,
+     "surrendered_downstream": 0,
+     "surrendered_union_drop": 636
+    },
+    {
+     "label": "bottom",
+     "facing_threshold": 0.2,
+     "potential_texels": 39489,
+     "potential_ratio": 0.081,
+     "painted_texels": 32225,
+     "painted_ratio": 0.0661,
+     "won_texels": 32136,
+     "won_ratio": 0.0659,
+     "rescued_texels": 0,
+     "surrendered_facing_gate": 3443,
+     "surrendered_zone_gate": 4729,
+     "surrendered_downstream": 0,
+     "surrendered_union_drop": 122
+    },
+    {
+     "label": "back",
+     "facing_threshold": 0.2,
+     "potential_texels": 30270,
+     "potential_ratio": 0.0621,
+     "painted_texels": 11572,
+     "painted_ratio": 0.0237,
+     "won_texels": 11408,
+     "won_ratio": 0.0234,
+     "rescued_texels": 0,
+     "surrendered_facing_gate": 12570,
+     "surrendered_zone_gate": 6034,
+     "surrendered_downstream": 0,
+     "surrendered_union_drop": 212
+    }
+   ],
+   "shipped_direct_ratio": 0.2756,
+   "mirror_completed_ratio": 0.0137,
+   "mirror_over_photo_visible_ratio": 0.0034
+  },
+  "scarcity_rescue": {
+   "requested": "auto",
+   "enabled": false,
+   "applied": false
+  },
+  "texture_completion": "mirror_symmetry",
+  "texture_completion_requested": "auto",
+  "fill_detail": {
+   "applied": true,
+   "gain": 0.7,
+   "energy_calibration": {
+    "observed_energy": 1.325,
+    "target_energy": 0.928,
+    "fill_energy_at_1": 0.68,
+    "fill_energy_base": 0.127,
+    "fill_energy_final": 0.921,
+    "sigma_observed_band": 0.2397,
+    "sigma_at_scale": 0.1584,
+    "scale": 2.183
+   }
+  },
+  "fill_floor": {
+   "applied": true,
+   "lifted_texels": 74085,
+   "evidence_exempt_components": 14,
+   "mean_lift": 0.1784,
+   "p99_lift": 1.4,
+   "consensus_texels": 1983
+  },
+  "delight": {
+   "applied": false,
+   "views": []
+  },
+  "symmetry_completion": {
+   "mode": "mirror_symmetry",
+   "geometry_symmetry_score": 0.9826,
+   "coverage_ratio": 0.0137,
+   "tone_matched_texels": 1225,
+   "applied": true
+  },
+  "mirror_rescue": {
+   "applied": false,
+   "discs": [],
+   "geometry_symmetry_score": 0.9826
+  },
+  "trace_deposits": {
+   "applied": true,
+   "committed_texels": 3202,
+   "swept_islands": 65,
+   "rim_feathered": 1610,
+   "blob_count": 80
+  },
+  "pale_chips": {
+   "applied": true,
+   "committed_texels": 1298,
+   "blobs": 55,
+   "refused": {
+    "area": 86,
+    "w90": 0,
+    "ring": 3,
+    "isolation": 36,
+    "cover": 62
+   }
+  },
+  "bottom_cap": {
+   "applied": false,
+   "cap_texels": 0
+  },
+  "feature_fringe_repair": {
+   "applied": true,
+   "stamps": [
+    {
+     "complex": 2,
+     "mode": "full",
+     "texels": 3966,
+     "centroid": [
+      -0.212,
+      0.162,
+      0.065
+     ],
+     "radius": 0.016
+    },
+    {
+     "complex": 4,
+     "mode": "full",
+     "veto": "texel:new_dark_blob a60 az+22.5el0"
+    },
+    {
+     "complex": 4,
+     "mode": "trace",
+     "veto": "texel:new_dark_blob a60 az+22.5el0"
+    },
+    {
+     "complex": 5,
+     "mode": "full",
+     "veto": "texel:new_dark_blob a65 az+0.0el0"
+    },
+    {
+     "complex": 5,
+     "mode": "trace",
+     "veto": "texel:new_dark_blob a65 az+0.0el0"
+    },
+    {
+     "complex": 6,
+     "mode": "full",
+     "veto": "texel:new_dark_blob a496 az+0.0el10"
+    },
+    {
+     "complex": 6,
+     "mode": "trace",
+     "veto": "texel:new_dark_blob a496 az+0.0el10"
+    }
+   ],
+   "patches": 44,
+   "recopies": 0,
+   "disc_refreshed": false,
+   "registration": [
+    1.125,
+    -0.005,
+    0.0475
+   ],
+   "speck_lifted_texels": 524,
+   "repaired_texels": 13091
+  },
+  "film_band": {
+   "applied": true,
+   "band_texels": 102970,
+   "commit_texels": 219,
+   "vacated_claims": 0,
+   "rim_demoted": 470,
+   "retone": {
+    "applied": true,
+    "retoned_texels": 218,
+    "dark_anchors": 39634,
+    "mean_commit_weight": 0.364
+   }
+  },
+  "seam_leveling": {
+   "applied": false
+  },
+  "compositing": {
+   "requested": "auto",
+   "mode": "gradient_domain",
+   "applied": true,
+   "solve_seconds": 2.7,
+   "solver": {
+    "nodes": 134344,
+    "edges": 278870,
+    "cg_iterations": 68,
+    "final_relative_residual": 1.088740260422609e-05,
+    "edge_kind_counts": {
+     "grid": 246002,
+     "stitch": 32868,
+     "line_constraint": 172504
+    },
+    "mg_level_sizes": [
+     134344,
+     18895,
+     2643,
+     395
+    ],
+    "gradient_rule": "max_confidence",
+    "anchor_lambda_scale": 0.003,
+    "line_edge_weight": 1.0,
+    "specular_reconcile": {
+     "applied": false
+    },
+    "shadow_reconcile": {
+     "applied": false
+    }
+   }
+  },
+  "blend_sharpness": 3.0,
+  "feather_texels": 6.0,
+  "vertex_mapping_count": 75248,
+  "uv_vertex_count": 75248,
+  "face_count": 120000
+ },
+ "generated_references": {
+  "angles": [
+   {
+    "label": "bottom",
+    "azimuth_deg": 0.0,
+    "elevation_deg": -75.0,
+    "attempts": [
+     {
+      "seed": 11,
+      "silhouette_iou": 0.7654
+     }
+    ],
+    "accepted": true,
+    "clay_renderer": "moderngl",
+    "prompt": "a white and grey sci-fi starship with hull panels and engine detail, seen from directly underneath, the same physical object with consistent materials and colors, photographed on a plain dark background, soft diffuse even studio lighting, matte finish, no harsh specular highlights or reflections, product photography, sharp focus",
+    "silhouette_iou": 0.7654,
+    "accepted_image_md5": "f0b350ed3791ff12acfe10fb204e6900",
+    "specular_suppressed_fraction": 0.0041,
+    "tone_match": {
+     "applied": true,
+     "pre_match_distance": [
+      -22.36,
+      -0.61,
+      -3.51
+     ],
+     "applied_shift": [
+      -15.0,
+      -0.61,
+      -3.51
+     ],
+     "clipped": true
+    },
+    "seconds": 61.8
+   },
+   {
+    "label": "back",
+    "azimuth_deg": 180.0,
+    "elevation_deg": 0.0,
+    "attempts": [
+     {
+      "seed": 11,
+      "silhouette_iou": 0.7662
+     }
+    ],
+    "accepted": true,
+    "clay_renderer": "moderngl",
+    "prompt": "a white and grey sci-fi starship with hull panels and engine detail, seen directly from behind, the same physical object with consistent materials and colors, photographed on a plain dark background, soft diffuse even studio lighting, matte finish, no harsh specular highlights or reflections, product photography, sharp focus",
+    "silhouette_iou": 0.7662,
+    "accepted_image_md5": "26588e2307d71025f3b42ca6fea11dea",
+    "specular_suppressed_fraction": 0.0008,
+    "tone_match": {
+     "applied": true,
+     "pre_match_distance": [
+      -34.12,
+      -0.65,
+      -2.95
+     ],
+     "applied_shift": [
+      -15.0,
+      -0.65,
+      -2.95
+     ],
+     "clipped": true
+    },
+    "seconds": 55.8
+   }
+  ],
+  "accepted": 2,
+  "rejected": 0,
+  "image_request": {
+   "provider": "mlx-gen",
+   "model": "AbstractFramework/flux.2-klein-4b-8bit"
+  },
+  "subject_hint": "a white and grey sci-fi starship with hull panels and engine detail",
+  "negative_prompt": "glossy shine, specular highlights, strong reflections, rim lighting, lens flare, harsh shadows, dramatic lighting",
+  "base_seed": 11,
+  "silhouette_iou_min": 0.75
+ }
+}

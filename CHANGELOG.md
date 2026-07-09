@@ -2,6 +2,50 @@
 
 ## Unreleased
 
+### Added (generated reference views — single-photo coverage completion)
+
+- `abstract3d.reference_generation`: when a caller provides only ONE photo,
+  the pipeline can synthesize the unseen angles and feed them into the
+  certified bake as ordinary references: clay-render the reconstructed mesh
+  from each target angle (silhouette lock; moderngl renderer REQUIRED — the
+  matplotlib fallback's decimated silhouette would blind the gate), condition
+  an `abstractvision` i2i generation on that render, gate acceptance on
+  silhouette IoU >= 0.75 against the clay silhouette, suppress baked specular
+  highlights (pale desaturated blobs vs the local diffuse body estimate),
+  and cap-limited LAB tone matching toward the source photo (mean shift
+  clamped per channel so a legitimately different unseen side is never
+  whitewashed into the front photo's statistics; pre-match distance and the
+  applied shift are recorded). Measured on the certified owl: observed
+  coverage 0.30 -> 0.83 with four generated views (back/left/right/top),
+  every acceptance first-attempt (IoU 0.92-0.98).
+- Generated views are SUBORDINATED witnesses in the bake: their projection
+  weights are attenuated (0.6) so they lose every per-texel contest against
+  real photo content; the source view keeps its single-view facing semantics
+  and scarcity-rescue stays off unless a REAL reference exists (generated
+  views must not flip the certified single-photo regime). `observed_view_stats`
+  rows and bundle metadata mark generated views explicitly.
+- Hunyuan backend option `texture_reference_generation` (auto/on/off,
+  default auto) with `texture_reference_generation_angles` (labels or
+  `label:azimuth,elevation` entries — the validated starship underside is
+  `bottom:0,-75`); CLI flags for both; `rebake_bundle` gains
+  `generate_references` + `generation_angles` + `subject_hint`.
+- Adversarially hardened before landing (1 controller agent, 15 findings):
+  "auto" fires ONLY with an explicitly configured image provider (never the
+  remote fallback route) AND a non-empty subject hint (the i2i model
+  conditions on an untextured clay render; without subject knowledge it
+  invents materials for exactly the default one-photo user) — otherwise it
+  skips with an actionable warning; "on" expresses explicit intent. Full
+  provenance is recorded per bundle: resolved provider/model, prompts,
+  negative prompt, seeds, per-attempt IoU, accepted-image hashes, clay
+  renderer, tone shifts; generated photos and their clay conditions are
+  persisted as `texture_reference_generated_*.png`. The un-matted source
+  photo now rides as `identity_image` on the backend's source view (the
+  fringe-repair correspondence needs it). Honest scope, documented: a
+  generated view is plausible synthesis, not ground truth — content on
+  fully unobserved regions (a person's back of head) is invented, and the
+  three side views are generated independently (no cross-view content
+  consistency beyond tone).
+
 ### Added (executable golden-bake regression harness + public bundle API)
 
 - `scripts/golden_bake.py` turns the certification's determinism claim into an
