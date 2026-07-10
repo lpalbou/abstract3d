@@ -24,6 +24,7 @@ is marked as such in the bake stats and bundle metadata.
 from __future__ import annotations
 
 import io
+import math
 import time
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
@@ -42,11 +43,25 @@ DEFAULT_ANGLES: Tuple[Tuple[str, float, float], ...] = (
     ("top", 0.0, 55.0),
 )
 
-# Steer the i2i model away from baking its own lighting into what the bake
-# must treat as albedo. Applied to every generated view.
+# Finish/rendering qualities only — never material nouns (any named
+# material may be the CORRECT one for some subject, and negated mentions
+# still activate the concept). Note: guidance-distilled FLUX.2-klein routes
+# ignore negative prompts entirely (verified in the mlx backend's model
+# table), so the positive wording and the texture gate carry the fix there;
+# the negative earns its keep on CFG-capable editors (Qwen).
 DEFAULT_NEGATIVE_PROMPT = (
-    "glossy shine, specular highlights, strong reflections, rim lighting, "
-    "lens flare, harsh shadows, dramatic lighting"
+    "smooth glazed finish, glossy shine, polished surface, specular "
+    "highlights, reflections, airbrushed, soft focus, blurred detail, "
+    "simplified surface, flat lifeless texture, CGI render, rim lighting, "
+    "lens flare"
+)
+
+# Appended on texture-gate retries: smoothing is a systematic bias, so the
+# retry shifts the prompt mean instead of only re-rolling the seed.
+TEXTURE_ESCALATION_CLAUSE = (
+    " The left photo's surface texture must be copied literally, groove for "
+    "groove and mark for mark; a smoothed, cleaned-up or glazed surface is "
+    "wrong."
 )
 
 
@@ -146,25 +161,145 @@ def clay_silhouette(clay_image: Any) -> Any:
     return distance > 0.04
 
 
+def tint_mesh_from_source(
+    mesh: Any,
+    source_rgba: Any,
+    *,
+    source_pose: Tuple[float, float] = (0.0, 0.0),
+    grid: int = 256,
+    facing_min: float = 0.15,
+) -> Any:
+    """Copy of `mesh` with vertex colors sampled from the source photo —
+    the "part-tinted clay" conditioning guide.
+
+    A neutral gray clay panel makes the generator GUESS each part's
+    material, and on multi-part subjects it guesses wrong (measured: a
+    wood-armed chair regenerated with upholstered arms from gray clay,
+    while every part the source photo witnesses is unambiguous). Tinting
+    every vertex with its observed color — and unseen vertices with their
+    nearest witnessed neighbor's (mirror-symmetric candidates included) —
+    hands the generator the per-part base color assignment so it refines
+    materials instead of inventing them. The tint is a PRIOR, not truth:
+    the acceptance gates still judge the result against the source photo.
+
+    Projection is the clay camera's own formula (azimuth/elevation of the
+    SOURCE view), with the photo's foreground bbox letterbox-mapped onto
+    the mesh's projected bbox; visibility is a coarse-grid z-buffer (a
+    tint needs part-level correctness, not texel accuracy).
+    """
+
+    import numpy as np
+    import trimesh
+    from scipy.spatial import cKDTree
+
+    vertices = np.asarray(mesh.vertices, dtype=np.float32)
+    centered = vertices - vertices.mean(axis=0, keepdims=True)
+    scale = float(np.max(np.linalg.norm(centered, axis=1))) or 1.0
+    centered = centered / scale
+
+    azimuth, elevation = (math.radians(float(source_pose[0])),
+                          math.radians(float(source_pose[1])))
+    eye = np.array([
+        math.cos(elevation) * math.cos(azimuth),
+        math.cos(elevation) * math.sin(azimuth),
+        math.sin(elevation),
+    ], dtype=np.float32)
+    forward = -eye  # camera looks at the origin
+    up = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+    side = np.cross(forward, up)
+    side /= max(float(np.linalg.norm(side)), 1e-8)
+    cam_up = np.cross(side, forward)
+    cam_x = centered @ side
+    cam_y = centered @ cam_up
+    cam_z = centered @ forward  # larger = farther from camera
+
+    photo = np.asarray(source_rgba.convert("RGBA"), dtype=np.float32) / 255.0
+    alpha = photo[:, :, 3] > 0.5
+    if not alpha.any():
+        return mesh.copy()
+    prow = np.any(alpha, axis=1)
+    pcol = np.any(alpha, axis=0)
+    pr0, pr1 = int(np.argmax(prow)), int(len(prow) - np.argmax(prow[::-1]))
+    pc0, pc1 = int(np.argmax(pcol)), int(len(pcol) - np.argmax(pcol[::-1]))
+
+    # Letterbox mapping: mesh-projection bbox -> photo foreground bbox,
+    # one uniform scale (anisotropic stretch would smear part boundaries).
+    mesh_w = float(cam_x.max() - cam_x.min()) or 1e-6
+    mesh_h = float(cam_y.max() - cam_y.min()) or 1e-6
+    photo_w, photo_h = float(pc1 - pc0), float(pr1 - pr0)
+    fit = min(photo_w / mesh_w, photo_h / mesh_h)
+    center_u = (pc0 + pc1) / 2.0
+    center_v = (pr0 + pr1) / 2.0
+    us = center_u + (cam_x - (cam_x.max() + cam_x.min()) / 2.0) * fit
+    vs = center_v - (cam_y - (cam_y.max() + cam_y.min()) / 2.0) * fit
+
+    # Coarse z-buffer visibility on a grid over the projected footprint.
+    gx = np.clip(((cam_x - cam_x.min()) / mesh_w * (grid - 1)).astype(np.int32), 0, grid - 1)
+    gy = np.clip(((cam_y - cam_y.min()) / mesh_h * (grid - 1)).astype(np.int32), 0, grid - 1)
+    cell = gy * grid + gx
+    order = np.argsort(cam_z)  # nearest first
+    zbuf = np.full(grid * grid, np.inf, dtype=np.float32)
+    np.minimum.at(zbuf, cell[order], cam_z[order])
+    depth_eps = 0.03 * (float(cam_z.max() - cam_z.min()) or 1.0)
+    visible = cam_z <= zbuf[cell] + depth_eps
+    try:
+        normals = np.asarray(mesh.vertex_normals, dtype=np.float32)
+        visible &= (normals @ (-forward)) > float(facing_min)
+    except Exception:
+        pass
+
+    ui = np.clip(us.astype(np.int32), 0, photo.shape[1] - 1)
+    vi = np.clip(vs.astype(np.int32), 0, photo.shape[0] - 1)
+    on_subject = alpha[vi, ui]
+    witnessed = visible & on_subject
+
+    colors = np.full((len(centered), 3), 0.72, dtype=np.float32)
+    if witnessed.any():
+        colors[witnessed] = photo[vi[witnessed], ui[witnessed], :3]
+        seen_points = centered[witnessed]
+        tree = cKDTree(seen_points)
+        unseen = ~witnessed
+        if unseen.any():
+            query = centered[unseen]
+            d_direct, i_direct = tree.query(query, workers=-1)
+            mirrored = query.copy()
+            mirrored[:, 1] *= -1.0  # canonical frame: x-z symmetry plane
+            d_mirror, i_mirror = tree.query(mirrored, workers=-1)
+            use_mirror = d_mirror < d_direct
+            nearest = np.where(use_mirror, i_mirror, i_direct)
+            colors[unseen] = colors[witnessed][nearest]
+
+    tinted = mesh.copy()
+    tinted.visual = trimesh.visual.ColorVisuals(
+        tinted, vertex_colors=(np.clip(colors, 0.0, 1.0) * 255).astype(np.uint8))
+    return tinted
+
+
 def suppress_specular_highlights(
     image_rgba: Any,
     *,
+    source_rgba: Optional[Any] = None,
     lightness_delta: float = 12.0,
     chroma_ratio: float = 0.85,
     body_sigma: float = 9.0,
     blend: float = 0.75,
+    relief_band_threshold: float = 2.5,
 ) -> Tuple[Any, float]:
-    """Pull baked specular highlights toward the local diffuse color.
+    """Pull baked specular highlights toward the local diffuse color —
+    WITHOUT flattening carved relief.
 
-    Diffusion models render glossy materials with their own studio light,
-    and the bake must treat every generated pixel as albedo — a highlight
-    that survives becomes a permanent pale blob on the texture (measured:
-    the owl's crown, present in all four generated views, survived view
-    consensus untouched). A highlight reads as LIGHTER and LESS SATURATED
-    than the diffuse body around it, so: estimate the local body color with
-    a heavy Gaussian of the foreground (normalized convolution), flag
-    pixels that exceed it in L while falling below it in chroma, feather
-    the mask, and blend flagged pixels toward the body estimate.
+    A highlight reads as LIGHTER and LESS SATURATED than the local diffuse
+    body. Two adversarially-motivated guards on top of that predicate:
+
+    - RELIEF EXEMPTION: pixels in a high band-pass-energy neighborhood are
+      never corrected. Carved-ridge micro-highlights satisfy the specular
+      predicate (measured: 2% of a matte carved-wood SOURCE photo flagged),
+      and blending them toward a sigma-9 body estimate erases exactly the
+      relief the transfer must preserve. True glaze highlights are broad
+      and smooth — low band energy — so the exemption costs nothing there.
+    - SOURCE CALIBRATION: when the source photo itself flags a similar
+      fraction under the same predicate (its own false-positive floor),
+      the correction blend is scaled down proportionally.
 
     Returns `(image, corrected_fraction)`.
     """
@@ -174,32 +309,58 @@ def suppress_specular_highlights(
     from scipy.ndimage import gaussian_filter
     from skimage import color as skcolor
 
+    def flag_speculars(rgba_array: Any) -> Tuple[Any, Any, Any, Any]:
+        alpha_mask = rgba_array[:, :, 3] > 0.5
+        lab_array = skcolor.rgb2lab(rgba_array[:, :, :3]).astype(np.float32)
+        weight = alpha_mask.astype(np.float32)
+
+        def masked_blur(field: Any, sigma: float) -> Any:
+            numerator = gaussian_filter(field * weight, sigma)
+            denominator = gaussian_filter(weight, sigma)
+            return numerator / np.maximum(denominator, 1e-6)
+
+        body_est = np.stack(
+            [masked_blur(lab_array[:, :, c], body_sigma) for c in range(3)], axis=2)
+        chroma = np.hypot(lab_array[:, :, 1], lab_array[:, :, 2])
+        body_chroma = np.hypot(body_est[:, :, 1], body_est[:, :, 2])
+        flags = (
+            alpha_mask
+            & (lab_array[:, :, 0] > body_est[:, :, 0] + float(lightness_delta))
+            & (chroma < float(chroma_ratio) * body_chroma)
+        )
+        # relief energy: 2-8 px band of the lightness channel
+        band = masked_blur(lab_array[:, :, 0], 1.0) - masked_blur(lab_array[:, :, 0], 3.0)
+        relief = gaussian_filter(np.abs(band), 3.0)
+        return flags, relief, lab_array, body_est
+
     rgba = np.asarray(image_rgba.convert("RGBA"), dtype=np.float32) / 255.0
-    alpha = rgba[:, :, 3]
-    mask = alpha > 0.5
+    mask = rgba[:, :, 3] > 0.5
     if int(mask.sum()) < 1024:
         return image_rgba, 0.0
-    lab = skcolor.rgb2lab(rgba[:, :, :3]).astype(np.float32)
-    weight = mask.astype(np.float32)
-
-    def masked_blur(field: Any) -> Any:
-        numerator = gaussian_filter(field * weight, body_sigma)
-        denominator = gaussian_filter(weight, body_sigma)
-        return numerator / np.maximum(denominator, 1e-6)
-
-    body = np.stack([masked_blur(lab[:, :, c]) for c in range(3)], axis=2)
-    chroma = np.hypot(lab[:, :, 1], lab[:, :, 2])
-    body_chroma = np.hypot(body[:, :, 1], body[:, :, 2])
-    specular = (
-        mask
-        & (lab[:, :, 0] > body[:, :, 0] + float(lightness_delta))
-        & (chroma < float(chroma_ratio) * body_chroma)
-    )
+    specular, relief, lab, body = flag_speculars(rgba)
+    # Relief exemption: never correct pixels living inside carved texture.
+    specular &= relief < float(relief_band_threshold)
     fraction = float(specular.mean())
     if not specular.any():
         return image_rgba, 0.0
+
+    effective_blend = float(blend)
+    if source_rgba is not None:
+        try:
+            src = np.asarray(source_rgba.convert("RGBA"), dtype=np.float32) / 255.0
+            if int((src[:, :, 3] > 0.5).sum()) >= 1024:
+                src_flags, src_relief, _, _ = flag_speculars(src)
+                src_flags &= src_relief < float(relief_band_threshold)
+                source_floor = float(src_flags.mean())
+                if fraction <= 2.0 * source_floor:
+                    # The generation flags no more than the source's own
+                    # false-positive floor: correcting would only damage.
+                    effective_blend *= 0.25
+        except Exception:
+            pass
+
     feather = np.clip(gaussian_filter(specular.astype(np.float32), 2.0) * 1.5, 0.0, 1.0)
-    feather *= float(blend)
+    feather *= effective_blend
     corrected = lab * (1.0 - feather[:, :, None]) + body * feather[:, :, None]
     import warnings
 
@@ -383,20 +544,23 @@ def parse_generation_angles(
     return tuple(resolved)
 
 
-def auto_generation_ready(owner: Any, subject_hint: Optional[str]) -> Tuple[bool, str]:
-    """Whether "auto" mode may fire. "on" bypasses these gates (explicit intent).
+def auto_generation_ready(owner: Any, subject_hint: Optional[str] = None) -> Tuple[bool, str]:
+    """Whether "auto" mode may fire. "on" bypasses this gate (explicit intent).
 
-    Two conditions, both adversarially motivated:
-    - the resolved i2i route must name an EXPLICITLY CONFIGURED provider
-      (owner vision handle, `scene3d_image_provider`, or the env override) —
-      the capability's fallback route is a remote API, and a default-on
-      feature must never silently send a user's mesh renders (or money)
-      to a provider they never chose;
-    - a non-empty subject hint must exist — the i2i model conditions on an
-      untextured clay render, and with no textual subject knowledge it
-      invents materials and identity for exactly the default one-photo user.
+    One condition: the resolved i2i route must name an EXPLICITLY CONFIGURED
+    provider (owner vision handle, `scene3d_image_provider`, or the env
+    override) — the capability's fallback route is a remote API, and a
+    default-on feature must never silently send a user's mesh renders (or
+    money) to a provider they never chose.
+
+    A subject hint is NOT required: the source photo is the material
+    authority (composite conditioning) and the subject noun is derived
+    automatically (caption -> nouns-only extraction). The earlier hint
+    requirement contradicted no-human-in-the-loop operation and pushed
+    users to hand-write descriptions — the proven wrong-material vector.
     """
 
+    del subject_hint  # kept for call-site compatibility
     from .image_composition import has_image_composer, resolve_image_generation_request
 
     if not has_image_composer(owner):
@@ -409,11 +573,6 @@ def auto_generation_ready(owner: Any, subject_hint: Optional[str]) -> Tuple[bool
         return False, (
             "no explicitly configured image provider (set scene3d_image_provider "
             "or ABSTRACT3D_IMAGE_PROVIDER, e.g. a local mlx-gen route)"
-        )
-    if not (subject_hint or "").strip():
-        return False, (
-            "no subject hint (pass a prompt describing the subject so the "
-            "synthesized views stay faithful to it)"
         )
     return True, "ready"
 
@@ -428,32 +587,105 @@ def _view_phrase(label: str) -> str:
     }.get(label, f"seen from the {label.replace('_', ' ')} view")
 
 
-def _view_prompt(label: str, subject_hint: Optional[str],
-                 conditioning: str = "clay") -> str:
-    subject = (subject_hint or "").strip() or "the exact object shown"
+# Person-category words (from the AUTO caption, not from a human): human
+# subjects are the one category where i2i editors systematically drift to
+# "sculpture" renderings of the clay panel; the clause is generic to the
+# whole category. The refusal gate reuses the list, so recall errs wide:
+# a false positive skips one object generation (cheap, and "on" plus the
+# person acknowledgment overrides); a false negative synthesizes a face.
+_PERSON_WORDS = frozenset(
+    "person people human humans man men woman women boy boys girl girls "
+    "child children kid kids baby babies infant toddler lady ladies guy "
+    "guys gentleman gentlemen bride groom male female portrait face head "
+    "bust figure selfie".split())
+
+
+def is_person_subject(subject_text: Optional[str]) -> bool:
+    """Whether a caption/hint/noun names a human subject.
+
+    Human subjects are categorically excluded from unattended generation
+    (`person_policy="skip"`): an adversarial review measured i2i side/back
+    synthesis drifting to a DIFFERENT person's face — different age, nose,
+    skin — while every material gate strict-passed. No gate in the stack
+    measures identity, so no gate can defend it; until one does (e.g. a
+    face-embedding similarity floor), silently altering a person's likeness
+    is a product-trust failure, not a texture defect.
+
+    Tokenization is alphabetic-runs, not whitespace ("woman's" matches
+    "woman"). Word-list detection is a stopgap; the robust upgrade path is
+    a face detector on the source photo (tracked in KnowledgeBase).
+    """
+
+    import re
+
+    tokens = set(re.findall(r"[a-z]+", (subject_text or "").lower()))
+    return bool(tokens & _PERSON_WORDS)
+
+
+def _person_clause(subject_noun: Optional[str]) -> str:
+    words = set((subject_noun or "").lower().split())
+    if words & _PERSON_WORDS:
+        return (
+            " The subject is a living person, not a statue: real human skin "
+            "with its natural color from the left photo, and real individual "
+            "hair strands with the left photo's hair color. It is the SAME "
+            "person as the left photo: same age, same clean unblemished skin "
+            "complexion, same clothing, and the same clean dry healthy hair."
+        )
+    return ""
+
+
+def _view_prompt(label: str, subject_noun: Optional[str],
+                 conditioning: str = "clay", *, tinted: bool = False) -> str:
+    """Build the generation instruction. `subject_noun` must already be
+    material-free (see `captioning.extract_subject_noun`) — the template has
+    no free-text slot, so nothing a human or captioner writes can inject a
+    material claim structurally.
+    """
+
+    noun = (subject_noun or "").strip() or "object"
     phrase = _view_phrase(label)
     if conditioning == "composite":
-        # The composite canvas carries the source photo on the left and the
-        # clay render on the right: the instruction is a texture transfer,
-        # not a free generation — measured on the owl, this doubled material
-        # coherence vs clay-only conditioning (hue-histogram correlation
-        # 0.44 -> 0.82) with the SAME model.
+        # Adversarially designed wording: the copy-material clause leads
+        # with MATERIAL-NEUTRAL relief vocabulary (self-normalizing — for a
+        # smooth subject, copying its relief exactly yields smooth), the
+        # result is named "a real photograph" (naming it a render biases
+        # CG-smooth output), and re-interpretation is forbidden without
+        # naming any material class. The prior wording ("repaint ... the
+        # surface pattern") was satisfied literally by the shipped failure:
+        # pattern kept as painted decoration, carved relief lost.
+        right_panel = (
+            "a rough model of the SAME subject painted with flat base "
+            "colors" if tinted else "an untextured model of the SAME subject")
+        tint_clause = (
+            " The right panel's flat colors already mark which part is "
+            "which material — keep that assignment." if tinted else "")
         return (
-            f"The left image shows {subject}. The right image is an untextured "
-            f"3D render of the SAME object {phrase}. Repaint the right image "
-            "with the exact materials, colors and surface pattern of the left "
-            "object. Keep the right image's exact shape and pose. Return only "
-            "the repainted right view on a plain dark background, soft even "
-            "studio lighting, matte finish, no reflections."
+            f"Left panel: a photo of {noun}. Right panel: {right_panel} "
+            f"{phrase}. Make the right panel a real "
+            "photograph of the left subject seen from this angle. Copy the "
+            "left subject's material identity exactly, PART BY PART: each "
+            "part keeps its own material, color and texture from the left "
+            f"photo — never spread one part's material onto a different part."
+            f"{tint_clause} "
+            "Reproduce the same surface relief, carving depth, grooves, "
+            "grain, cracks, fibers and micro-texture, and the same colors "
+            "and pattern. Match the roughness of each left surface exactly. "
+            "Do not change any material type. Do not smooth, polish, glaze "
+            "or simplify any surface. Keep the right panel's exact shape, "
+            "pose and framing. Output only the finished right view as a "
+            "single image, on a plain dark background, soft diffuse "
+            "lighting, no gloss." + _person_clause(noun)
         )
     if conditioning == "rotate":
         return (
-            f"Rotate the camera to show this exact object {phrase}. Keep the "
-            "same object identity, materials, colors and surface pattern. "
-            "Plain dark background, soft even studio lighting, matte finish."
+            f"Rotate the camera to show this exact {noun} {phrase}. Keep the "
+            "same object identity: the same surface relief, grooves, grain "
+            "and micro-texture, the same colors and pattern. Do not change "
+            "the material type. Plain dark background, soft diffuse lighting."
         )
     return (
-        f"{subject}, {phrase}, the same physical object with consistent "
+        f"a {noun}, {phrase}, the same physical object with consistent "
         "materials and colors, photographed on a plain dark background, "
         "soft diffuse even studio lighting, matte finish, no harsh specular "
         "highlights or reflections, product photography, sharp focus"
@@ -472,17 +704,36 @@ def generate_reference_views(
     tone_match: bool = True,
     render_size: int = 768,
     seed: int = 11,
-    max_attempts: int = 2,
+    max_attempts: int = 3,
     negative_prompt: Optional[str] = DEFAULT_NEGATIVE_PROMPT,
     conditioning: str = "composite",
+    # A/B-measured OFF: the part-tinted guide ("painted with flat base
+    # colors") biased the editor toward flat-painted output — owl back
+    # relief 0.76-0.80/flat_delta 0.23-0.26 (floor FAIL) with tint vs
+    # 1.09/0.06 (strict PASS) with the plain gray clay guide.
+    tint_conditioning: bool = False,
+    source_pose: Tuple[float, float] = (0.0, 0.0),
+    steps_schedule: Sequence[Optional[int]] = (8, 12, 12),
     image_request: Optional[Mapping[str, Any]] = None,
+    person_policy: str = "skip",
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """Synthesize reference views for `mesh` from its own clay renders.
 
+    Fully subject-agnostic: `subject_hint` (a user's t23d prompt, when one
+    exists) and the automatic caption are both reduced to a MATERIAL-FREE
+    noun phrase — the source photo is the only material authority, and the
+    prompt template has no free-text slot.
+
     Returns `(views, report)`: `views` entries are bake-ready observed-view
     dicts (`rgba`/`azimuth_deg`/`elevation_deg`/`label`/`role`/`generated`);
-    `report` carries per-angle acceptance, IoU scores, timings, and the
-    prompts used, so bundles can persist an honest provenance record.
+    `report` carries per-angle acceptance, per-attempt IoU/texture metrics,
+    timings, and the prompts used, so bundles persist an honest provenance
+    record.
+
+    `person_policy` ("skip" by default) refuses human subjects outright —
+    see `is_person_subject` for why identity cannot currently be defended.
+    Explicit opt-in callers may pass "proceed"; the report then records a
+    `person_warning`.
     """
 
     import hashlib
@@ -509,6 +760,87 @@ def generate_reference_views(
     request.pop("seed", None)
     request = {key: value for key, value in request.items() if value is not None}
 
+    # Subject noun: nouns-only reduction of the user's text when present,
+    # else of an automatic caption of the source photo. Material words are
+    # structurally banned either way (see captioning._MATERIAL_STOPLIST).
+    from .captioning import caption_image, extract_subject_noun
+
+    caption: Optional[str] = None
+    if not (subject_hint or "").strip():
+        caption = caption_image(source_rgba)
+    subject_noun = extract_subject_noun(subject_hint or caption)
+
+    # Human-subject policy (see `is_person_subject`): "skip" refuses to
+    # synthesize views of a person — the gate stack cannot defend facial
+    # identity. An explicit caller may pass "proceed" (a person-specific
+    # acknowledgment, not merely "on"); the report then carries a warning
+    # so the risk is on the record.
+    if person_policy not in ("skip", "proceed"):
+        raise ValueError(
+            f"person_policy must be 'skip' or 'proceed' (got {person_policy!r})")
+    person_detected = is_person_subject(subject_hint) or is_person_subject(caption)
+    caption_checked = caption is not None
+    if person_policy == "skip" and not person_detected and (subject_hint or "").strip():
+        # A hint that doesn't name a person is not evidence of absence —
+        # caption the photo itself before unattended synthesis of what
+        # might be someone's face.
+        caption = caption_image(source_rgba)
+        caption_checked = caption is not None
+        person_detected = is_person_subject(caption)
+    if person_policy == "skip" and not person_detected and not caption_checked:
+        # FAIL CLOSED (adversarial round 2): a None caption means "person
+        # status unknown", not "not a person". An unavailable captioner
+        # must never become a permission grant for unattended synthesis of
+        # what might be someone's face.
+        return [], {
+            "angles": [],
+            "accepted": 0,
+            "rejected": 0,
+            "skipped": (
+                "captioner unavailable: the person-subject check cannot run, "
+                "so generation is refused (fail closed — an unavailable "
+                "check is not a permission grant). Install transformers/BLIP "
+                "for automatic captioning, provide real reference photos, or "
+                "pass the person acknowledgment (allow_person_subjects / "
+                "texture_reference_allow_person) to attest the subject may "
+                "be synthesized."
+            ),
+            "person_detected": None,
+            "caption": None,
+            "subject_hint": subject_hint,
+        }
+    if person_detected and person_policy == "skip":
+        return [], {
+            "angles": [],
+            "accepted": 0,
+            "rejected": 0,
+            "skipped": (
+                "person subject detected "
+                f"(caption={caption!r}, hint={subject_hint!r}): reference "
+                "generation cannot guarantee facial identity, so synthesis "
+                "of people requires an explicit person acknowledgment "
+                "(allow_person_subjects / texture_reference_allow_person / "
+                "--texture-reference-allow-person). Prefer real reference "
+                "photos for people."
+            ),
+            "person_detected": True,
+            "caption": caption,
+            "subject_hint": subject_hint,
+        }
+
+    # Part-tinted conditioning guide: one tinted copy of the mesh, rendered
+    # per angle for the composite's right panel (gray clay stays the
+    # geometry/silhouette authority for gating and registration).
+    tinted_mesh: Optional[Any] = None
+    report_tint_error: Optional[str] = None
+    if conditioning == "composite" and tint_conditioning:
+        try:
+            tinted_mesh = tint_mesh_from_source(
+                mesh, source_rgba, source_pose=source_pose)
+        except Exception as exc:
+            report_tint_error = f"{type(exc).__name__}: {exc}"
+            tinted_mesh = None
+
     views: List[Dict[str, Any]] = []
     report: Dict[str, Any] = {
         "angles": [],
@@ -517,11 +849,23 @@ def generate_reference_views(
         # Provenance: what actually produced these pixels.
         "image_request": {k: str(v) for k, v in request.items()},
         "subject_hint": subject_hint,
+        "caption": caption,
+        "subject_noun": subject_noun,
         "negative_prompt": negative_prompt,
         "conditioning": conditioning,
+        "tinted_conditioning": tinted_mesh is not None,
         "base_seed": int(seed),
         "silhouette_iou_min": float(silhouette_iou_min),
     }
+    if person_detected:
+        report["person_detected"] = True
+        report["person_warning"] = (
+            "person subject: generated side/back views may not preserve "
+            "facial identity (no identity gate exists); requested explicitly, "
+            "proceeding"
+        )
+    if report_tint_error:
+        report["tint_error"] = report_tint_error
     for label, azimuth, elevation in angles:
         entry: Dict[str, Any] = {
             "label": label,
@@ -550,24 +894,51 @@ def generate_reference_views(
             report["angles"].append(entry)
             report["rejected"] += 1
             continue
-        prompt = _view_prompt(label, subject_hint, conditioning)
-        entry["prompt"] = prompt
+        base_prompt = _view_prompt(label, subject_noun, conditioning,
+                                   tinted=tinted_mesh is not None)
+        entry["prompt"] = base_prompt
         entry["conditioning"] = conditioning
 
-        # Build the conditioning image per strategy. "composite" pairs the
-        # SOURCE PHOTO with the clay render so the model transfers the real
-        # materials instead of inventing them from geometry alone.
+        # Conditioning image per strategy. "composite" pairs the SOURCE
+        # PHOTO with the clay render so the model transfers the real
+        # materials instead of inventing them. Both panels are LETTERBOXED
+        # (no anisotropic stretch of the material the model must copy) onto
+        # the same dark background.
         buffer = io.BytesIO()
         if conditioning == "composite":
-            canvas = Image.new(
-                "RGB", (int(render_size) * 2, int(render_size)), "black")
-            canvas.paste(
-                source_rgba.convert("RGB").resize(
-                    (int(render_size), int(render_size)), Image.LANCZOS), (0, 0))
-            canvas.paste(
-                clay.convert("RGB").resize(
-                    (int(render_size), int(render_size)), Image.LANCZOS),
-                (int(render_size), 0))
+            panel = int(render_size)
+
+            def letterbox(image: Any) -> Any:
+                rgb = image.convert("RGB")
+                scale = panel / max(rgb.size)
+                new_size = (max(1, int(round(rgb.width * scale))),
+                            max(1, int(round(rgb.height * scale))))
+                resized = rgb.resize(new_size, Image.LANCZOS)
+                box = Image.new("RGB", (panel, panel), (16, 16, 16))
+                box.paste(resized, ((panel - new_size[0]) // 2,
+                                    (panel - new_size[1]) // 2))
+                return box
+
+            # The right panel is the TINTED render when available (part
+            # base colors sampled from the source photo — the generator
+            # refines materials instead of guessing them per part); the
+            # gray clay remains the silhouette/registration authority.
+            guide = clay
+            if tinted_mesh is not None:
+                try:
+                    guide = render_mesh_views(
+                        tinted_mesh, size=int(render_size),
+                        azimuths=[float(azimuth)], elevation=float(elevation),
+                    )[0].convert("RGBA")
+                except Exception:
+                    guide = clay
+            guide_dark = Image.new("RGB", guide.size, (16, 16, 16))
+            guide_dark.paste(guide.convert("RGB"), (0, 0),
+                             Image.fromarray(
+                                 (clay_silhouette(guide) * 255).astype("uint8")))
+            canvas = Image.new("RGB", (panel * 2, panel), (16, 16, 16))
+            canvas.paste(letterbox(source_rgba), (0, 0))
+            canvas.paste(letterbox(guide_dark), (panel, 0))
             canvas.save(buffer, format="PNG")
         elif conditioning == "rotate":
             source_rgba.convert("RGB").save(buffer, format="PNG")
@@ -575,12 +946,40 @@ def generate_reference_views(
             clay.convert("RGB").save(buffer, format="PNG")
         conditioning_bytes = buffer.getvalue()
 
-        accepted_rgba: Optional[Any] = None
+        # Retry ladder: IoU failures re-roll the seed with the SAME prompt
+        # (shape failure is stochastic); texture/material failures escalate
+        # the prompt (smoothing and material drift are systematic biases).
+        # Every IoU-passing candidate is kept with its metrics, but only a
+        # STRICT pass may ship (see selection below). Three complementary
+        # oracles, each catching a failure family the others are blind to
+        # (calibrated on the v1+v2 critic-labeled set):
+        #   texture_fidelity    – relief smoothing (wood -> glaze)
+        #   part_material_fidelity – palette flips (black hair -> chocolate,
+        #                            upholstery -> camouflage)
+        #   gate_baked_speculars – glossy highlight fields (wet-look hair)
+        from .material_gates import (
+            gate_baked_speculars,
+            part_material_fidelity,
+            texture_fidelity,
+        )
+
+        candidates: List[Dict[str, Any]] = []
+        escalated = False
         for attempt in range(int(max_attempts)):
             attempt_seed = int(seed) + attempt
+            prompt = base_prompt + (TEXTURE_ESCALATION_CLAUSE if escalated else "")
             call_kwargs = dict(request)
             if negative_prompt:
-                call_kwargs["negative_prompt"] = negative_prompt
+                call_kwargs["negative_prompt"] = negative_prompt + (
+                    ", smooth featureless surface" if escalated else "")
+            # The distilled klein default is 4 denoise steps — too few for
+            # micro-texture; measured on the owl back, the relief ratio
+            # rises with steps. The schedule escalates alongside the prompt.
+            if attempt < len(steps_schedule) and steps_schedule[attempt]:
+                call_kwargs["steps"] = int(steps_schedule[attempt])
+            attempt_row: Dict[str, Any] = {"seed": attempt_seed,
+                                           "escalated": escalated,
+                                           "steps": call_kwargs.get("steps")}
             try:
                 payload = generator(prompt, conditioning_bytes,
                                     seed=attempt_seed, **call_kwargs)
@@ -591,62 +990,113 @@ def generate_reference_views(
                             data = payload[key]
                             break
                 if data is None:
-                    entry["attempts"].append(
-                        {"seed": attempt_seed,
-                         "error": "generator returned no image bytes"})
+                    attempt_row["error"] = "generator returned no image bytes"
+                    entry["attempts"].append(attempt_row)
                     continue
                 generated = Image.open(io.BytesIO(bytes(data)))
-                if (conditioning == "composite"
-                        and generated.width >= generated.height * 1.6):
-                    # The model echoed the full two-panel canvas: keep the
-                    # repainted right panel.
+                if conditioning == "composite" and generated.width > generated.height:
+                    # Any wider-than-tall echo of the two-panel canvas keeps
+                    # only the repainted right panel (the old >=1.6 aspect
+                    # heuristic missed 4:3 echoes and burned whole ladders).
                     generated = generated.crop(
-                        (generated.width // 2, 0, generated.width, generated.height))
+                        (generated.width - generated.height, 0,
+                         generated.width, generated.height))
                 matted = remove_background_robust(generated)
                 matted, registration = register_matte_to_clay(matted, clay)
+                attempt_row["registration"] = registration
+                iou = silhouette_iou(matted, clay)
+                attempt_row["silhouette_iou"] = round(iou, 4)
+                if iou < float(silhouette_iou_min):
+                    entry["attempts"].append(attempt_row)
+                    continue  # same prompt, next seed
+                # Post-processing BEFORE the texture gate: the gate must
+                # judge the exact pixels the bake will consume.
+                processed = matted
+                try:
+                    processed, specular_fraction = suppress_specular_highlights(
+                        processed, source_rgba=source_rgba)
+                    attempt_row["specular_suppressed_fraction"] = round(
+                        specular_fraction, 4)
+                except Exception as exc:
+                    attempt_row["specular_suppression_error"] = (
+                        f"{type(exc).__name__}: {exc}")
+                if tone_match:
+                    try:
+                        processed, tone_stats = match_tone_lab(processed, source_rgba)
+                        attempt_row["tone_match"] = tone_stats
+                    except Exception as exc:
+                        attempt_row["tone_match"] = {
+                            "applied": False,
+                            "error": f"{type(exc).__name__}: {exc}"}
+                texture = texture_fidelity(processed, source_rgba)
+                material = part_material_fidelity(processed, source_rgba)
+                specular = gate_baked_speculars(processed)
+                attempt_row["texture"] = {
+                    k: texture.get(k)
+                    for k in ("passed", "floor", "relief_ratio", "flat_delta",
+                              "s50", "selection_score", "reason")}
+                attempt_row["material"] = {
+                    k: material.get(k)
+                    for k in ("passed", "floor", "worst_part_delta_e", "reason")}
+                attempt_row["speculars"] = {
+                    k: specular.get(k)
+                    for k in ("passed", "worst_blob_fraction")}
+                strict_pass = bool(texture["passed"] and material["passed"]
+                                   and specular["passed"])
+                floor_pass = bool(texture.get("floor", texture["passed"])
+                                  and material.get("floor", material["passed"]))
+                # One score to rank candidates: relief fidelity minus
+                # penalties for palette drift and gloss.
+                score = float(texture.get("selection_score") or 0.0)
+                score -= 0.05 * max(0.0, float(
+                    material.get("worst_part_delta_e") or 0.0) - 13.0)
+                if not specular["passed"]:
+                    score -= 0.3
+                candidates.append({
+                    "rgba": processed,
+                    "iou": iou,
+                    "strict": strict_pass,
+                    "floor": floor_pass,
+                    "score": score,
+                    "seed": attempt_seed,
+                    "raw_payload_md5": hashlib.md5(bytes(data)).hexdigest(),
+                })
+                entry["attempts"].append(attempt_row)
+                if strict_pass:
+                    break  # strict pass: stop the ladder
+                escalated = True  # systematic defect: escalate the prompt
             except Exception as exc:
-                entry["attempts"].append(
-                    {"seed": attempt_seed, "error": f"{type(exc).__name__}: {exc}"})
+                attempt_row["error"] = f"{type(exc).__name__}: {exc}"
+                entry["attempts"].append(attempt_row)
                 continue
-            iou = silhouette_iou(matted, clay)
-            entry["attempts"].append({
-                "seed": attempt_seed,
-                "silhouette_iou": round(iou, 4),
-                "registration": registration,
-            })
-            if iou >= float(silhouette_iou_min):
-                accepted_rgba = matted
-                entry["silhouette_iou"] = round(iou, 4)
-                entry["accepted_image_md5"] = hashlib.md5(bytes(data)).hexdigest()
-                break
 
-        if accepted_rgba is None:
-            entry["seconds"] = round(time.perf_counter() - started, 1)
+        entry["seconds"] = round(time.perf_counter() - started, 1)
+        # Selection: best combined score among IoU-passing candidates that
+        # pass ALL gates strictly. Floor-only candidates are recorded but
+        # never baked: the v2 chair measured why — a floor-accepted view
+        # leaked stained fabric straight into the bake, and a wrong texture
+        # on an unseen angle is a worse product defect than the featureless
+        # fill it displaces (fill is dull; wrong material is broken).
+        viable = [c for c in candidates if c["strict"]]
+        if not viable:
+            if any(c["floor"] for c in candidates):
+                entry["rejection_reason"] = (
+                    "floor-only candidates (strict material gates not met); "
+                    "floor quality is reported but never baked"
+                )
             report["angles"].append(entry)
             report["rejected"] += 1
             continue
-
-        try:
-            accepted_rgba, specular_fraction = suppress_specular_highlights(accepted_rgba)
-            entry["specular_suppressed_fraction"] = round(specular_fraction, 4)
-        except Exception as exc:
-            entry["specular_suppression_error"] = f"{type(exc).__name__}: {exc}"
-
-        if tone_match:
-            try:
-                accepted_rgba, tone_stats = match_tone_lab(accepted_rgba, source_rgba)
-                entry["tone_match"] = tone_stats
-            except Exception as exc:
-                entry["tone_match"] = {"applied": False,
-                                       "error": f"{type(exc).__name__}: {exc}"}
-
+        best = max(viable, key=lambda c: c["score"])
         entry["accepted"] = True
-        entry["seconds"] = round(time.perf_counter() - started, 1)
+        entry["silhouette_iou"] = round(best["iou"], 4)
+        entry["texture_gate"] = "passed"
+        entry["raw_payload_md5"] = best["raw_payload_md5"]
         report["angles"].append(entry)
         report["accepted"] += 1
         views.append(
             {
-                "rgba": accepted_rgba,
+                "rgba": best["rgba"],
                 "azimuth_deg": float(azimuth),
                 "elevation_deg": float(elevation),
                 "label": label,

@@ -126,6 +126,26 @@ Unblocking TRELLIS.2 locally requires operator acknowledgment and action:
 2. Once approved, authenticate the machine (`hf auth login`) and let Abstract3D download the companion model on the next run, or point `scene3d_trellis2_dino_model` / `ABSTRACT3D_TRELLIS2_DINO_MODEL` at the authorized local snapshot directory containing `config.json`, `model.safetensors`, and `preprocessor_config.json`.
 3. If you distribute assets or tooling that embed DINOv3 or its derivatives, carry the license and the "Built with DINOv3" notice as the Agreement requires. Abstract3D surfaces this note in its own docs because the runtime cannot verify downstream distribution.
 
+## Companion Image Models (reference generation and captioning)
+
+Generated reference completion (`texture_reference_generation`) and composed
+`t23d` route image synthesis through `abstractvision`; these are the models
+validated with that path on Apple Silicon:
+
+| Model | Role | Approx footprint | Validated status |
+|---|---|---:|---|
+| `AbstractFramework/flux.2-klein-4b-8bit` | i2i reference synthesis (default class) | `7G` | Validated on the four-subject zero-hint suite; ~45 s/view (M-series, 768 px). Sufficient for objects; floor-accepts wet-look hair on human subjects. |
+| `AbstractFramework/flux.2-klein-9b-8bit` | i2i reference synthesis (recommended for people) | `17G` | Strict-passes the portrait family where 4B floor-accepts; ~110 s/view. HF-gated: accept the FLUX.2-klein license and authenticate. |
+| `AbstractFramework/qwen-image-edit-2511-8bit` | i2i editor (CFG-capable, honors negative prompts) | `28G` | Downloads and registers; did not reach a first denoise step on the 48 GB validation host — parked until a larger-memory host validates it. |
+| `Salesforce/blip-image-captioning-base` | automatic subject captioning (`abstract3d.captioning`) | `1G` | Validated: captions feed the material-free noun extraction; never contributes material words (structural stoplist). |
+
+Notes:
+
+- Negative prompts are inert on guidance-distilled FLUX.2-klein routes; the
+  positive instruction and the acceptance gates carry material fidelity there.
+- Set the provider/model with `scene3d_image_provider` / `scene3d_image_model`
+  or `ABSTRACT3D_IMAGE_PROVIDER` / `ABSTRACT3D_IMAGE_MODEL`.
+
 ## Research Catalog
 
 These candidates matter strategically, but they are not promoted to validated backends here yet.

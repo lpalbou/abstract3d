@@ -149,6 +149,12 @@ def _license_accepted(owner: Any) -> bool:
     return raw in {"1", "true", "yes", "on"}
 
 
+def _as_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _require_license_acceptance(owner: Any) -> None:
     if not _license_accepted(owner):
         raise CapabilityNotSupportedError(_LICENSE_HINT)
@@ -778,8 +784,18 @@ class Hunyuan3DShapeBackend:
                         "Synthesize unseen-angle reference photos from the mesh's "
                         "clay renders when only one photo is provided. 'auto' "
                         "(default) fires only with an explicitly configured image "
-                        "provider and a subject prompt; generated views are "
-                        "plausible synthesis, not ground truth."
+                        "provider; generated views are plausible synthesis, not "
+                        "ground truth. Person subjects are refused unless "
+                        "texture_reference_allow_person is set."
+                    ),
+                },
+                "texture_reference_allow_person": {
+                    "type": "boolean",
+                    "description": (
+                        "Person-specific acknowledgment for reference generation: "
+                        "no gate defends facial identity, so synthesizing views "
+                        "of a person requires this explicit attestation (default "
+                        "false; 'on' alone is not consent)."
                     ),
                 },
                 "device": {"type": "string"},
@@ -1169,6 +1185,15 @@ class Hunyuan3DShapeBackend:
             )
         except ValueError as exc:
             raise InvalidRequestError(str(exc)) from exc
+        # Person-specific acknowledgment: "on" is texture-quality opt-in,
+        # not identity-synthesis consent. Synthesizing views of a person
+        # requires this separate, explicit attestation.
+        texture_reference_allow_person = _as_bool(
+            kwargs.pop("texture_reference_allow_person", None)
+            if "texture_reference_allow_person" in kwargs
+            else _owner_cfg(self._owner, "scene3d_texture_reference_allow_person")
+            or _env("ABSTRACT3D_TEXTURE_REFERENCE_ALLOW_PERSON")
+        )
         from . import reject_unknown_options
 
         reject_unknown_options(self.backend_id, kwargs)
@@ -1265,17 +1290,18 @@ class Hunyuan3DShapeBackend:
                 )
 
                 subject_hint = str(prompt or "").strip() or None
-                ready, readiness_reason = auto_generation_ready(self._owner, subject_hint)
+                ready, readiness_reason = auto_generation_ready(self._owner)
                 if texture_reference_generation == "auto" and not ready:
-                    # "auto" is a default: it must never silently go remote or
-                    # invent content without subject knowledge. The warning
-                    # tells the operator exactly how to opt in.
+                    # "auto" is a default: it must never silently go remote.
+                    # No subject prompt is needed — the pipeline captions the
+                    # source photo itself.
                     postprocess_warnings.append(
                         "texture_reference_generation=auto skipped: "
                         f"{readiness_reason}. A single photo witnesses only part "
-                        "of the surface; pass a subject prompt and a configured "
-                        "image provider (or set texture_reference_generation=on) "
-                        "to synthesize the unseen angles."
+                        "of the surface; configure a local image provider "
+                        "(scene3d_image_provider / ABSTRACT3D_IMAGE_PROVIDER) "
+                        "or set texture_reference_generation=on to synthesize "
+                        "the unseen angles."
                     )
                 elif texture_reference_generation == "on" and not has_image_composer(self._owner):
                     raise DependencyUnavailableError(
@@ -1296,14 +1322,30 @@ class Hunyuan3DShapeBackend:
                             subject_hint=subject_hint,
                             seed=seed,
                             image_request=resolve_image_generation_request(self._owner),
+                            # Person subjects are refused in BOTH modes
+                            # unless the person-specific acknowledgment is
+                            # given: "on" is texture-quality opt-in, not
+                            # identity-synthesis consent.
+                            person_policy=(
+                                "proceed"
+                                if texture_reference_allow_person
+                                else "skip"
+                            ),
                         )
                         observed_views.extend(generated_views)
                         if not generated_views:
+                            skip_reason = (
+                                reference_generation_report or {}
+                            ).get("skipped")
                             postprocess_warnings.append(
-                                "texture_reference_generation produced no accepted "
-                                "views (all angles rejected or errored); continuing "
-                                "with the single photo. See texture_artifacts."
-                                "reference_generation for per-angle reasons."
+                                "texture_reference_generation skipped: "
+                                f"{skip_reason}"
+                                if skip_reason
+                                else "texture_reference_generation produced no "
+                                "accepted views (all angles rejected or "
+                                "errored); continuing with the single photo. "
+                                "See texture_artifacts.reference_generation "
+                                "for per-angle reasons."
                             )
                         # Free the image model's accelerator pool before the
                         # 2 GB bake allocates its atlas stacks.
@@ -1318,9 +1360,7 @@ class Hunyuan3DShapeBackend:
                             f"with the single photo: {type(exc).__name__}: {exc}"
                         )
             try:
-                export_mesh, texture_stats = bake_projection_texture(
-                    mesh,
-                    observed_views=observed_views,
+                bake_kwargs = dict(
                     texture_resolution=texture_resolution,
                     texture_completion=texture_completion,
                     # Hunyuan reconstructs in a canonical orthographic frame
@@ -1332,6 +1372,44 @@ class Hunyuan3DShapeBackend:
                     projection_model="orthographic",
                     canonical_border_ratio=0.15,
                 )
+                # Snapshot real views before the candidate bake mutates them
+                # in place (registration replaces view["rgba"]): the A/B
+                # baseline must start from the same pristine inputs.
+                generated_present = any(
+                    view.get("generated") for view in observed_views)
+                baseline_views = (
+                    [dict(view) for view in observed_views
+                     if not view.get("generated")]
+                    if generated_present else None
+                )
+                export_mesh, texture_stats = bake_projection_texture(
+                    mesh, observed_views=observed_views, **bake_kwargs)
+                if generated_present and baseline_views:
+                    # Whole-bake acceptance: per-view gates cannot see
+                    # composition-level failure (handoff seams, overall
+                    # darkening); ship the generated bake only if it does
+                    # not regress the no-references baseline.
+                    from ..bake_acceptance import evaluate_generated_bake
+
+                    baseline_mesh_bake, baseline_stats = bake_projection_texture(
+                        mesh.copy(), observed_views=baseline_views, **bake_kwargs)
+                    verdict = evaluate_generated_bake(
+                        baseline_mesh_bake,
+                        export_mesh,
+                        source_rgba=baseline_views[0]["rgba"],
+                    )
+                    if reference_generation_report is not None:
+                        reference_generation_report["bake_acceptance"] = verdict
+                    if not verdict["accepted"]:
+                        export_mesh, texture_stats = (
+                            baseline_mesh_bake, baseline_stats)
+                        postprocess_warnings.append(
+                            "texture_reference_generation: generated bake "
+                            "regressed the no-references baseline and was "
+                            "refused by the whole-bake acceptance gate; "
+                            "shipping the baseline. Reasons: "
+                            + "; ".join(verdict["reasons"])
+                        )
             except Exception as exc:
                 texture_requested = False
                 texture_stats = {}

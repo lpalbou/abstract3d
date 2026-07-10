@@ -4272,6 +4272,54 @@ def resolve_projection_conflicts(
     return stats
 
 
+def protect_observed_texels(
+    projections: Sequence[Dict[str, Any]],
+    *,
+    protect_floor: float = 0.25,
+) -> Dict[str, Any]:
+    """Generated views COMPLETE the surface; they never REVISE it.
+
+    Weight subordination (generated x0.6) makes synthesized views lose
+    per-texel contests, but the feathered blend still averages them into
+    photo-covered texels — measured on the chair/portrait v2 bakes as rust
+    mottling and skin blotches on the FRONT view, i.e. synthesis revising
+    the user's own photograph. The semantic boundary is sharper than any
+    weight ratio: a real photo is evidence, a generated view is plausible
+    synthesis, and synthesis must contribute nothing where evidence exists.
+
+    On texels where the strongest REAL view holds a credible claim
+    (weight >= `protect_floor`, matching the conflict-resolution priority
+    floor), generated weights go to zero; below the floor they ramp back
+    linearly so the handoff at the protection boundary stays smooth
+    (real grazing rim -> generated head-on content, no weight step).
+
+    Mutates generated projections' weights in place; returns stats.
+    """
+    import numpy as np
+
+    stats: Dict[str, Any] = {"applied": False, "zeroed_by_view": {}}
+    generated = [p for p in projections if p.get("generated")]
+    real = [p for p in projections if not p.get("generated")]
+    if not generated or not real:
+        return stats
+    real_weight = np.stack(
+        [np.asarray(p["weight"], dtype=np.float32) for p in real], axis=0
+    ).max(axis=0)
+    floor = max(float(protect_floor), 1e-6)
+    # 1.0 where no real evidence, fading to 0.0 at/above the floor.
+    scale = np.clip((floor - real_weight) / floor, 0.0, 1.0)
+    protected = real_weight >= floor
+    stats["applied"] = True
+    stats["protect_floor"] = floor
+    stats["protected_texels"] = int(protected.sum())
+    for projection in generated:
+        weight = np.asarray(projection["weight"], dtype=np.float32)
+        zeroed = int(((weight > 0.0) & protected).sum())
+        projection["weight"] = weight * scale
+        stats["zeroed_by_view"][str(projection.get("label"))] = zeroed
+    return stats
+
+
 def admit_scarce_witnesses(
     projections: Sequence[Dict[str, Any]],
     *,
@@ -5434,6 +5482,13 @@ def bake_projection_texture(
         if consistency_stats:
             consistency_stats[-1]["conflict_resolution"] = conflict_stats
 
+    # Generated views are completion-only: after tone/consistency stages
+    # (which need the overlap texels for their statistics), synthesized
+    # weight is removed wherever real evidence exists so the feathered
+    # blend can never average plausible synthesis into the user's photo
+    # (see `protect_observed_texels`).
+    generated_protection_stats = protect_observed_texels(projections)
+
     # FILM-BAND COMMITMENT (multi-view only; see film_band.py): extend the
     # layered zone into fused film bands under multi-view consensus, vacate
     # mixture claims exactly where the film tone will take over, and mark
@@ -6213,6 +6268,7 @@ def bake_projection_texture(
         "fill_detail": fill_detail_stats,
         "fill_floor": fill_floor_stats,
         "delight": delight_stats,
+        "generated_protection": generated_protection_stats,
         "symmetry_completion": symmetry_stats,
         "mirror_rescue": rescue_stats,
         "trace_deposits": {k: v for k, v in trace_deposit_stats.items()

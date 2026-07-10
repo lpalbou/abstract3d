@@ -175,7 +175,7 @@ asset):
   which is the natural substrate for agent-driven generate -> inspect ->
   critique loops)
 
-## Generated Reference Completion — Productized (2026-07-09)
+## Generated Reference Completion — Productized (2026-07-09, hardened 2026-07-10)
 
 The manual generated-reference procedure below is now a first-class option:
 `texture_reference_generation` (auto/on/off, default auto) on the Hunyuan
@@ -184,26 +184,54 @@ matching CLI flags. When only one photo is provided, the pipeline clay-renders
 the reconstructed mesh from the target angles (back/left/right/top by
 default; `texture_reference_generation_angles` accepts labels or
 `label:azimuth,elevation` entries such as the starship's `bottom:0,-75`),
-conditions a local i2i generation on each render, gates acceptance on
-silhouette IoU >= 0.75, suppresses baked specular highlights, applies
-cap-limited LAB tone matching, and feeds accepted views into the certified
-bake as SUBORDINATED witnesses (attenuated weights; the real photo wins
-every contest; single-photo bake semantics preserved).
+conditions a local i2i generation on a source-photo + clay composite,
+gates every candidate on silhouette IoU >= 0.75 plus three STRICT
+material-fidelity oracles (band-pass relief, part-palette identity, baked
+speculars — floor-only candidates are reported, never baked), suppresses
+baked specular highlights, applies cap-limited LAB tone matching, and
+feeds accepted views into the certified bake as COMPLETION-ONLY witnesses:
+generated weight is zero wherever the real photo holds a credible claim
+(`protect_observed_texels`), so synthesis can only paint surface no photo
+observed.
 
-Measured on the certified owl (single photo, product path): observed
-coverage 0.30 -> 0.84, all four angles accepted first-attempt (IoU
-0.92-0.98). Certified single-photo hashes stay bit-identical with the
-feature off (golden gate) and the feature cannot fire without an
-explicitly configured image provider AND a subject prompt ("auto" skips
-with an actionable warning; "on" overrides).
+Two independent adversarial review rounds (2026-07-10) hardened the
+shipping contract:
+
+- **Whole-bake A/B acceptance**: when generated views enter a bake, the
+  no-references baseline is baked too, and the generated bake ships only
+  if it does not regress photo fidelity, front brightness, or long-seam
+  metrics (`bake_acceptance.evaluate_generated_bake`). Calibrated on the
+  labeled four-subject set: chair auto-rejects (upholstered near-planar
+  subjects are the documented known-bad class — two usable views cannot
+  texture them), owl / spaceship / portrait pass.
+- **Person subjects are refused** in both `auto` and `on` (caption-based,
+  fail-closed — an unavailable captioner refuses rather than proceeds);
+  synthesis of a person requires the explicit person acknowledgment
+  (`allow_person_subjects` / `texture_reference_allow_person`). Rationale:
+  measured identity drift the material gates cannot see; no identity
+  oracle exists yet.
+
+Zero-hint validation (2026-07-10, four subjects, Klein-4B composite,
+crash-isolated hands-off runs): owl 4/4 angles strict-pass (carved
+plumage relief preserved, coverage 0.30 -> 0.81), spaceship 4/4,
+portrait 4/4 ("on"+acknowledgment path only), chair 2/4 with the two
+side-view rejections honest (material flips caught by the part gate).
+Adversarial verdicts: spaceship SHIP, owl SHIP-WITH-CAVEATS (13
+close-zoom dark fragments, all localized to the unwitnessed underside
+band; product-level A/B worst per-view delta L -3.4 — no regression),
+chair REJECT (auto-rejected by the acceptance gate at runtime), portrait
+REJECT for unattended paths (refused by policy). Contact sheets and A/B
+maps: `artifacts/validation/generated-references-v3/`.
 
 Honest scope: a generated view is plausible synthesis, not ground truth.
-Content on fully unobserved regions is invented from the mesh shape, the
-subject prompt, and the source photo's tone; the three side views are
-generated independently. Every bundle records full provenance
-(provider/model, prompts, seeds, per-attempt IoU, accepted-image hashes,
-clay renderer, tone shifts) and persists the generated photos plus their
-clay conditions as `texture_reference_generated_*.png`.
+Content on fully unobserved regions is invented from the mesh shape and
+the source photo's materials; side views are generated independently.
+Certified single-photo hashes stay bit-identical with the feature off
+(golden gate) and `auto` cannot fire without an explicitly configured
+LOCAL image provider. Every bundle records full provenance
+(provider/model, prompts, seeds, per-attempt gate metrics, image hashes,
+acceptance verdict) and persists the generated photos plus their clay
+conditions as `generated_*.png`.
 
 ## Generated Reference Views (2026-07-08)
 

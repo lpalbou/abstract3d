@@ -41,6 +41,12 @@ def _parser() -> argparse.ArgumentParser:
                         help="Angles to synthesize: labels (back, side_left, top, bottom, ...) "
                              "or explicit 'label:azimuth,elevation' entries separated by ';' "
                              "(e.g. 'bottom:0,-75; back:180,0').")
+    common.add_argument("--texture-reference-allow-person", dest="texture_reference_allow_person",
+                        action="store_true", default=None,
+                        help="Person-specific acknowledgment for reference generation: no gate "
+                             "defends facial identity, so synthesizing views of a person "
+                             "requires this explicit attestation (people are refused otherwise, "
+                             "even with --texture-reference-generation on).")
     common.add_argument("--num-inference-steps", type=int, default=None)
     common.add_argument("--guidance-scale", type=float, default=None)
     common.add_argument("--octree-resolution", type=int, default=None,
@@ -131,6 +137,7 @@ def main(argv: list[str] | None = None) -> int:
             "model_subfolder": args.model_subfolder,
             "texture_reference_generation": args.texture_reference_generation,
             "texture_reference_generation_angles": args.texture_reference_generation_angles,
+            "texture_reference_allow_person": args.texture_reference_allow_person,
         }
         if args.command == "i23d":
             options.update(

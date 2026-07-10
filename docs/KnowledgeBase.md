@@ -1160,6 +1160,58 @@ whenever the estimators disagree again.)
   generated, and leave scarcity rescue off. The multi-view regime's
   tighter source gate exists because real references are better witnesses
   at grazing angles — plausible synthesis is not.
+- Subordination is NOT protection (adversarial round 2): a x0.6 weight
+  loses per-texel contests, but the feathered blend still AVERAGES the
+  synthesized view into photo-covered texels — measured as rust mottling
+  on a chair's front fabric and skin blotches on a portrait's front face,
+  i.e. synthesis revising the user's own photograph. The correct semantic
+  is completion-only (`protect_observed_texels`): zero generated weight
+  wherever the strongest REAL view holds a credible claim (>= the
+  conflict-resolution priority floor, 0.25), linear ramp below it for a
+  smooth rim handoff. Run it AFTER delight/harmonization (those stages
+  need the overlap texels for their statistics) and BEFORE the blend.
+- No gate in the material stack measures facial IDENTITY: generated side
+  views of a portrait drifted to a visibly different person — age, nose,
+  skin — while strict-passing every texture/material/specular oracle.
+  Consequence: synthesis of person subjects is refused in BOTH modes
+  (`person_policy="skip"`, caption-based detection that runs even when a
+  non-person hint exists — a hint that doesn't name a person is not
+  evidence of absence). "on" is a texture-quality opt-in, NOT
+  identity-synthesis consent (a warning string in metadata is a log line,
+  not consent): proceeding requires the separate person acknowledgment
+  (`allow_person_subjects` / `texture_reference_allow_person`). Lifting
+  the refusal properly requires an identity oracle (face-embedding
+  similarity floor), not better prompts.
+- Safety checks must FAIL CLOSED: `caption_image` returns None whenever
+  BLIP is unavailable, and `is_person_subject(None)` is False — without
+  an explicit unknown-status branch, an UNAVAILABLE captioner became a
+  permission grant to synthesize what might be someone's face (measured
+  hole, adversarial round 2). "Cannot verify" and "verified absent" are
+  different states; only the second may proceed unattended.
+- Per-view gates are structurally blind to COMPOSITION-level failure:
+  every view the chair bake shipped strict-passed its material oracles,
+  and the finished bake still regressed below the no-references baseline
+  with a deltaE ~42 handoff seam no single view contains (the seam exists
+  only where two views MEET). The countermeasure is a whole-bake A/B
+  acceptance gate (`bake_acceptance.evaluate_generated_bake`): bake the
+  baseline too, ship the candidate only if photo fidelity, brightness,
+  and long-seam metrics do not regress. Two design rules measured there:
+  the seam budget must be ABSOLUTE (a multiplicative allowance over a bad
+  baseline launders a worse candidate — chair 0.138 passed a 1.5x rule),
+  and seam detection must be extent-filtered (long coherent contours) so
+  generated texture DETAIL never reads as damage.
+- Do not recalibrate a certified defect detector to flatter a new feature:
+  the owl's 13 close-zoom dark fragments (vs certified 0) all localize to
+  the unwitnessed underside band — crevice shading speckle in a regime
+  (dark generated contact shadows anchoring fill) the single-view
+  calibration never saw, with product-level A/B showing no regression
+  (worst per-view delta L -3.4). Two exemption designs were prototyped and
+  REVERTED because their false-negative risk against the HISTORICAL
+  labeled defect class (starship engine-halo smears at 2-3.7x cavity
+  tone) could not be re-verified from the current fleet — the certified
+  bundles no longer exhibit the defect, so nothing guards the recalibrated
+  detector against re-admitting it. The harness numbers stay on the
+  record; recalibration waits for a labeled-defect archive.
 - Diffusion i2i output must be treated as lit rendering, not albedo: even
   with matte-lighting prompts and negative prompts, FLUX bakes specular
   highlights into glazed materials (the owl crown blob survived four-view
@@ -1173,6 +1225,74 @@ whenever the estimators disagree again.)
   not materials; with an empty hint the model invents identity for
   exactly the default single-photo user). "auto" skips with an actionable
   warning when either is missing; "on" is the explicit override.
+  (Amended by the v3 protocol below: subject knowledge now comes from the
+  source photo itself — composite conditioning plus automatic captioning —
+  so only the provider gate remains.)
+
+### Material words in generation prompts override the source photo's pixels
+
+- Proven twice on the same asset: a hand-written subject hint "ceramic owl
+  with glaze" regenerated a carved-WOOD owl as glazed pottery even with the
+  source photo present in the conditioning composite; removing the material
+  words (keeping only "owl figurine") restored wood. The asymmetry is
+  structural — a WRONG material claim in text wins against pixels, a
+  CORRECT one adds nothing pixels don't already carry — so the only safe
+  text is NO material text. `extract_subject_noun` enforces this as
+  architecture: captions and user prompts alike pass through a
+  material/finish/color stoplist, and the prompt template has no free-text
+  slot. Never reintroduce a describable-material parameter.
+- The instruction vocabulary must be material-NEUTRAL and self-normalizing:
+  "copy the surface relief, carving depth, grooves, grain, cracks, fibers,
+  micro-texture exactly" transfers carved wood AND smooth porcelain
+  correctly (copying a smooth subject's relief exactly yields smooth),
+  whereas naming any material class in the instruction biases every other
+  subject toward it. Name the output "a real photograph" — calling it a
+  render measurably biases CG-smooth surfaces. Map materials PART BY PART
+  (wood-frame/fabric-seat chair: without the clause, one part's material
+  spreads onto the other). Human subjects need an explicit "living person,
+  real skin, real hair strands" clause — i2i editors otherwise render the
+  clay panel as a sculpture (the category is detectable from caption words,
+  so the clause stays automatic).
+
+### Acceptance gates for synthesized views: three oracles, calibrated, floors not walls
+
+- Single-statistic gates are structurally blind to whole failure families.
+  The shipped stack pairs three: band-pass texture fidelity (2-8 px relief
+  band, generation's p90 tile RMS over source's MEDIAN tile RMS + growth in
+  near-flat fraction — catches wood→glaze smoothing; one-sided, excess
+  texture never rejects; smooth sources auto-pass), part-material identity
+  (k-means LAB part palette, worst major generated part's distance to its
+  nearest source part — catches upholstery→camouflage flips whose relief
+  energy is plausible), and baked-specular blobs. Part distance must be
+  CHROMA-FIRST with an L tolerance band: a*/b* carry material identity, L
+  carries shading, and an unseen side's shading legitimately differs (the
+  full-LAB variant rejected correct profile views for shadow alone while
+  scoring a real camo flip lower than them).
+- Gate ordering matters: despecular and tone-match run INSIDE the attempt
+  loop, gates run LAST on the exact pixels the bake will consume. Retry
+  semantics follow the failure's nature: IoU misses re-roll the seed
+  (stochastic framing), texture/material misses escalate the prompt
+  (systematic bias — re-rolling the same prompt resamples the same bias).
+  All IoU-passing candidates are scored, but only a STRICT pass may ship;
+  floor-only ladders are recorded (`rejection_reason` + per-attempt
+  metrics) and surrendered. Measured rationale (v2 chair): a
+  floor-accepted top view leaked stained fabric straight into the bake —
+  wrong material on an unseen angle is a worse product defect than the
+  dull fill it displaces. Rejection is the SAFE direction: a rejected
+  sector falls back to witnessed-texture fill, which cannot flip
+  materials.
+- Calibrate every threshold on labeled failures/passes and re-verify after
+  ANY preprocessing change: mask-normalized filtering, matte erosion and
+  the resize policy each moved the band statistics enough to flip verdicts
+  (an unmasked Gaussian let background black bleed into edge tiles and
+  produced two false rejections on ship views).
+- KNOWN BLIND SPOT, documented deliberately: semantic re-rendering that
+  preserves palette AND relief energy — v1's "sculpted goo" hair scored
+  inside the pass range on every foreground statistic tested (palette
+  distance, per-part relief ratio, dark-part shine fraction). No gate fix
+  exists in that family; the countermeasure is generator quality
+  (FLUX.2-klein-9B produced strict-passing hair where 4B floor-accepted
+  wet-look). Budget rule of thumb: 4B for objects, 9B for people.
 
 ## DEPRECATED
 

@@ -141,6 +141,7 @@ def rebake_bundle(
     generate_references: str = "off",
     generation_angles: Optional[Sequence[Tuple[str, float, float]]] = None,
     subject_hint: Optional[str] = None,
+    allow_person_subjects: bool = False,
     owner: Any = None,
     texture_resolution: Optional[int] = None,
     texture_completion: str = "auto",
@@ -194,6 +195,16 @@ def rebake_bundle(
                     owner=owner,
                     angles=generation_angles or DEFAULT_ANGLES,
                     subject_hint=subject_hint,
+                    # The tint projection needs the source camera; the pose
+                    # override is that fact when the capture recorded one.
+                    source_pose=tuple(source_pose_override or (0.0, 0.0)),
+                    # Synthesizing a person's face is refused in BOTH modes
+                    # unless the caller passes the person-specific
+                    # acknowledgment: "on" is texture-quality opt-in, not
+                    # identity-synthesis consent (no gate defends identity).
+                    person_policy=(
+                        "proceed" if allow_person_subjects else "skip"
+                    ),
                 )
                 views.extend(generated_views)
                 try:
@@ -210,9 +221,15 @@ def rebake_bundle(
                 }
 
     started = time.perf_counter()
-    textured, stats = texturing.bake_projection_texture(
-        mesh,
-        observed_views=views,
+    # Snapshot the real views BEFORE the candidate bake: the bake registers
+    # views in place (view["rgba"] is replaced by its aligned version), and
+    # the A/B baseline must start from the same pristine inputs.
+    generated_present = any(view.get("generated") for view in views)
+    baseline_views = (
+        [dict(view) for view in views if not view.get("generated")]
+        if generated_present else None
+    )
+    bake_kwargs = dict(
         texture_resolution=resolution,
         texture_completion=texture_completion,
         projection_model=projection_model,
@@ -220,6 +237,37 @@ def rebake_bundle(
         scarcity_rescue=scarcity_rescue,
         compositing=compositing,
     )
+    textured, stats = texturing.bake_projection_texture(
+        mesh, observed_views=views, **bake_kwargs)
+
+    if generated_present and baseline_views:
+        # WHOLE-BAKE ACCEPTANCE (adversarial round 2): per-view gates are
+        # blind to composition-level failure — on the measured chair case
+        # every shipped view strict-passed and the finished bake still
+        # regressed below the no-references baseline (a handoff seam no
+        # single view contains). Bake the baseline too and ship the
+        # generated bake only if it does not regress it (see
+        # bake_acceptance.evaluate_generated_bake).
+        from .bake_acceptance import evaluate_generated_bake
+
+        baseline_mesh = loaded.geometry_mesh()
+        baseline_textured, baseline_stats = texturing.bake_projection_texture(
+            baseline_mesh, observed_views=baseline_views, **bake_kwargs)
+        verdict = evaluate_generated_bake(
+            baseline_textured,
+            textured,
+            source_rgba=baseline_views[0]["rgba"],
+            source_pose=tuple(source_pose_override or (0.0, 0.0)),
+        )
+        if generation_report is None:
+            generation_report = {}
+        generation_report["bake_acceptance"] = verdict
+        if not verdict["accepted"]:
+            # The generated bake regressed the baseline: ship the baseline.
+            # The generated images and the verdict stay in metadata as the
+            # honest record of what was tried and why it was refused.
+            textured, stats = baseline_textured, baseline_stats
+            views = baseline_views
     bake_seconds = round(time.perf_counter() - started, 3)
 
     if write_outputs:

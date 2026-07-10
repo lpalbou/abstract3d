@@ -73,12 +73,27 @@ which closed a six-cycle adversarial zero-defect program on 2026-07-07
 - confidence-gated mirror completion and crease-aware mesh-graph harmonic fill
 - generated reference completion (`texture_reference_generation`, default `auto`):
   when only one photo is provided, render the mesh from the unseen angles, synthesize
-  matching photos through the configured `abstractvision` i2i provider (shape-locked,
-  silhouette-gated, despecularized, tone-capped), and feed them into the bake as
-  subordinated witnesses — measured on the certified owl: observed coverage 0.30 -> 0.84.
-  `auto` fires only with an explicitly configured image provider and a subject prompt;
-  generated views are plausible synthesis, not ground truth, and every bundle records
-  full provenance ([`artifacts/validation/generated-references/`](artifacts/validation/generated-references/))
+  matching photos through the configured `abstractvision` i2i provider, and feed them
+  into the bake as completion-only witnesses — they may only paint surface no photo
+  observed; texels the photo covers credibly are inviolable (measured on the certified
+  owl: observed coverage 0.30 -> 0.81). Fully autonomous: the source photo is captioned
+  automatically (BLIP) and all text — captions and user prompts alike — is reduced to a
+  material-free noun before prompting (the source photo is the only material authority).
+  Every candidate is shape-locked (silhouette IoU vs the mesh's own clay render) and
+  must strictly pass three calibrated material-fidelity oracles (band-pass relief,
+  part-palette identity, baked speculars) with a prompt-escalating retry ladder;
+  rejected angles fall back to witnessed-texture fill, which cannot flip materials.
+  The finished bake must then pass a whole-bake A/B acceptance gate — bake with and
+  without the generated views, ship the generated bake only if it does not regress
+  photo fidelity, brightness, or seam metrics (upholstered near-planar subjects like
+  the validation chair auto-reject here; the baseline ships with the verdict recorded).
+  `auto` fires only with an explicitly configured image provider (FLUX.2-klein-4b for
+  objects; 9b recommended where 4b floor-fails). Person subjects are refused in BOTH
+  modes — no gate can defend facial identity, so synthesizing people requires the
+  separate explicit acknowledgment (`--texture-reference-allow-person`), which puts a
+  `person_warning` on the record. Generated views are plausible synthesis, not ground
+  truth, and every bundle records full provenance (prompts, seeds, per-attempt gate
+  metrics, image hashes, acceptance verdict)
 
 Texture color is exact where a photo observed the surface and reconstructed elsewhere;
 regions no photo can see remain approximations unless you add more views (real or generated).

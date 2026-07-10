@@ -145,6 +145,28 @@ def _mesh_texture_image(mesh) -> Image.Image | None:
     return Image.fromarray(array[:, :, :3], mode="RGB")
 
 
+def _create_standalone_context(moderngl_module, *, attempts: int = 3):
+    """Create a standalone GL context, retrying on transient failures.
+
+    On macOS, CGL context creation can fail or segfault-adjacent error when
+    another process is churning GL contexts at the same moment (observed
+    with a concurrently running GL test suite / viewer backend). A short
+    backoff-and-retry absorbs the transient contention; a persistent
+    failure still raises the last error.
+    """
+
+    import time as _time
+
+    last_error: Exception | None = None
+    for attempt in range(int(attempts)):
+        try:
+            return moderngl_module.create_context(standalone=True)
+        except Exception as exc:  # glcontext raises plain Exception subclasses
+            last_error = exc
+            _time.sleep(0.2 * (attempt + 1))
+    raise last_error  # type: ignore[misc]
+
+
 def _render_mesh_views_moderngl(
     mesh,
     *,
@@ -193,7 +215,7 @@ def _render_mesh_views_moderngl(
 
     packed = np.concatenate([tri_positions, tri_normals, tri_colors, tri_uv], axis=1).astype(np.float32)
     render_size = max(int(size), 64) * 2
-    ctx = moderngl.create_context(standalone=True)
+    ctx = _create_standalone_context(moderngl)
     program = ctx.program(
         vertex_shader="""
             #version 330

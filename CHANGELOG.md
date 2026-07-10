@@ -2,6 +2,137 @@
 
 ## Unreleased
 
+### Changed (generated references — adversarial round 2: completion-only protection, strict-only baking, person bypass)
+
+An independent adversarial review of the four-subject v2 bakes identified
+three systemic failures the material gates could not see; each is now
+closed at the layer that owns it:
+
+- **Generated views complete, never revise** (`protect_observed_texels`,
+  `texturing.py`): after the tone/consistency stages (which need overlap
+  texels for their statistics), synthesized weight is zeroed wherever the
+  strongest REAL view holds a credible claim (weight >= 0.25, the
+  conflict-resolution priority floor), with a linear ramp below the floor
+  so the real-rim -> generated-content handoff stays smooth. Root cause:
+  weight subordination (x0.6) loses per-texel contests but the feathered
+  blend still AVERAGES synthesis into photo-covered texels — measured as
+  rust mottling on the chair's front fabric and skin blotches on the
+  portrait's front face. A real photo is evidence; a generated view is
+  plausible synthesis; synthesis must contribute nothing where evidence
+  exists. A/B on the v2 reference sets: chair front-view contamination
+  removed (10.4% of front pixels reverted to photo truth), zero regression
+  on generated-exclusive surface.
+- **Floor-accepts are reported, never baked** (`generate_reference_views`):
+  selection now requires a STRICT pass on all three material oracles. The
+  v2 chair measured why: a floor-accepted top view leaked stained fabric
+  straight into the bake. A wrong texture on an unseen angle is a worse
+  product defect than the featureless fill it displaces — fill is dull,
+  wrong material is broken. Floor-only ladders surface in the report as
+  `rejection_reason` with full per-attempt metrics.
+- **Person subjects are refused unless explicitly acknowledged**
+  (`person_policy`, default `"skip"`): the review measured generated side
+  views drifting to a DIFFERENT person's face — different age, nose, skin
+  — while every material gate strict-passed, because no gate in the stack
+  measures facial identity. Both `auto` AND `on` refuse people: "on" is a
+  texture-quality opt-in, not identity-synthesis consent. Synthesis of a
+  person requires the person-specific acknowledgment
+  (`allow_person_subjects` on `rebake_bundle`,
+  `texture_reference_allow_person` on the backend,
+  `--texture-reference-allow-person` on the CLI), which puts a
+  `person_warning` on the record. The check FAILS CLOSED: the photo is
+  captioned even when a non-person hint exists (a hint that doesn't name
+  a person is not evidence of absence), and an unavailable captioner
+  refuses instead of proceeding — an unavailable check is not a
+  permission grant. Detection tokenizes alphabetic runs ("woman's"
+  matches "woman") over a wide person-word list (incl. baby/human/bride);
+  the robust upgrade path (face detector, identity-embedding floor) is
+  tracked in the KnowledgeBase.
+- **Whole-bake A/B acceptance gate** (`bake_acceptance.py`): per-view
+  strict gates are structurally blind to COMPOSITION-level failure — on
+  the chair, every shipped view strict-passed and the finished bake still
+  regressed below the no-references baseline (a deltaE ~42 tone step
+  where the generated top hands off to the protected front). When
+  generated views enter a bake, the pipeline now also bakes the
+  no-references baseline and ships the generated bake only if it does not
+  regress three render-space axes: photo fidelity at the source pose,
+  front brightness, and long coherent seam edges (extent-filtered so
+  texture detail — grain, panel lines, plumage — never counts as a seam;
+  the budget is ABSOLUTE, not a baseline multiple, because a multiplicative
+  allowance lets a bad baseline launder a worse candidate). Calibrated on
+  the labeled four-subject set: the chair auto-rejects (seam 0.138 vs
+  ceiling 0.122) and ships its baseline with the verdict recorded in
+  metadata; owl, spaceship, and portrait pass. Close-zoom triage of the
+  owl's 13 dark-smear fragments localized all of them to the unwitnessed
+  underside band (crevice shading speckle, worst per-view delta L -3.4 vs
+  baseline); the close-range harness numbers stay on the record and the
+  detector was left exactly as certified rather than recalibrated to
+  flatter the feature.
+
+### Changed (generated references v3 — zero-hint operation, material-identity gates)
+
+- Reference generation is now fully autonomous: no subject hint is required
+  anywhere in the API surface. When no user prompt exists, the source photo
+  is captioned automatically (BLIP, `abstract3d.captioning`); when one does,
+  it is used — and EITHER text is reduced to a material-free noun phrase
+  (`extract_subject_noun`, a stoplist over material/finish/color vocabulary)
+  before it may enter the generation prompt. Root cause, proven twice: any
+  material claim in prompt text overrides the source photo's pixels (a
+  hand-written "ceramic with glaze" hint regenerated a carved-wood owl as
+  glazed pottery), while a correct claim adds nothing the photo doesn't
+  carry. The prompt template has no free-text slot at all now; the source
+  photo is the only material authority.
+- New composite instruction (adversary-designed, subject-agnostic): leads
+  with material-NEUTRAL relief vocabulary ("surface relief, carving depth,
+  grooves, grain, cracks, fibers, micro-texture" — self-normalizing: for a
+  smooth subject, copying its relief exactly yields smooth), names the
+  output "a real photograph" (naming it a render biases CG-smooth output),
+  maps materials PART BY PART (a wood-frame/fabric-seat chair must not
+  spread one part's material onto the other), and forbids re-interpretation
+  without naming any material class. A person clause (triggered by
+  person-category caption words) anchors human subjects to "living person,
+  real skin, real hair strands" — without it, i2i editors systematically
+  render the clay panel as a sculpture.
+- Acceptance is now a three-oracle gate stack run on the FINAL processed
+  pixels (despecular and tone-match happen before gating, so the gate
+  judges what the bake consumes), each catching a failure family the others
+  are blind to, all calibrated on the critic-labeled v1+v2 result set:
+  `texture_fidelity` (band-pass relief ratio + flat-fraction growth;
+  catches wood→glaze smoothing), `part_material_fidelity` (k-means part
+  palette, chroma-first distance with an L tolerance band for unseen-side
+  shading; catches upholstery→camouflage flips the texture gate passes),
+  and `gate_baked_speculars` (glossy highlight fields). Retry ladder:
+  IoU failures re-roll the seed (stochastic), texture/material failures
+  escalate the prompt (systematic bias); every IoU-passing candidate is
+  scored, and only a STRICT pass may ship (see the adversarial round-2
+  entry below — floor-only candidates are reported, never baked).
+- Conditioning canvas fixes: both panels letterboxed (no anisotropic
+  stretch of the material the model must copy), clay foreground composited
+  onto the same dark background as the source panel (background mismatch
+  read as "different photo sessions"), and the echo-crop heuristic now
+  catches ANY wider-than-tall canvas echo (the old >=1.6 aspect test missed
+  4:3 echoes and burned whole retry ladders).
+- Despecular is relief-aware: pixels inside high band-pass-energy
+  neighborhoods are exempt (carved-ridge micro-highlights satisfy the
+  specular predicate; blending them toward the body estimate erased exactly
+  the relief the transfer must preserve), and when the source photo itself
+  flags a similar fraction under the same predicate, the correction blend
+  is scaled down (measured 2% false-positive floor on matte carved wood).
+- `auto` mode gate relaxed accordingly: it still requires an explicitly
+  configured local image provider (never a silent remote route), but no
+  longer requires a subject hint. Zero-hint four-subject validation
+  (owl / chair / spaceship / portrait, FLUX.2-klein): 14/16 angles
+  accepted with materials preserved; the two rejections are honest (a
+  chair profile whose IoU never clears the gate, and a chair side whose
+  camouflage-mottle material flip the part gate caught on every ladder
+  attempt — that sector falls back to witnessed-texture fill, which
+  cannot flip materials). Klein-9B resolves the portrait family (strict
+  passes where 4B floor-accepts wet-look hair); documented as the
+  recommended model for human subjects.
+- KNOWN LIMIT (documented in KnowledgeBase): semantic re-rendering that
+  preserves palette AND relief energy (v1's "sculpted goo" hair) is
+  invisible to every foreground statistic tested; the countermeasure is
+  generator quality (Klein-9B), not gating.
+
 ### Changed (generated references v2 — composite conditioning for source coherence)
 
 - A coherence audit showed clay-only conditioning produced shape-correct

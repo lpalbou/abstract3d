@@ -1,0 +1,131 @@
+{
+ "description": "Whole-bake A/B acceptance calibration (v3: completion-only protection + strict-only baking)",
+ "cases": {
+  "owl": {
+   "bundle": "artifacts/validation/final-proof/hunyuan-owl",
+   "expected_accept": true,
+   "gate_accepted": true,
+   "reasons": [],
+   "metrics": {
+    "photo_fidelity_delta_e": {
+     "baseline": 17.46,
+     "candidate": 19.42,
+     "max_allowed": 19.46
+    },
+    "front_brightness_l": {
+     "baseline": 46.77,
+     "candidate": 46.79,
+     "min_allowed": 42.77
+    },
+    "seam_ratio": {
+     "baseline": 0.02843,
+     "candidate": 0.01598,
+     "max_allowed": 0.04843,
+     "baseline_worst_view": "az0_el10",
+     "candidate_worst_view": "az0_el10"
+    }
+   },
+   "generation_report": {
+    "subject_noun": "owl figurin",
+    "caption": "a wooden owl figurin on a black background",
+    "accepted": 4,
+    "rejected": 0
+   }
+  },
+  "chair": {
+   "bundle": "artifacts/validation/final-proof/hunyuan-chair",
+   "expected_accept": false,
+   "gate_accepted": false,
+   "reasons": [
+    "seam steps regressed: candidate long-edge ratio 0.1378 (az0_el50) vs baseline 0.1021 (ceiling 0.1221)"
+   ],
+   "metrics": {
+    "photo_fidelity_delta_e": {
+     "baseline": 24.91,
+     "candidate": 24.16,
+     "max_allowed": 26.91
+    },
+    "front_brightness_l": {
+     "baseline": 48.51,
+     "candidate": 47.34,
+     "min_allowed": 44.51
+    },
+    "seam_ratio": {
+     "baseline": 0.10208,
+     "candidate": 0.13776,
+     "max_allowed": 0.12208,
+     "baseline_worst_view": "az0_el50",
+     "candidate_worst_view": "az0_el50"
+    }
+   },
+   "generation_report": {
+    "subject_noun": "chair seat arm",
+    "caption": "a chair with a woven seat and arm",
+    "accepted": 3,
+    "rejected": 1
+   }
+  },
+  "spaceship": {
+   "bundle": "artifacts/validation/final-proof/hunyuan-starship",
+   "expected_accept": true,
+   "gate_accepted": true,
+   "reasons": [],
+   "metrics": {
+    "photo_fidelity_delta_e": {
+     "baseline": 21.36,
+     "candidate": 22.85,
+     "max_allowed": 23.36
+    },
+    "front_brightness_l": {
+     "baseline": 43.6,
+     "candidate": 42.92,
+     "min_allowed": 39.6
+    },
+    "seam_ratio": {
+     "baseline": 0.00918,
+     "candidate": 0.00498,
+     "max_allowed": 0.02918,
+     "baseline_worst_view": "az90_el10",
+     "candidate_worst_view": "az90_el10"
+    }
+   },
+   "generation_report": {
+    "subject_noun": "model spaceship",
+    "caption": "a model of a spaceship with a black background",
+    "accepted": 4,
+    "rejected": 0
+   }
+  },
+  "portrait": {
+   "bundle": "artifacts/validation/iter3-multiview-fixed/face-2mv",
+   "expected_accept": true,
+   "gate_accepted": true,
+   "reasons": [],
+   "metrics": {
+    "photo_fidelity_delta_e": {
+     "baseline": 20.79,
+     "candidate": 21.39,
+     "max_allowed": 22.79
+    },
+    "front_brightness_l": {
+     "baseline": 53.26,
+     "candidate": 57.06,
+     "min_allowed": 49.26
+    },
+    "seam_ratio": {
+     "baseline": 0.00836,
+     "candidate": 0.01342,
+     "max_allowed": 0.02836,
+     "baseline_worst_view": "az-90_el50",
+     "candidate_worst_view": "az-90_el50"
+    }
+   },
+   "generation_report": {
+    "subject_noun": "woman long hair eyes",
+    "caption": "a woman with long hair and brown eyes",
+    "accepted": 4,
+    "rejected": 0
+   }
+  }
+ }
+}
