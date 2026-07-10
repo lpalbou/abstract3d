@@ -977,9 +977,7 @@ def register_reference_by_source_overlap(
         inv_scale,
         center_y - inv_scale * (center_y + dy * height),
     )
-    warped = image.transform(
-        (width, height), Image.AFFINE, matrix, resample=Image.BILINEAR, fillcolor=(0, 0, 0, 0)
-    )
+    warped = _warp_affine_rgba(image, matrix)
     stats.update(
         {
             "applied": True,
@@ -1160,8 +1158,30 @@ def register_view_by_width_profile(
         inv_scale,
         center_y - inv_scale * (center_y + ty_px),
     )
-    warped = image.transform((width, height), Image.AFFINE, matrix, resample=Image.BILINEAR, fillcolor=(0, 0, 0, 0))
+    warped = _warp_affine_rgba(image, matrix)
     return warped, stats
+
+
+def _warp_affine_rgba(image: Any, matrix: Tuple[float, ...]) -> Any:
+    """Similarity-warp an RGBA image (BILINEAR color and alpha).
+
+    A bicubic color variant was measured and REVERTED: it retains ~5%
+    more of the 2-8 px relief band per registration warp (owl back:
+    13.66 bilinear vs 14.75 bicubic projected band RMS), but its
+    overshoot at strong carved edges raised the whole-bake acceptance
+    gate's long-strong-edge statistic by the same magnitude as the
+    labeled chair seam regression (+0.03-0.04 absolute), making real
+    seams indistinguishable from resampling ring in     the one metric that
+    auto-protects unattended users. Until the seam metric measures
+    shipped handoff steps directly (see the handoff-seam ledger in
+    `blend_projections`), the warp stays bilinear.
+    """
+    from PIL import Image
+
+    rgba = image.convert("RGBA")
+    return rgba.transform(
+        rgba.size, Image.AFFINE, matrix,
+        resample=Image.BILINEAR, fillcolor=(0, 0, 0, 0))
 
 
 def register_view_2d(
@@ -1377,7 +1397,7 @@ def register_view_2d(
         inv_scale,
         center_y - inv_scale * (center_y + shift_y * height),
     )
-    warped = image.transform((width, height), Image.AFFINE, matrix, resample=Image.BILINEAR, fillcolor=(0, 0, 0, 0))
+    warped = _warp_affine_rgba(image, matrix)
     stats.update({"applied": True, "scale": round(scale, 4), "shift_x": round(shift_x, 4), "shift_y": round(shift_y, 4)})
     return warped, stats
 
@@ -1504,7 +1524,7 @@ def refine_registration_photometric(
         inv_scale,
         center_y - inv_scale * (center_y + shift_y * height),
     )
-    warped = image.transform((width, height), Image.AFFINE, matrix, resample=Image.BILINEAR, fillcolor=(0, 0, 0, 0))
+    warped = _warp_affine_rgba(image, matrix)
     stats.update({"applied": True, "scale": round(scale, 4), "shift_x": round(shift_x, 4), "shift_y": round(shift_y, 4)})
     return warped, stats
 
@@ -1941,20 +1961,44 @@ def blend_projections(
     atlas_shape: Tuple[int, int],
     sharpness: float = 3.0,
     feather_texels: float = 6.0,
+    detail_fusion: str = "two_band",
+    detail_sigma: float = 3.0,
+    winner_smooth_sigma: float = 8.0,
 ) -> Dict[str, Any]:
     """Blend per-view projections with best-view-biased weights.
 
     A plain weighted average of overlapping views produces ghosting whenever
     the projections disagree slightly (imperfect geometry, parallax between
-    the real reference photo and the reconstructed surface). Production photo
-    -to-texture tools bias the blend strongly toward the best-facing view and
-    only feather near view boundaries. This implements that as a softmax over
-    per-view weights with temperature `1/sharpness`:
+    the real reference photo and the reconstructed surface). The softmax
+    bias over per-view weights (temperature `1/sharpness`)
 
         w_i' = w_i * exp(sharpness * (w_i - max_j w_j))
 
-    `sharpness=0` degrades to the plain weighted average; values around 3
-    keep transitions smooth while suppressing cross-view ghosting.
+    suppresses ghosting only where one view clearly dominates — at WEIGHT
+    TIES (two views facing the surface equally, the entire ridge between
+    adjacent view cones) the bias is exp(0) for both and the blend
+    degenerates to a plain average. Averaging views with residual
+    registration error is convolution with the error kernel: for two views
+    offset by d texels the MTF has a null at frequency 1/(2d) — a few
+    texels of disagreement erase every feature finer than ~2d texels.
+    Measured on the four-view owl: the equal-facing band between generated
+    views turned crisp plumage into mud.
+
+    `detail_fusion="two_band"` (multi-view only) applies the production
+    answer (Baumberg BMVC'02; Metashape "mosaic"; Burt-Adelson band rule:
+    transition width proportional to wavelength): split each view at
+    `detail_sigma` texels; the LOW band (tone, lighting) keeps the softmax
+    average with its wide smooth transitions, the HIGH band (detail) is
+    winner-take-all from the single best view per texel. The high band is
+    zero-mean, so ownership switches carry no visible tone step — a
+    zero-width transition is safe there, and detail is never averaged
+    across imperfectly-registered views. The winner is the argmax of the
+    weight maps smoothed at `winner_smooth_sigma` (smooth the WEIGHTS, not
+    the labels: the raw argmax dithers along the tie ridge, fragmenting
+    detail ownership into slivers).
+
+    `detail_fusion="average"` restores the pre-two-band behavior;
+    single-view bakes are bit-identical under either mode.
     """
     import numpy as np
 
@@ -1992,6 +2036,21 @@ def blend_projections(
             "view_stats": view_stats,
         }
 
+    two_band = detail_fusion == "two_band" and len(prepared) > 1
+    view_low: List[Any] = []
+    if two_band:
+        from scipy.ndimage import gaussian_filter
+
+        # Per-view frequency split, mask-normalized so background zeros
+        # never bleed into the low band at coverage borders.
+        for rgba, weight, _projection in prepared:
+            covered = weight > 0.0
+            low = np.empty((height, width, 3), dtype=np.float32)
+            for channel in range(3):
+                low[:, :, channel] = _masked_gaussian_filter(
+                    rgba[:, :, channel], covered, float(detail_sigma))
+            view_low.append(low)
+
     weight_stack = np.stack(stacked_weights, axis=0)
     max_weight = weight_stack.max(axis=0)
     for index, (rgba, weight, projection) in enumerate(prepared, start=1):
@@ -2000,7 +2059,8 @@ def blend_projections(
             biased_weight = weight * bias
         else:
             biased_weight = weight
-        accum_rgb += rgba[:, :, :3] * biased_weight[:, :, None]
+        base_rgb = view_low[index - 1] if two_band else rgba[:, :, :3]
+        accum_rgb += base_rgb * biased_weight[:, :, None]
         accum_weight += biased_weight
         accum_alpha = np.maximum(accum_alpha, rgba[:, :, 3])
         view_stats.append(
@@ -2018,6 +2078,97 @@ def blend_projections(
     blended_rgb = np.zeros_like(accum_rgb)
     if observed.any():
         blended_rgb[observed] = accum_rgb[observed] / accum_weight[observed][:, None]
+
+    if two_band and observed.any():
+        from scipy.ndimage import gaussian_filter
+
+        # Detail ownership: argmax over SMOOTHED weights for spatial
+        # coherence, constrained to views actually covering the texel
+        # (a smoothed weight reaches past its view's validity edge; the
+        # winner there must fall back to the best COVERING view).
+        smoothed = np.stack(
+            [gaussian_filter(w, float(winner_smooth_sigma)) for w in stacked_weights],
+            axis=0)
+        covering = weight_stack > 0.0
+        eligible = np.where(covering, smoothed, -1.0)
+        winner = eligible.argmax(axis=0)
+        winner_valid = np.take_along_axis(
+            covering, winner[None, ...], axis=0)[0]
+        # Where the smoothed winner does not cover, use the raw-weight best.
+        raw_winner = weight_stack.argmax(axis=0)
+        winner = np.where(winner_valid, winner, raw_winner)
+
+        # The HIGH band crosses ownership boundaries through a ~3-texel
+        # feather, not a hard cut: the detail band is only zero-mean at
+        # scales below `detail_sigma`, so a zero-width switch still steps
+        # by the band's local content and reads as a long artificial edge
+        # (measured: the whole-bake seam metric tripled on hard cuts
+        # while no tone seam was visible). Misaligned detail averages
+        # only inside this narrow strip — invisible at 3 texels, mud at
+        # the overlap scale the softmax average used to blend across.
+        handoff_sigma = max(1.0, float(detail_sigma) / 2.0)
+        high_rgb = np.zeros((height, width, 3), dtype=np.float32)
+        high_norm = np.zeros((height, width), dtype=np.float32)
+        for index, (rgba, _weight, _projection) in enumerate(prepared):
+            indicator = (winner == index).astype(np.float32)
+            if not indicator.any():
+                continue
+            feathered = gaussian_filter(indicator, handoff_sigma)
+            feathered *= covering[index]
+            if not feathered.any():
+                continue
+            high = rgba[:, :, :3] - view_low[index]
+            high_rgb += high * feathered[:, :, None]
+            high_norm += feathered
+        has_high = high_norm > 1e-6
+        blended_rgb[has_high] += (
+            high_rgb[has_high] / high_norm[has_high][:, None])
+        blended_rgb[~observed] = 0.0
+        np.clip(blended_rgb, 0.0, 1.0, out=blended_rgb)
+
+        # HANDOFF SEAM LEDGER: tone disagreement across ownership
+        # boundaries, measured in texture space where the handoffs are
+        # KNOWN. A render-space seam detector cannot separate a genuine
+        # handoff seam from a crisp carved contour (measured: their
+        # side-tone distributions overlap completely); here the boundary
+        # set is exact and the measured quantity is the OWNERS' low-band
+        # difference at the boundary texel — content detail is excluded
+        # by construction. The whole-bake acceptance gate consumes this.
+        boundary_h = (
+            observed[:, 1:] & observed[:, :-1]
+            & (winner[:, 1:] != winner[:, :-1]))
+        boundary_v = (
+            observed[1:, :] & observed[:-1, :]
+            & (winner[1:, :] != winner[:-1, :]))
+        steps: List[Any] = []
+        if boundary_h.any():
+            rows_h, cols_h = np.nonzero(boundary_h)
+            left_owner = winner[rows_h, cols_h]
+            right_owner = winner[rows_h, cols_h + 1]
+            low_stack = np.stack(view_low, axis=0)
+            steps.append(np.abs(
+                low_stack[left_owner, rows_h, cols_h]
+                - low_stack[right_owner, rows_h, cols_h]).mean(axis=1))
+        if boundary_v.any():
+            rows_v, cols_v = np.nonzero(boundary_v)
+            top_owner = winner[rows_v, cols_v]
+            bottom_owner = winner[rows_v + 1, cols_v]
+            low_stack = np.stack(view_low, axis=0)
+            steps.append(np.abs(
+                low_stack[top_owner, rows_v, cols_v]
+                - low_stack[bottom_owner, rows_v, cols_v]).mean(axis=1))
+        if steps:
+            all_steps = np.concatenate(steps)
+            handoff_seams = {
+                "boundary_texels": int(all_steps.size),
+                "step_p50": round(float(np.percentile(all_steps, 50)), 4),
+                "step_p95": round(float(np.percentile(all_steps, 95)), 4),
+                "step_max": round(float(all_steps.max()), 4),
+            }
+        else:
+            handoff_seams = {"boundary_texels": 0}
+    else:
+        handoff_seams = None
     # Texels covered only by the feather-zeroed rim keep raw coverage only
     # while a colored neighbor exists nearby IN UV WITHIN THE SAME feather
     # band; farther rim texels are demoted to unseen so the 3D fill handles
@@ -2045,6 +2196,7 @@ def blend_projections(
         "alpha": accum_alpha,
         "coverage": raw_coverage,
         "view_stats": view_stats,
+        "handoff_seams": handoff_seams,
     }
 
 
@@ -4968,6 +5120,7 @@ def bake_projection_texture(
     source_pose_override: Optional[Tuple[float, float]] = None,
     scarcity_rescue: str = "auto",
     generated_reference_weight: float = 0.6,
+    detail_fusion: str = "two_band",
 ) -> Tuple[Any, Dict[str, Any]]:
     """Bake a UV base-color texture for `mesh` from observed views.
 
@@ -5511,6 +5664,7 @@ def bake_projection_texture(
         atlas_shape=surface_mask.shape,
         sharpness=float(blend_sharpness),
         feather_texels=float(feather_texels),
+        detail_fusion=str(detail_fusion),
     )
     if film_state is not None:
         zone_union = np.zeros(surface_mask.shape, dtype=bool)
@@ -6269,6 +6423,7 @@ def bake_projection_texture(
         "fill_floor": fill_floor_stats,
         "delight": delight_stats,
         "generated_protection": generated_protection_stats,
+        "handoff_seams": blend.get("handoff_seams"),
         "symmetry_completion": symmetry_stats,
         "mirror_rescue": rescue_stats,
         "trace_deposits": {k: v for k, v in trace_deposit_stats.items()

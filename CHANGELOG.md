@@ -2,6 +2,52 @@
 
 ## Unreleased
 
+### Changed (bake fusion — two-band detail ownership, research-grounded)
+
+A three-track literature review (photogrammetry texturing practice,
+generative texture pipelines, view-fusion theory) unanimously identified
+the softmax-weighted view average as structurally wrong for detail:
+averaging views with residual registration error is convolution with the
+error kernel (two views offset by d texels null every feature finer than
+~2d), and the softmax bias is a NO-OP exactly at weight ties — the whole
+equal-facing ridge between adjacent view cones degenerates to a plain
+average. Production tools (Metashape "mosaic", Baumberg two-band,
+Hunyuan3D-Paint single-ownership) never average high frequencies.
+
+- `blend_projections` now uses TWO-BAND fusion for multi-view bakes
+  (`detail_fusion="two_band"`): the low band (tone, lighting) keeps the
+  softmax average with its wide smooth transitions; the 2-8 px detail
+  band is winner-take-all from the single best view per texel — argmax
+  over weight maps smoothed at 8 texels (smooth the WEIGHTS, not the
+  labels, or ownership dithers into slivers on the tie ridge), with a
+  ~1.5-texel feather at handoffs (the band is only zero-mean BELOW the
+  split scale; a zero-width switch still steps by local content).
+  Single-view bakes are bit-identical; `detail_fusion="average"`
+  restores the previous behavior.
+- New HANDOFF-SEAM LEDGER in the blend stats (`handoff_seams`): tone
+  disagreement (owners' low-band delta) measured exactly at
+  detail-ownership boundaries, in texture space where the handoffs are
+  known. Groundwork for the acceptance gate: a render-space seam metric
+  cannot separate a genuine handoff seam from a crisp carved contour
+  (measured: their side-tone distributions overlap completely).
+- Measured and REVERTED, documented for re-landing: bicubic registration
+  warps and cubic projection sampling recover 5-7% of the relief band
+  each (owl back: 12.69 -> 13.54 texel-space band RMS), but their edge
+  overshoot raises the acceptance gate's long-strong-edge statistic by
+  the labeled chair-regression magnitude — real seams and restored
+  carved contours become indistinguishable in the one metric that
+  auto-protects unattended users. They return when the gate consumes the
+  handoff ledger instead.
+- Iteration protocol upgrade: every candidate bake in this program was
+  screenshotted through MeshVault's headless viewer-truth endpoint
+  (`GET /api/screenshot`) before judgment, and the full iteration ladder
+  (10 bakes, 20 labeled contact sheets) ships in the review folder.
+  Six-view angle densification (back_left/back_right at 135°) was
+  generated, gate-checked, and parked: without cross-view consensus
+  alignment the extra overlap washes tone (fidelity regression caught by
+  the whole-bake gate), which is the Zhou-Koltun-style alignment stage
+  on the roadmap.
+
 ### Changed (generated references — adversarial round 2: completion-only protection, strict-only baking, person bypass)
 
 An independent adversarial review of the four-subject v2 bakes identified

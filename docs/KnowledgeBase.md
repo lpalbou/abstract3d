@@ -1200,6 +1200,52 @@ whenever the estimators disagree again.)
   baseline launders a worse candidate — chair 0.138 passed a 1.5x rule),
   and seam detection must be extent-filtered (long coherent contours) so
   generated texture DETAIL never reads as damage.
+- Weighted view averaging is convolution with the registration-error
+  kernel: two views offset by d texels null every frequency above 1/(2d)
+  — a few texels of cross-view disagreement erase feather barbs and
+  panel lines. The softmax "best-view bias" is a NO-OP precisely at
+  weight ties (bias exp(0) for every tied view), and the tie ridge
+  between adjacent view cones is exactly where generated views overlap;
+  the literature (Burt-Adelson, Baumberg two-band, Metashape mosaic,
+  Hunyuan3D-Paint ownership) is unanimous: average TONE with wide
+  transitions, never average DETAIL — one view owns each texel's high
+  band, switched with a feather of a few texels (the band is only
+  zero-mean below the split scale; hard cuts still step).
+- Detail ownership must argmax SMOOTHED weight maps, never raw ones: the
+  raw argmax dithers along the tie ridge and fragments ownership into
+  slivers; smoothing the LABELS instead of the weights leaves orphaned
+  ownership outside a view's validity. Smooth the weights (~8 texels),
+  argmax, then fall back to the raw-weight best where the smoothed
+  winner does not cover.
+- Sharper resampling can be indistinguishable from damage to a
+  render-space defect metric: bicubic warps + cubic projection sampling
+  recovered 5-7% of the relief band each, and the whole-bake acceptance
+  gate's long-strong-edge statistic rose by the labeled chair-seam
+  magnitude — restored carved contours ARE long strong edges. A
+  side-tone discriminator (seam separates two tones; contour lives
+  within one) was prototyped and failed: the labeled chair seam and the
+  owl's crisp contours have completely overlapping side-tone
+  distributions in render space. The structural answer is measuring
+  handoff steps IN TEXTURE SPACE at the known ownership boundaries (the
+  blend's `handoff_seams` ledger: owners' low-band delta at boundary
+  texels — content detail excluded by construction); the sharp samplers
+  re-land when the gate consumes the ledger.
+- Angle densification without cross-view alignment makes fused bakes
+  WORSE: two extra 135° views (both strict-passing every per-view gate)
+  washed the owl's back tone and regressed photo fidelity — three
+  independently-sampled generated views dilute each other wherever their
+  low bands mix. Densification pays only after a consensus alignment
+  stage (Zhou-Koltun alternation: warp each reference toward the
+  leave-one-out blend through the shared surface; the lattice-flow
+  solver already exists in reference_flow.py).
+- Viewer-truth testing catches what preview renderers hide: MeshVault's
+  headless screenshot endpoint (GET /api/screenshot, session token from
+  ~/.meshvault/app_session.json) renders through the real three.js
+  material path. A same-noise-texture probe measured the renderer's own
+  band response (~6 at 640 px regardless of view) — always compare
+  candidate vs baseline through the SAME renderer, and correct for
+  lighting before attributing render-space band differences to the
+  texture (a fixed key light dims the back view by ~13 L).
 - Do not recalibrate a certified defect detector to flatter a new feature:
   the owl's 13 close-zoom dark fragments (vs certified 0) all localize to
   the unwitnessed underside band — crevice shading speckle in a regime

@@ -1674,6 +1674,7 @@ def _tripo_project_observed_texture(
     concavity_demote: float = 0.25,
     scarcity_facing_floor: float = 0.05,
     scarcity_stretch_max: float = 4.0,
+    sample_filter: str = "bilinear",
 ) -> Dict[str, Any]:
     import math
     import numpy as np
@@ -1766,6 +1767,35 @@ def _tripo_project_observed_texture(
         + c01 * (1.0 - wx)[:, :, None] * wy[:, :, None]
         + c11 * wx[:, :, None] * wy[:, :, None]
     )
+    if str(sample_filter) == "cubic":
+        # Interpolating-cubic COLOR sampling (B-spline with prefilter):
+        # the bilinear gather is a low-pass at fractional sample offsets —
+        # measured 6% of the 2-8 px relief band lost on a 768 px reference
+        # projected to a 1024 atlas. Alpha and the validity/depth logic
+        # keep the bilinear estimate: cubic lobes overshoot at the matte
+        # edge, and visibility must stay conservative.
+        #
+        # NOT WIRED BY DEFAULT (measured, then parked): together with a
+        # bicubic registration warp, the recovered edge sharpness raised
+        # the whole-bake acceptance gate's long-strong-edge statistic by
+        # the labeled chair-regression magnitude — crisp carved contours
+        # and genuine handoff seams are indistinguishable to that render-
+        # space metric. Re-enable per-view once the gate consumes the
+        # texture-space handoff-seam ledger instead.
+        try:
+            from scipy.ndimage import map_coordinates, spline_filter
+
+            coords = np.stack([sample_y, sample_x], axis=0)
+            cubic = np.empty_like(sampled[:, :, :3])
+            for channel in range(3):
+                plane = spline_filter(
+                    image_rgba[:, :, channel], order=3, mode="nearest")
+                cubic[:, :, channel] = map_coordinates(
+                    plane, coords, order=3, prefilter=False, mode="nearest")
+            sampled = np.concatenate(
+                [np.clip(cubic, 0.0, 1.0), sampled[:, :, 3:4]], axis=2)
+        except Exception:
+            pass
     alpha = sampled[:, :, 3]
 
     # Strict first-surface visibility: a photo pixel may only paint the
