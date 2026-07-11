@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from .model_catalog import catalog_rows
@@ -47,6 +48,9 @@ def _parser() -> argparse.ArgumentParser:
                              "defends facial identity, so synthesizing views of a person "
                              "requires this explicit attestation (people are refused otherwise, "
                              "even with --texture-reference-generation on).")
+    common.add_argument("--allow-degraded", dest="allow_degraded", action="store_true",
+                        help="Exit 0 even when quality_verdict is degraded/failed (the verdict "
+                             "and reasons are still printed to stderr and recorded in metadata).")
     common.add_argument("--num-inference-steps", type=int, default=None)
     common.add_argument("--guidance-scale", type=float, default=None)
     common.add_argument("--octree-resolution", type=int, default=None,
@@ -161,7 +165,24 @@ def main(argv: list[str] | None = None) -> int:
             result = manager.i23d(args.image, **options)
         else:
             result = manager.t23d(args.prompt, **options)
-        print(json.dumps(result.get("metadata") or {}, indent=2, sort_keys=True))
+        metadata = result.get("metadata") or {}
+        print(json.dumps(metadata, indent=2, sort_keys=True))
+        # LOUD health contract: the measured car incident shipped a broken
+        # texture with exit 0 and warnings buried in stdout JSON. Verdict
+        # and reasons go to stderr; a non-healthy verdict exits 3 (argparse
+        # owns 2) unless the caller opts into degraded artifacts.
+        verdict = (metadata.get("quality_verdict") or {})
+        verdict_name = str(verdict.get("verdict") or "healthy")
+        if verdict_name != "healthy":
+            print(
+                f"quality_verdict: {verdict_name}: "
+                + "; ".join(verdict.get("reasons") or []),
+                file=sys.stderr,
+            )
+            for warning in metadata.get("postprocess_warnings") or []:
+                print(f"warning: {warning}", file=sys.stderr)
+            if not getattr(args, "allow_degraded", False):
+                return 3
         return 0
     if args.command == "validate":
         prompts = list(args.prompt or []) or [

@@ -1254,6 +1254,7 @@ class Hunyuan3DShapeBackend:
         texture_stats: Dict[str, Any] = {}
         obj_texture_sidecars: Dict[str, bytes] = {}
         export_mesh = mesh
+        quality_verdict: Dict[str, Any] = {"verdict": "healthy", "reasons": []}
         postprocess_warnings.extend(reference_warnings)
         if texture_requested:
             from ..texturing import bake_projection_texture
@@ -1410,9 +1411,34 @@ class Hunyuan3DShapeBackend:
                             "shipping the baseline. Reasons: "
                             + "; ".join(verdict["reasons"])
                         )
+                else:
+                    # SINGLE-VIEW SANITY (self-healing contract): a bake
+                    # with no accepted generated views ships ungated by
+                    # the A/B machinery, and the measured car incident
+                    # proved it can be broken on its own (mis-posed
+                    # source, coverage 0.055, exit 0). Absolute floors
+                    # calibrated on the healthy fleet mark it loudly.
+                    from ..bake_acceptance import evaluate_single_view_bake
+
+                    single_verdict = evaluate_single_view_bake(texture_stats)
+                    texture_stats["single_view_sanity"] = single_verdict
+                    if not single_verdict["accepted"]:
+                        quality_verdict = {
+                            "verdict": "degraded",
+                            "reasons": single_verdict["reasons"],
+                        }
+                        postprocess_warnings.append(
+                            "single-view bake failed the sanity floors "
+                            "(shipping with quality_verdict=degraded): "
+                            + "; ".join(single_verdict["reasons"])
+                        )
             except Exception as exc:
                 texture_requested = False
                 texture_stats = {}
+                quality_verdict = {
+                    "verdict": "failed",
+                    "reasons": [f"texture bake raised {type(exc).__name__}: {exc}"],
+                }
                 postprocess_warnings.append(
                     f"Hunyuan3D texture bake failed, exporting geometry only: {type(exc).__name__}: {exc}"
                 )
@@ -1472,6 +1498,11 @@ class Hunyuan3DShapeBackend:
             "source_snapshot": _HUNYUAN_COMMIT,
             "postprocess_cleanup": postprocess_applied,
             "postprocess_warnings": postprocess_warnings,
+            # Machine-readable health: "healthy" / "degraded" / "failed"
+            # with reasons. The measured car incident shipped a broken
+            # texture with exit 0 and stdout-only warnings — unattended
+            # callers need one field to check (the CLI exits 3 on it).
+            "quality_verdict": quality_verdict,
             "export_axis_canonicalization": axis_applied,
             "topology": _mesh_topology(mesh),
             "timings_s": {

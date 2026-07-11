@@ -1232,6 +1232,273 @@ def _warp_affine_rgba(image: Any, matrix: Tuple[float, ...]) -> Any:
         resample=Image.BILINEAR, fillcolor=(0, 0, 0, 0))
 
 
+def estimate_pose_with_silhouette_guard(
+    mesh: Any,
+    observed_rgba: Any,
+    *,
+    border_ratio: float = 0.15,
+    azimuth_window_deg: float = 40.0,
+    size: int = 256,
+    elevations: Sequence[float] = (-15.0, -8.0, 0.0, 8.0, 15.0),
+    rescue_azimuth_max: float = 50.0,
+    azimuth_step_deg: float = 5.0,
+    veto_tolerance: float = 0.02,
+    rescue_min_riou_gap: float = 0.10,
+    rescue_min_aspect_err: float = 0.15,
+    rescue_min_best_riou: float = 0.75,
+    plateau_band: float = 0.03,
+) -> Dict[str, Any]:
+    """Source-pose estimation with an independent SILHOUETTE evidence channel.
+
+    The gradient-NCC estimator's validity assumption — photo luminance
+    gradients co-located with mesh crease shading — fails on smooth glossy
+    high-chroma subjects: their photo gradients are specular streaks that
+    correlate ACCIDENTALLY with near-frontal renders. Measured on a 3/4
+    sports-car photo: the true pose (az ~35) scored ~0 while an incoherent
+    spike at az 5 (neighbors at 16% of peak height; genuine matches
+    measure 40%+) passed the height-only gates and collapsed observed
+    coverage to 0.055. The same signature moved a certified chair to
+    az -27.5. Shape evidence — material-independent — contradicted both
+    commits loudly (registered silhouette IoU 0.73 at the commit vs 0.89
+    in the true basin) but was never consulted.
+
+    Two additions around the UNCHANGED production NCC lane:
+
+    - VETO: an accepted NCC pose must not WORSEN the registered
+      silhouette IoU vs the declared pose by more than `veto_tolerance`;
+      the true pose renders the geometry the photo shows, so a commit
+      that degrades the silhouette fit is a photometric spike.
+    - RESCUE: entered only when the NCC lane did not commit (own gates or
+      veto). Moves the pose only on DOUBLE-KEYED decisive shape evidence
+      (registered-IoU gap > `rescue_min_riou_gap` AND declared-pose
+      aspect error > `rescue_min_aspect_err` AND best IoU above the
+      quality floor). Pose selection folds the bilateral mirror with the
+      production anti-symmetric chirality scorer and resolves the az/el
+      aspect-trade ridge by boundary chamfer (area-IoU is measurably
+      degenerate along it).
+
+    Calibration (movers must fire, stayers must not — measured):
+    car riou_gap 0.156 / aspect 0.232 fires; starship 0.290/0.264 fires;
+    owl 0.000/0.002, chair 0.064/0.076, face 0.054/0.131 stay. The weak-
+    evidence contract is preserved: below the double-keyed gate the
+    declared pose ships exactly as before.
+    """
+    import math
+
+    import numpy as np
+    from PIL import Image
+    from scipy.ndimage import binary_erosion, distance_transform_edt
+
+    from .rendering import render_mesh_views
+
+    ncc = estimate_pose_photometric(
+        mesh, observed_rgba, border_ratio=border_ratio,
+        azimuth_window_deg=azimuth_window_deg)
+    result_trail: Dict[str, Any] = {}
+
+    def render_mask(azimuth: float, elevation: float) -> Any:
+        rendered = render_mesh_views(
+            mesh, azimuths=(float(azimuth),), elevation=float(elevation),
+            size=size, lighting="fixed")[0].convert("RGBA")
+        array = np.asarray(rendered, dtype=np.float32) / 255.0
+        background = array[2, 2, :3]
+        gray = array[:, :, :3].mean(axis=2)
+        return gray, np.abs(array[:, :, :3] - background).sum(axis=2) > 0.08
+
+    def bbox_aspect(mask: Any) -> Optional[float]:
+        rows = np.nonzero(mask.any(axis=1))[0]
+        cols = np.nonzero(mask.any(axis=0))[0]
+        if not len(rows) or not len(cols):
+            return None
+        return float(cols[-1] - cols[0] + 1) / max(float(rows[-1] - rows[0] + 1), 1.0)
+
+    def register_mask(photo_mask: Any, mask: Any, *, fine: bool = False) -> Tuple[float, Optional[Any]]:
+        pr, pc = np.nonzero(photo_mask)
+        rr, rc = np.nonzero(mask)
+        if not len(pr) or not len(rr):
+            return 0.0, None
+        p_cx = pc.mean()
+        p_cy = pr.mean()
+        r_cx = rc.mean()
+        r_cy = rr.mean()
+        base_scale = math.sqrt(len(pr) / len(rr))
+        source = Image.fromarray((mask * 255).astype(np.uint8))
+        if fine:
+            scales = [base_scale * f for f in np.arange(0.90, 1.101, 0.02)]
+            shifts = range(-10, 11, 2)
+        else:
+            scales = [base_scale * f for f in (0.92, 0.96, 1.0, 1.04, 1.08)]
+            shifts = range(-8, 9, 4)
+        best = (0.0, None)
+        for scale in scales:
+            inv = 1.0 / scale
+            for dy in shifts:
+                for dx in shifts:
+                    matrix = (inv, 0.0, r_cx - inv * (p_cx + dx),
+                              0.0, inv, r_cy - inv * (p_cy + dy))
+                    warped = np.asarray(
+                        source.transform((size, size), Image.AFFINE, matrix,
+                                         resample=Image.NEAREST, fillcolor=0)) > 127
+                    union = int((photo_mask | warped).sum())
+                    if union == 0:
+                        continue
+                    iou = float((photo_mask & warped).sum()) / union
+                    if iou > best[0]:
+                        best = (iou, warped)
+        return best
+
+    def chamfer(a_mask: Any, b_mask: Optional[Any]) -> float:
+        if b_mask is None:
+            return float("inf")
+        a_boundary = a_mask & ~binary_erosion(a_mask)
+        b_boundary = b_mask & ~binary_erosion(b_mask)
+        if not a_boundary.any() or not b_boundary.any():
+            return float("inf")
+        da = distance_transform_edt(~a_boundary)
+        db = distance_transform_edt(~b_boundary)
+        return float(0.5 * (da[b_boundary].mean() + db[a_boundary].mean()))
+
+    image = observed_rgba.convert("RGBA") if hasattr(observed_rgba, "convert") else observed_rgba
+    canonical = recenter_to_canonical_frame(image, border_ratio=border_ratio)
+    photo = np.asarray(canonical.resize((size, size), Image.BILINEAR), dtype=np.float32) / 255.0
+    photo_alpha = photo[:, :, 3] > 0.5
+    if photo_alpha.mean() < 0.02:
+        return dict(ncc)
+    photo_gray = photo[:, :, :3].mean(axis=2)
+    photo_aspect = bbox_aspect(photo_alpha)
+
+    azimuths = [float(a) for a in np.arange(
+        -float(rescue_azimuth_max), float(rescue_azimuth_max) + 1e-9,
+        float(azimuth_step_deg))]
+    riou: Dict[Tuple[float, float], float] = {}
+    masks: Dict[Tuple[float, float], Any] = {}
+    aspects: Dict[Tuple[float, float], Optional[float]] = {}
+    for elevation in elevations:
+        for azimuth in azimuths:
+            _, mask = render_mask(azimuth, elevation)
+            masks[(azimuth, elevation)] = mask
+            aspects[(azimuth, elevation)] = bbox_aspect(mask)
+            riou[(azimuth, elevation)], _ = register_mask(photo_alpha, mask)
+
+    declared_key = (0.0, 0.0)
+    declared_riou = riou.get(declared_key, 0.0)
+    declared_aspect = aspects.get(declared_key)
+    declared_aspect_err = (
+        abs(math.log(photo_aspect / declared_aspect))
+        if photo_aspect and declared_aspect else 0.0
+    )
+    best_pose = max(riou, key=lambda k: riou[k])
+    best_riou = riou[best_pose]
+    result_trail["silhouette"] = {
+        "declared_riou": round(declared_riou, 4),
+        "declared_aspect_err": round(declared_aspect_err, 4),
+        "best_riou": round(best_riou, 4),
+        "best_pose": [best_pose[0], best_pose[1]],
+    }
+
+    if ncc.get("estimated"):
+        commit_key = (float(ncc["azimuth_deg"]), float(ncc["elevation_deg"]))
+        committed_riou = riou.get(commit_key)
+        if committed_riou is None:
+            _, commit_mask = render_mask(*commit_key)
+            committed_riou, _ = register_mask(photo_alpha, commit_mask)
+        vetoed = committed_riou < declared_riou - float(veto_tolerance)
+        result_trail["veto"] = {
+            "committed_riou": round(float(committed_riou), 4),
+            "delta_vs_declared": round(float(committed_riou - declared_riou), 4),
+            "fires": bool(vetoed),
+        }
+        if not vetoed:
+            accepted = dict(ncc)
+            accepted["method"] = "gradient_ncc"
+            accepted["guard_trail"] = result_trail
+            return accepted
+
+    gate_ok = (
+        (best_riou - declared_riou) > float(rescue_min_riou_gap)
+        and declared_aspect_err > float(rescue_min_aspect_err)
+        and best_riou > float(rescue_min_best_riou)
+    )
+    result_trail["rescue_gate"] = {
+        "riou_gap": round(best_riou - declared_riou, 4),
+        "fires": bool(gate_ok),
+    }
+    if not gate_ok:
+        return {
+            "azimuth_deg": 0.0,
+            "elevation_deg": 0.0,
+            "estimated": False,
+            "score": ncc.get("score"),
+            "score_at_declared": ncc.get("score_at_declared"),
+            "method": "declared",
+            "rejected_reason": (
+                "ncc_vetoed_by_silhouette" if ncc.get("estimated")
+                else ncc.get("rejected_reason")
+            ),
+            "guard_trail": result_trail,
+        }
+
+    # Rescue pose selection: mirror fold via anti-symmetric chirality.
+    az_star, el_star = best_pose
+    sign = 1.0
+    if abs(az_star) > 1e-6:
+        def antisymmetric(gray: Any, mask: Any) -> Tuple[Any, Any]:
+            flipped = gray[:, ::-1]
+            flipped_mask = mask[:, ::-1]
+            both = mask & flipped_mask
+            anti = np.where(both, 0.5 * (gray - flipped), 0.0)
+            rms = float(np.sqrt(np.mean(anti[both] ** 2))) if both.any() else 0.0
+            return anti / max(rms, 1e-8), both
+
+        photo_anti, photo_anti_mask = antisymmetric(photo_gray, photo_alpha)
+
+        def chirality(azimuth: float, elevation: float) -> float:
+            gray_r, mask_r = render_mask(azimuth, elevation)
+            _, warped = register_mask(photo_alpha, mask_r)
+            if warped is None:
+                return float("-inf")
+            # Approximate anchored frame: use the registered warp of the
+            # gray render (chirality only needs the SIGN of correlation).
+            gray_image = Image.fromarray((gray_r * 255).astype(np.uint8))
+            anti_r, anti_mask_r = antisymmetric(
+                np.asarray(gray_image, dtype=np.float32) / 255.0, mask_r)
+            both = photo_anti_mask & anti_mask_r
+            if int(both.sum()) < 500:
+                return float("-inf")
+            return float((photo_anti[both] * anti_r[both]).mean())
+
+        chir_pos = chirality(abs(az_star), el_star)
+        chir_neg = chirality(-abs(az_star), el_star)
+        result_trail["chirality"] = {
+            "pos": round(chir_pos, 4), "neg": round(chir_neg, 4)}
+        sign = 1.0 if chir_pos >= chir_neg else -1.0
+
+    signed = {pose: value for pose, value in riou.items()
+              if pose[0] * sign >= 0.0}
+    best_signed = max(signed.values())
+    plateau = [pose for pose, value in signed.items()
+               if value >= best_signed - float(plateau_band)]
+    chamfers: Dict[Tuple[float, float], float] = {}
+    for pose in plateau:
+        _, warped = register_mask(photo_alpha, masks[pose], fine=True)
+        chamfers[pose] = chamfer(photo_alpha, warped)
+    final_pose = min(chamfers, key=lambda k: chamfers[k])
+    result_trail["rescue_selection"] = {
+        "sign": sign,
+        "plateau_chamfers": {
+            f"{p[0]:.0f},{p[1]:.0f}": round(chamfers[p], 2) for p in plateau},
+    }
+    return {
+        "azimuth_deg": float(final_pose[0]),
+        "elevation_deg": float(final_pose[1]),
+        "estimated": True,
+        "score": round(float(riou[final_pose]), 4),
+        "score_at_declared": round(float(declared_riou), 4),
+        "method": "silhouette_rescue",
+        "guard_trail": result_trail,
+    }
+
+
 def register_view_2d(
     mesh: Any,
     *,
@@ -5359,7 +5626,7 @@ def bake_projection_texture(
             # regardless of how the head was turned in the source photo;
             # only the source camera needs its pose recovered. A +/-40 deg
             # window covers plausible head turn in a "front" photo.
-            photometric_pose = estimate_pose_photometric(
+            photometric_pose = estimate_pose_with_silhouette_guard(
                 mesh,
                 views[0]["rgba"],
                 border_ratio=float(canonical_border_ratio),
@@ -5369,7 +5636,7 @@ def bake_projection_texture(
                 "azimuth_deg": photometric_pose["azimuth_deg"],
                 "elevation_deg": photometric_pose["elevation_deg"],
                 "estimated": bool(photometric_pose["estimated"]),
-                "method": "gradient_ncc",
+                "method": photometric_pose.get("method", "gradient_ncc"),
                 "score": photometric_pose["score"],
                 "score_at_declared": photometric_pose["score_at_declared"],
                 "rejected_reason": photometric_pose.get("rejected_reason"),
@@ -5806,6 +6073,42 @@ def bake_projection_texture(
     observed_mask = np.asarray(blend.get("coverage"), dtype=bool)
     if observed_mask.shape != surface_mask.shape:
         observed_mask = observed_weight > 1e-6
+
+    # CAPTURE EFFICIENCY per view (self-healing contract): coverage means
+    # nothing without the denominator of what the pose COULD have painted.
+    # facing_fraction = surface texels facing the view's camera above the
+    # projector's own cutoff; capture_efficiency = the view's realized
+    # coverage over that fraction. Measured separation on the labeled
+    # fleet: healthy sources 0.40-0.75, pose-broken bakes 0.21-0.26 — the
+    # most general of the coverage floors because it normalizes for
+    # subject shape (a car's single view CAN only see ~35% of its surface;
+    # painting 30% of the surface is excellent there and catastrophic on
+    # an owl).
+    try:
+        from .backends.triposr_runtime import _tripo_camera_position
+
+        unit_normals = np.asarray(normals_texture, dtype=np.float32)[:, :, :3]
+        norm_len = np.linalg.norm(unit_normals, axis=2, keepdims=True)
+        unit_normals = np.divide(unit_normals, np.maximum(norm_len, 1e-8))
+        surface_total = max(int(surface_mask.sum()), 1)
+        for row, projection in zip(blend["view_stats"], projections):
+            eye = _tripo_camera_position(
+                azimuth_deg=float(projection.get("azimuth_deg", 0.0)),
+                elevation_deg=float(projection.get("elevation_deg", 0.0)),
+                camera_distance=float(camera_distance),
+            )
+            direction = eye / max(float(np.linalg.norm(eye)), 1e-8)
+            facing = (unit_normals @ direction) > 0.2
+            facing_fraction = float((facing & surface_mask).sum()) / surface_total
+            painted = (
+                np.asarray(projection["weight"], dtype=np.float32) > 0.0
+            ) & surface_mask
+            row["facing_fraction"] = round(facing_fraction, 4)
+            row["coverage_ratio"] = round(float(painted.sum()) / surface_total, 4)
+            row["capture_efficiency"] = round(
+                (float(painted.sum()) / surface_total) / max(facing_fraction, 1e-6), 4)
+    except Exception:
+        pass
 
     outlier_stats: Dict[str, Any] = {"dropped_texels": 0}
     if projections:
@@ -6514,9 +6817,16 @@ def bake_projection_texture(
         "source_pose": {
             "azimuth_deg": float(source_pose.get("azimuth_deg", 0.0)),
             "elevation_deg": float(source_pose.get("elevation_deg", 0.0)),
-            "silhouette_iou": float(source_pose.get("iou", 0.0)),
+            # HONEST field contract: a measurement that never ran exports
+            # null, not 0.0 (the dead always-zero IoU cost an audit real
+            # time chasing a phantom signal).
+            "silhouette_iou": (
+                float(source_pose["iou"]) if source_pose.get("iou") else None
+            ),
             "method": source_pose.get("method", "silhouette"),
             "score": source_pose.get("score"),
+            "score_at_declared": source_pose.get("score_at_declared"),
+            "rejected_reason": source_pose.get("rejected_reason"),
             "estimated": bool(source_pose.get("estimated", estimate_source_pose)),
         },
         "source_registration": (

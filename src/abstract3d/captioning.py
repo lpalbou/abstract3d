@@ -54,12 +54,22 @@ def extract_subject_noun(text: Optional[str], *, max_words: int = 4) -> str:
 
     if not text:
         return "object"
+    # Function/viewpoint/composition words never name a subject; a t23d
+    # prompt like "a red sports car seen from a three-quarter front angle,
+    # studio photo" must reduce to "sports car", not "sports car seen from"
+    # (measured: the garbled noun degraded every generation of that run).
+    stop = frozenset((
+        "a", "an", "the", "of", "with", "and", "on", "in", "its",
+        "his", "her", "very", "photo", "photograph", "image",
+        "picture", "closeup", "close", "up", "background",
+        "seen", "from", "view", "viewed", "angle", "front", "side",
+        "back", "top", "bottom", "three", "quarter", "profile",
+        "studio", "shot", "render", "rendering",
+    ))
     words = re.findall(r"[a-zA-Z]+", str(text).lower())
     kept: list = []
     for word in words:
-        if word in ("a", "an", "the", "of", "with", "and", "on", "in", "its",
-                    "his", "her", "very", "photo", "photograph", "image",
-                    "picture", "closeup", "close", "up", "background"):
+        if word in stop:
             continue
         if word in _MATERIAL_STOPLIST:
             continue

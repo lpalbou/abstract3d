@@ -34,7 +34,76 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-__all__ = ["evaluate_generated_bake"]
+__all__ = ["evaluate_generated_bake", "evaluate_single_view_bake"]
+
+
+def evaluate_single_view_bake(
+    stats: Dict[str, Any],
+    *,
+    min_total_coverage: float = 0.12,
+    min_source_coverage: float = 0.10,
+    min_capture_efficiency: float = 0.30,
+) -> Dict[str, Any]:
+    """Sanity verdict for a bake that ships WITHOUT accepted generated views.
+
+    The whole-bake A/B gate only runs when generated views exist — a bake
+    whose generation rejected every angle (or never ran) shipped ungated,
+    and the measured incident proved a single-photo bake can be broken on
+    its own (source pose mis-estimated: coverage 0.055 vs healthy 0.18+,
+    exit code 0). Three floors, all read from the bake's own stats:
+
+    - total observed coverage >= `min_total_coverage` (healthy fleet min
+      0.182, broken max 0.065),
+    - the SOURCE view's own coverage >= `min_source_coverage` (robust when
+      real references inflate the total),
+    - capture efficiency >= `min_capture_efficiency`: source coverage over
+      the facing fraction its pose could have painted (healthy min 0.40,
+      broken max 0.26) — normalizes for subject shape, so an elongated
+      car's honest ~0.16 coverage passes while a broken pose fails.
+
+    Deliberately NO pose-score floor: measured healthy scores (0.015-0.053)
+    overlap the broken commits (0.033-0.057) — the tempting signal is
+    useless and gating on it would only manufacture false confidence.
+
+    Returns the same report shape as `evaluate_generated_bake`.
+    """
+
+    metrics: Dict[str, Any] = {}
+    reasons: List[str] = []
+
+    total = stats.get("observed_coverage_ratio")
+    metrics["observed_coverage_ratio"] = {
+        "value": total, "min_allowed": min_total_coverage}
+    if total is not None and float(total) < float(min_total_coverage):
+        reasons.append(
+            f"observed coverage {float(total):.3f} below floor "
+            f"{min_total_coverage} (healthy fleet minimum 0.18)")
+
+    view_rows = stats.get("observed_view_stats") or []
+    source_row = next(
+        (row for row in view_rows if row.get("index") == 1
+         or row.get("label") in ("front", "source", "view_01")),
+        view_rows[0] if view_rows else None)
+    if source_row is not None:
+        source_coverage = source_row.get("coverage_ratio")
+        efficiency = source_row.get("capture_efficiency")
+        metrics["source_view_coverage"] = {
+            "value": source_coverage, "min_allowed": min_source_coverage}
+        metrics["capture_efficiency"] = {
+            "value": efficiency, "min_allowed": min_capture_efficiency,
+            "facing_fraction": source_row.get("facing_fraction")}
+        if source_coverage is not None and float(source_coverage) < float(min_source_coverage):
+            reasons.append(
+                f"source-view coverage {float(source_coverage):.3f} below "
+                f"floor {min_source_coverage}")
+        if efficiency is not None and float(efficiency) < float(min_capture_efficiency):
+            reasons.append(
+                f"capture efficiency {float(efficiency):.3f} below floor "
+                f"{min_capture_efficiency}: the source pose painted far "
+                "less than its viewpoint could see (wrong pose or broken "
+                "registration)")
+
+    return {"accepted": not reasons, "reasons": reasons, "metrics": metrics}
 
 
 def _render_foreground(render: Any) -> Any:
