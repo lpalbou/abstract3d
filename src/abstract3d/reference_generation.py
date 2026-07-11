@@ -635,12 +635,110 @@ def _person_clause(subject_noun: Optional[str]) -> str:
     return ""
 
 
+_COLOR_SECTORS = (
+    (20.0, "pink"), (55.0, "red"), (90.0, "orange"), (120.0, "yellow"),
+    (165.0, "green"), (230.0, "cyan"), (290.0, "blue"), (330.0, "purple"),
+    (360.0, "pink"),
+)
+
+
+def _foreground_chroma_stats(generated_rgba: Any, source_rgba: Any) -> Dict[str, Any]:
+    """Foreground mean-LAB chroma of both images + their ratio (diagnosis)."""
+
+    import numpy as np
+    from skimage import color as skcolor
+
+    def chroma(image: Any) -> float:
+        rgba = np.asarray(image.convert("RGBA"), dtype=np.float32) / 255.0
+        mask = rgba[:, :, 3] > 0.5
+        if not mask.any():
+            return 0.0
+        lab = skcolor.rgb2lab(rgba[:, :, :3]).astype(np.float32)
+        return float(np.hypot(lab[:, :, 1][mask].mean(), lab[:, :, 2][mask].mean()))
+
+    generated = chroma(generated_rgba)
+    source = chroma(source_rgba)
+    return {
+        "generated": round(generated, 1),
+        "source": round(source, 1),
+        "ratio": round(generated / max(source, 1e-6), 3),
+    }
+
+
+def measured_color_anchor(source_rgba: Any, *, min_chroma: float = 40.0,
+                          min_weight: float = 0.20) -> Optional[str]:
+    """Frozen-vocabulary color term for the source's dominant chromatic
+    part, or None.
+
+    Measured rationale (sports-car incident): with a gray conditioning
+    guide described as "an untextured model", the i2i editor echoed the
+    CLAY's material statistics and returned achromatic cars — pixels
+    alone failed to carry "saturated red" across, and the material-word
+    ban had stripped the color from every text channel. The ban exists
+    because HUMAN text lies; a value measured from the source pixels
+    cannot lie about its own source. Safety is structural: the term comes
+    from a frozen ten-word hue enum (no free text, no material/finish
+    nouns — a hue does not name a material class), it is computed here
+    from `source_rgba` with no caller-supplied override, and the
+    acceptance gates still judge the result against the pixels.
+    Thresholds are calibrated so the anchor fires only for strongly
+    chromatic dominant parts (car body C*=90 fires; owl 35, chair 37,
+    portrait 22, starship 6 all stay silent).
+    """
+
+    import numpy as np
+    from scipy.cluster.vq import kmeans2
+    from skimage import color as skcolor
+
+    rgba = np.asarray(source_rgba.convert("RGBA"), dtype=np.float32) / 255.0
+    mask = rgba[:, :, 3] > 0.5
+    if not mask.any():
+        return None
+    lab = skcolor.rgb2lab(rgba[:, :, :3]).astype(np.float32)[mask]
+    if len(lab) > 40000:
+        picks = np.random.default_rng(0).choice(len(lab), 40000, replace=False)
+        lab = lab[picks]
+    try:
+        _, labels = kmeans2(lab, 3, minit="++", seed=0)
+    except Exception:
+        return None
+    best: Optional[Tuple[float, Any]] = None
+    for index in range(3):
+        member = lab[labels == index]
+        if len(member) < len(lab) * float(min_weight):
+            continue
+        median = np.median(member, axis=0)
+        chroma = float(np.hypot(median[1], median[2]))
+        if chroma < float(min_chroma):
+            continue
+        weight = len(member) / len(lab)
+        if best is None or weight > best[0]:
+            best = (weight, median)
+    if best is None:
+        return None
+    median = best[1]
+    hue = float(np.degrees(np.arctan2(median[2], median[1]))) % 360.0
+    term = next(name for limit, name in _COLOR_SECTORS if hue <= limit)
+    chroma = float(np.hypot(median[1], median[2]))
+    lightness = float(median[0])
+    if chroma > 60.0:
+        term = f"saturated {term}"
+    elif lightness < 30.0:
+        term = f"dark {term}"
+    elif lightness > 70.0:
+        term = f"light {term}"
+    return term
+
+
 def _view_prompt(label: str, subject_noun: Optional[str],
-                 conditioning: str = "clay", *, tinted: bool = False) -> str:
+                 conditioning: str = "clay", *, tinted: bool = False,
+                 color_anchor: Optional[str] = None) -> str:
     """Build the generation instruction. `subject_noun` must already be
     material-free (see `captioning.extract_subject_noun`) — the template has
     no free-text slot, so nothing a human or captioner writes can inject a
-    material claim structurally.
+    material claim structurally. `color_anchor`, when present, is a
+    MEASURED pixel readout (see `measured_color_anchor`), not text anyone
+    wrote.
     """
 
     noun = (subject_noun or "").strip() or "object"
@@ -660,6 +758,10 @@ def _view_prompt(label: str, subject_noun: Optional[str],
         tint_clause = (
             " The right panel's flat colors already mark which part is "
             "which material — keep that assignment." if tinted else "")
+        color_clause = (
+            f" The subject's main color is {color_anchor}, the same color "
+            "as in the left photo — never the gray of the model."
+            if color_anchor else "")
         return (
             f"Left panel: a photo of {noun}. Right panel: {right_panel} "
             f"{phrase}. Make the right panel a real "
@@ -667,7 +769,7 @@ def _view_prompt(label: str, subject_noun: Optional[str],
             "left subject's material identity exactly, PART BY PART: each "
             "part keeps its own material, color and texture from the left "
             f"photo — never spread one part's material onto a different part."
-            f"{tint_clause} "
+            f"{tint_clause}{color_clause} "
             "Reproduce the same surface relief, carving depth, grooves, "
             "grain, cracks, fibers and micro-texture, and the same colors "
             "and pattern. Match the roughness of each left surface exactly. "
@@ -866,6 +968,15 @@ def generate_reference_views(
         )
     if report_tint_error:
         report["tint_error"] = report_tint_error
+    # Measured color anchor: pixels-only prompt redundancy for strongly
+    # chromatic subjects (see `measured_color_anchor` — the gray-car
+    # incident proved a correct measured claim adds real redundancy
+    # against clay echo, while the human-text ban stays intact).
+    try:
+        color_anchor = measured_color_anchor(source_rgba)
+    except Exception:
+        color_anchor = None
+    report["color_anchor"] = color_anchor
     for label, azimuth, elevation in angles:
         entry: Dict[str, Any] = {
             "label": label,
@@ -895,7 +1006,8 @@ def generate_reference_views(
             report["rejected"] += 1
             continue
         base_prompt = _view_prompt(label, subject_noun, conditioning,
-                                   tinted=tinted_mesh is not None)
+                                   tinted=tinted_mesh is not None,
+                                   color_anchor=color_anchor)
         entry["prompt"] = base_prompt
         entry["conditioning"] = conditioning
 
@@ -1031,6 +1143,14 @@ def generate_reference_views(
                 texture = texture_fidelity(processed, source_rgba)
                 material = part_material_fidelity(processed, source_rgba)
                 specular = gate_baked_speculars(processed)
+                # Diagnosis stats (persist-for-diagnosis contract): the
+                # gray-car class was invisible in the shipped metadata —
+                # foreground chroma makes it readable at a glance.
+                try:
+                    attempt_row["fg_chroma"] = _foreground_chroma_stats(
+                        processed, source_rgba)
+                except Exception:
+                    pass
                 attempt_row["texture"] = {
                     k: texture.get(k)
                     for k in ("passed", "floor", "relief_ratio", "flat_delta",
@@ -1084,6 +1204,22 @@ def generate_reference_views(
                     "floor-only candidates (strict material gates not met); "
                     "floor quality is reported but never baked"
                 )
+            # PERSIST-FOR-DIAGNOSIS: the gray-car diagnosis required a
+            # full rerun solely because no rejected pixel survived —
+            # callers write these small copies to `rejected_refs/`.
+            # The exact pixels the gates judged, downscaled; raw payloads
+            # stay reproducible via seed + md5.
+            rejected_images = report.setdefault("rejected_images", [])
+            for attempt_index, candidate in enumerate(candidates):
+                if len(rejected_images) >= 12:
+                    break
+                small = candidate["rgba"].copy()
+                small.thumbnail((512, 512))
+                rejected_images.append({
+                    "label": label,
+                    "attempt": attempt_index,
+                    "image": small,
+                })
             report["angles"].append(entry)
             report["rejected"] += 1
             continue

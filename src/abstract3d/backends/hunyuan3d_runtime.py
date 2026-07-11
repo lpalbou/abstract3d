@@ -1543,9 +1543,14 @@ class Hunyuan3DShapeBackend:
                 "obj_sidecars": sorted(str(name) for name in obj_texture_sidecars.keys()),
             }
             if reference_generation_report is not None:
-                runtime_meta["texture_artifacts"]["reference_generation"] = (
-                    reference_generation_report
-                )
+                # The report carries PIL objects under "rejected_images"
+                # (persisted separately to rejected_refs/) — they must not
+                # reach JSON serialization.
+                runtime_meta["texture_artifacts"]["reference_generation"] = {
+                    key: value
+                    for key, value in reference_generation_report.items()
+                    if key != "rejected_images"
+                }
 
         # Keep the contact sheet's source panel on the original background so
         # reviewers compare against what the caller actually provided.
@@ -1596,6 +1601,25 @@ class Hunyuan3DShapeBackend:
                         clay.save(bundle_root / f"texture_reference_generated_{label}_clay.png")
                 if generated_paths:
                     runtime_meta["texture_artifacts"]["generated_reference_paths"] = generated_paths
+                # Persist-for-diagnosis: downscaled copies of REJECTED
+                # candidates (budget-capped) — a rejected class must be
+                # diagnosable without a rerun.
+                rejected_rows = (
+                    (reference_generation_report or {}).pop("rejected_images", None))
+                if rejected_rows:
+                    rejected_dir = bundle_root / "rejected_refs"
+                    rejected_dir.mkdir(exist_ok=True)
+                    budget = 2 * 1024 * 1024
+                    for row in rejected_rows:
+                        if budget <= 0:
+                            break
+                        rejected_path = rejected_dir / f"{row['label']}_a{row['attempt']}.webp"
+                        try:
+                            row["image"].convert("RGB").save(
+                                rejected_path, format="WEBP", quality=80)
+                            budget -= rejected_path.stat().st_size
+                        except Exception:
+                            break
             runtime_meta["bundle_dir"] = str(bundle_root)
             for meta_key, bundle_key in (
                 ("preview_path", "preview_path"),

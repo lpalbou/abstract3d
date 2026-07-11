@@ -316,6 +316,7 @@ def rebake_bundle(
             }),
         }
         if generation_report is not None:
+            rejected_images = generation_report.pop("rejected_images", None)
             metadata["generated_references"] = _json_safe(generation_report)
             for view in views:
                 if view.get("generated"):
@@ -323,6 +324,24 @@ def rebake_bundle(
                     clay = view.get("clay_render")
                     if clay is not None:
                         clay.save(out / f"generated_{view['label']}_clay.png")
+            if rejected_images:
+                # Persist-for-diagnosis: the exact (downscaled) pixels the
+                # gates rejected, budget-capped — a rejected class must be
+                # diagnosable without a rerun (measured: the gray-car
+                # class cost a full regeneration to even see).
+                rejected_dir = out / "rejected_refs"
+                rejected_dir.mkdir(exist_ok=True)
+                budget = 2 * 1024 * 1024
+                for row in rejected_images:
+                    if budget <= 0:
+                        break
+                    path = rejected_dir / f"{row['label']}_a{row['attempt']}.webp"
+                    try:
+                        row["image"].convert("RGB").save(
+                            path, format="WEBP", quality=80)
+                        budget -= path.stat().st_size
+                    except Exception:
+                        break
         (out / "metadata.json").write_text(json.dumps(metadata, indent=1, default=str))
     return textured, stats
 

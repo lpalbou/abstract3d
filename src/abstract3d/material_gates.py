@@ -404,6 +404,34 @@ def part_material_fidelity(
                           "weight": len(member) / len(lab)})
         return parts
 
+    # CHROMA-COLLAPSE GUARD (measured on the sports-car incident): a
+    # MONOCHROME generation of a chromatic subject previously strict-
+    # PASSED the forward-only part test raw (gray hides within the
+    # lightness tolerance of any dark source part; the gray car scored
+    # 11.72) and was only caught through a tone-match interaction — luck,
+    # and `tone_match=False` is a public kwarg. Chroma-of-mean ratio
+    # separates the class cleanly: collapse 0.00-0.31, every legitimate
+    # perturbation tested >= 0.73.
+    def foreground_chroma(image_rgba: Any) -> float:
+        rgba = np.asarray(image_rgba.convert("RGBA"), dtype=np.float32) / 255.0
+        mask = rgba[:, :, 3] > 0.5
+        if not mask.any():
+            return 0.0
+        lab = skcolor.rgb2lab(rgba[:, :, :3]).astype(np.float32)
+        mean_a = float(lab[:, :, 1][mask].mean())
+        mean_b = float(lab[:, :, 2][mask].mean())
+        return float(np.hypot(mean_a, mean_b))
+
+    source_chroma = foreground_chroma(source_rgba)
+    generated_chroma = foreground_chroma(generated_rgba)
+    if source_chroma >= 20.0 and generated_chroma / max(source_chroma, 1e-6) < 0.35:
+        return {"name": "G6_part_material", "passed": False, "floor": False,
+                "worst_part_delta_e": None,
+                "source_chroma": round(source_chroma, 1),
+                "generated_chroma": round(generated_chroma, 1),
+                "reason": "chroma collapse: generation is near-monochrome "
+                          "for a chromatic subject"}
+
     source_parts = palette(source_rgba)
     generated_parts = palette(generated_rgba)
     if not source_parts or not generated_parts:

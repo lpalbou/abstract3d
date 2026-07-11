@@ -293,14 +293,18 @@ def test_composite_conditioning_pairs_source_with_clay(monkeypatch) -> None:
         silhouette_iou_min=0.0,  # the echoed clay panel passes trivially
     )
     assert report["conditioning"] == "composite"
-    # Material words are stripped structurally; relief-copy instruction and
-    # material-type ban are present; no material class named anywhere.
+    # HUMAN text is stripped structurally: the hint's finish word ("shiny")
+    # must never reach the prompt. Color MAY appear — but only through the
+    # measured pixel anchor (this source is saturated red, so the anchor
+    # fires), never through the hint's own wording.
     assert report["subject_noun"] == "sphere ornament"
     assert "sphere ornament" in seen["prompt"]
     import re
 
     prompt_words = set(re.findall(r"[a-z]+", seen["prompt"].lower()))
-    assert "shiny" not in prompt_words and "red" not in prompt_words
+    assert "shiny" not in prompt_words
+    assert report["color_anchor"] == "saturated red"
+    assert "The subject's main color is saturated red" in seen["prompt"]
     assert "material identity" in seen["prompt"]
     assert "Do not change any material type" in seen["prompt"]
     canvas = Image.open(io.BytesIO(seen["image_bytes"]))
