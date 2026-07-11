@@ -177,7 +177,54 @@ Inspect the validated catalog:
 abstract3d catalog --validated-only --json
 ```
 
-Generate a mesh from an image with the validated backend:
+### Image → 3D model (recommended path)
+
+One photo in, a fully textured GLB out. The strongest local pipeline is the
+license-gated Hunyuan3D-2.1 backend with generated reference completion: the
+pipeline reconstructs the mesh, synthesizes the unseen angles from the mesh's
+own geometry guides through your local image model, and bakes everything into
+one texture — protected by the whole-bake acceptance gate (if the generated
+views would make the result worse than the photo-only bake, the photo-only
+bake ships and the verdict is recorded in `metadata.json`):
+
+```bash
+export ABSTRACT3D_HUNYUAN_ACCEPT_LICENSE=1        # review the Tencent license first
+export ABSTRACT3D_IMAGE_PROVIDER=mlx-gen          # local image model for the unseen angles
+export ABSTRACT3D_IMAGE_MODEL=AbstractFramework/flux.2-klein-4b-8bit
+
+abstract3d i23d ./owl-photo.png \
+  --output-dir ./out/owl \
+  --backend hunyuan3d21 \
+  --device mps
+```
+
+`texture_reference_generation` defaults to `auto`: it fires only when a local
+image provider is configured, and it refuses person subjects outright (no
+gate can defend facial identity). To synthesize views of a person anyway,
+add the explicit acknowledgment `--texture-reference-allow-person`.
+
+### Text → 3D model
+
+The same pipeline, with the source photo composed from your prompt first:
+
+```bash
+export ABSTRACT3D_HUNYUAN_ACCEPT_LICENSE=1
+export ABSTRACT3D_IMAGE_PROVIDER=mlx-gen
+export ABSTRACT3D_IMAGE_MODEL=AbstractFramework/flux.2-klein-4b-8bit
+
+abstract3d t23d "a red sports car, studio photo" \
+  --output-dir ./out/sports-car \
+  --backend hunyuan3d21 \
+  --device mps
+```
+
+Every bundle records full provenance: the composed/source image, generated
+reference views (`generated_*.png` with their geometry guides), per-attempt
+gate metrics, and the acceptance verdict.
+
+### Lighter-weight variants
+
+Generate a mesh from an image with the lightweight validated backend:
 
 ```bash
 abstract3d i23d ./object.png --output-dir ./out/object --device mps --format glb

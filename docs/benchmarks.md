@@ -175,7 +175,21 @@ asset):
   which is the natural substrate for agent-driven generate -> inspect ->
   critique loops)
 
-## Generated Reference Completion — Productized (2026-07-09, hardened 2026-07-10)
+## Generated Reference Completion — Productized (2026-07-09, hardened 2026-07-10, root-caused 2026-07-11)
+
+Round 3 (2026-07-11, four parallel adversarial audits on the owl):
+geometry guides for the i2i conditioning now use HEADLIGHT shading (the
+fixed world light had rendered every non-front guide at the Lambert clamp
+floor — the generator invented interior features it was never shown);
+reference registration requires mutual visibility plus a silhouette-
+coverage guard (a far-side view had been fitted against front content
+seen through the body, displacing every reference by up to 61 px); the
+two-band fusion's low band carries projection weights; photo sovereignty
+extends to the photo's full coverage edge; and the SH delight applies to
+chain-constrained views. Final owl: whole-bake gate PASS (photo fidelity
+deltaE 18.9 vs 19.5 ceiling), geometry-conformant back content at 87%
+observed coverage. The mesh-forensics audit confirmed the owl mesh clean
+and symmetric — all defects were pipeline-caused and fixed in code.
 
 The manual generated-reference procedure below is now a first-class option:
 `texture_reference_generation` (auto/on/off, default auto) on the Hunyuan
