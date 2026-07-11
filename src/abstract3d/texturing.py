@@ -612,8 +612,13 @@ def estimate_pose_photometric(
         Returns (gray, mask) in the photo frame, or None.
         """
         try:
+            # The scorer's margins were calibrated against the legacy
+            # fixed-world-light shading; the headlight guide (a different
+            # gradient field) shifts its scores and flipped a validated
+            # declared-pose case to a wrong estimate (owl: est. el -15).
             rendered = render_mesh_views(
-                mesh, azimuths=(float(azimuth),), elevation=float(elevation), size=size
+                mesh, azimuths=(float(azimuth),), elevation=float(elevation),
+                size=size, lighting="fixed",
             )[0].convert("RGBA")
         except Exception:
             return None
@@ -834,6 +839,7 @@ def register_reference_by_source_overlap(
     elevation_deg: float,
     camera_distance: float,
     ortho_half_extent: float,
+    normals_texture: Optional[Any] = None,
     scale_candidates: Sequence[float] = (0.98, 1.0, 1.02, 1.04),
     shift_range: float = 0.08,
     shift_step: float = 0.01,
@@ -844,6 +850,7 @@ def register_reference_by_source_overlap(
     min_overlap: int = 400,
     min_source_weight: float = 0.25,
     min_improvement: float = 0.01,
+    min_reference_facing: float = 0.2,
 ) -> Tuple[Any, Dict[str, Any]]:
     """Align a reference photo to the SOURCE'S PAINTED TRUTH on shared surface.
 
@@ -908,6 +915,21 @@ def register_reference_by_source_overlap(
         & (sample_y <= height - 1)
         & (positions[:, :, 3] > 0)
     )
+    # MUTUAL VISIBILITY (adversarial audit, critical): "in frame" is not
+    # "seen by this camera" — an orthographic far-side camera has every
+    # front texel in frame THROUGH the body. Without a facing gate the
+    # back view's "overlap" was the entire front-painted surface, the fit
+    # matched the reference against content it cannot see, and every
+    # generated reference was driven to the search bound (measured +-0.08
+    # = 61 px at 768: the displaced tail and wing). Only texels whose
+    # surface actually faces this reference's camera may witness the fit.
+    if normals_texture is not None:
+        normals = np.asarray(normals_texture, dtype=np.float32)[:, :, :3]
+        norm = np.linalg.norm(normals, axis=2, keepdims=True)
+        unit_normals = np.divide(normals, np.maximum(norm, 1e-8))
+        facing = unit_normals @ np.asarray(
+            eye / max(float(np.linalg.norm(eye)), 1e-8), dtype=np.float32)
+        in_frame = in_frame & (facing > float(min_reference_facing))
     overlap = (source_weight > float(min_source_weight)) & in_frame
     count = int(overlap.sum())
     stats["overlap"] = count
@@ -967,6 +989,32 @@ def register_reference_by_source_overlap(
         or (scale == 1.0 and dx == 0.0 and dy == 0.0)
     ):
         return image, stats
+
+    # SILHOUETTE GUARD: the photometric fit may not undo the silhouette
+    # registration that precedes it. A warp that improves overlap-color
+    # agreement by sliding texture (grain locking onto grain) drags the
+    # matte off the mesh footprint — measured as near-bound shifts (46-61
+    # px) on views whose IoU was already 0.93+. Surface coverage = the
+    # fraction of THIS camera's facing-gated surface texels whose sample
+    # lands on opaque photo; the warp may not lose more than 1% of it.
+    surface_texels = in_frame
+    if surface_texels.any():
+        def coverage_of(scale_c: float, dx_c: float, dy_c: float) -> float:
+            xs_all = (sample_x[surface_texels] - center_x - dx_c * width) / scale_c + center_x
+            ys_all = (sample_y[surface_texels] - center_y - dy_c * height) / scale_c + center_y
+            in_b = (xs_all >= 0) & (xs_all <= width - 1) & (ys_all >= 0) & (ys_all <= height - 1)
+            if not in_b.any():
+                return 0.0
+            sampled_alpha = bilinear(xs_all[in_b], ys_all[in_b])[:, 3]
+            return float((sampled_alpha > 0.5).sum()) / float(surface_texels.sum())
+
+        coverage_before = coverage_of(1.0, 0.0, 0.0)
+        coverage_after = coverage_of(scale, dx, dy)
+        stats["coverage_before"] = round(coverage_before, 4)
+        stats["coverage_after"] = round(coverage_after, 4)
+        if coverage_after < coverage_before - 0.01:
+            stats["rejected"] = "silhouette_coverage_drop"
+            return image, stats
 
     inv_scale = 1.0 / scale
     matrix = (
@@ -2041,14 +2089,26 @@ def blend_projections(
     if two_band:
         from scipy.ndimage import gaussian_filter
 
-        # Per-view frequency split, mask-normalized so background zeros
-        # never bleed into the low band at coverage borders.
+        # Per-view frequency split as a WEIGHT-CARRYING normalized
+        # convolution: low = G(rgb*w) / G(w). A binary-coverage mask
+        # admitted weight-crushed rim texels at full strength — exactly
+        # the samples every other stage distrusts — and the one-sided
+        # mean at coverage edges then reported the brighter interior,
+        # turning rim shading into a large negative detail band
+        # (measured: a flank band DARKER than both witnesses' own
+        # content, Y 0.31 vs 0.52/0.57). Weights already decay toward
+        # edges, so carrying them both excludes crushed rims and softens
+        # the one-sided bias.
         for rgba, weight, _projection in prepared:
-            covered = weight > 0.0
             low = np.empty((height, width, 3), dtype=np.float32)
+            den = gaussian_filter(weight, float(detail_sigma))
+            good = den > 1e-6
             for channel in range(3):
-                low[:, :, channel] = _masked_gaussian_filter(
-                    rgba[:, :, channel], covered, float(detail_sigma))
+                num = gaussian_filter(
+                    rgba[:, :, channel] * weight, float(detail_sigma))
+                plane = np.zeros((height, width), dtype=np.float32)
+                plane[good] = num[good] / den[good]
+                low[:, :, channel] = plane
             view_low.append(low)
 
     weight_stack = np.stack(stacked_weights, axis=0)
@@ -2082,19 +2142,31 @@ def blend_projections(
     if two_band and observed.any():
         from scipy.ndimage import gaussian_filter
 
-        # Detail ownership: argmax over SMOOTHED weights for spatial
-        # coherence, constrained to views actually covering the texel
-        # (a smoothed weight reaches past its view's validity edge; the
-        # winner there must fall back to the best COVERING view).
-        smoothed = np.stack(
-            [gaussian_filter(w, float(winner_smooth_sigma)) for w in stacked_weights],
-            axis=0)
+        # Detail ownership: argmax over MASK-NORMALIZED smoothed weights
+        # for spatial coherence. Plain Gaussian smoothing averages in the
+        # zeros outside each view's coverage, halving a view's smoothed
+        # weight within ~sigma of its own edge — measured: a grazing back
+        # view with 3x lower pointwise weight out-owned a confident side
+        # view in an 8-16 texel strip inside every coverage edge.
+        # Normalizing by the smoothed coverage indicator removes the
+        # coverage bias; eligibility additionally requires a texel's RAW
+        # weight to reach 30% of the local best, so a poor witness can
+        # never own detail merely by spatial majority.
         covering = weight_stack > 0.0
-        eligible = np.where(covering, smoothed, -1.0)
+        smoothed = np.stack(
+            [np.divide(
+                gaussian_filter(w, float(winner_smooth_sigma)),
+                np.maximum(gaussian_filter(
+                    c.astype(np.float32), float(winner_smooth_sigma)), 1e-6))
+             for w, c in zip(stacked_weights, covering)],
+            axis=0)
+        quality_floor = 0.3 * weight_stack.max(axis=0)
+        eligible_mask = covering & (weight_stack >= quality_floor[None, ...])
+        eligible = np.where(eligible_mask, smoothed, -1.0)
         winner = eligible.argmax(axis=0)
         winner_valid = np.take_along_axis(
-            covering, winner[None, ...], axis=0)[0]
-        # Where the smoothed winner does not cover, use the raw-weight best.
+            eligible_mask, winner[None, ...], axis=0)[0]
+        # Where no eligible smoothed winner exists, use the raw-weight best.
         raw_winner = weight_stack.argmax(axis=0)
         winner = np.where(winner_valid, winner, raw_winner)
 
@@ -4039,22 +4111,48 @@ def delight_projections(
             ) or 1.0
     for view, col in col_of.items():
         field = basis_full @ coeffs[col * n_basis:(col + 1) * n_basis]
-        overlap = (weights[src] > weight_floor) & (weights[view] > weight_floor)
+        # CONSENSUS APPLICATION (adversarial round 3): the joint fit above
+        # already constrains every fitted view through ALL its overlapping
+        # pairs (side|back rows included) — but applying only where a view
+        # overlaps the SOURCE structurally excluded far-side views (a back
+        # view can never share a texel with the source: the facing cones
+        # end at ~66 and start at ~101 degrees), and the source-keyed fade
+        # zeroed the sides' corrections exactly at the side|back junction
+        # where the seams form. The application predicate is now the UNION
+        # of the view's fitted overlaps: every view the solver actually
+        # constrained gets its relight, faded by proximity to the surface
+        # that constrained it, and the revert gate measures disagreement
+        # against ALL its overlap partners.
+        source_overlap = (weights[src] > weight_floor) & (weights[view] > weight_floor)
+        fit_overlap = np.zeros_like(source_overlap)
+        for other in range(view_count):
+            if other == view:
+                continue
+            fit_overlap |= (
+                (weights[other] > weight_floor) & (weights[view] > weight_floor)
+            )
         row: Dict[str, Any] = {
             "index": view,
             "label": projections[view].get("label"),
-            "overlap_texels": int(overlap.sum()),
+            "overlap_texels": int(source_overlap.sum()),
+            "fit_overlap_texels": int(fit_overlap.sum()),
             "applied": False,
         }
-        if int(overlap.sum()) < int(min_overlap_texels):
+        if int(fit_overlap.sum()) < int(min_overlap_texels):
             stats["views"].append(row)
             continue
-        low = float(np.percentile(field[overlap], 1)) - 0.1
-        high = float(np.percentile(field[overlap], 99)) + 0.1
-        field = np.clip(np.clip(field, low, high), -float(max_log_amplitude), float(max_log_amplitude))
+        # Views whose gauge reaches the source only through a CHAIN of
+        # references (no direct source overlap) inherit the chain's error:
+        # halve their amplitude budget.
+        chained = int(source_overlap.sum()) < int(min_overlap_texels)
+        amplitude = float(max_log_amplitude) * (0.5 if chained else 1.0)
+        row["chained_gauge"] = chained
+        low = float(np.percentile(field[fit_overlap], 1)) - 0.1
+        high = float(np.percentile(field[fit_overlap], 99)) + 0.1
+        field = np.clip(np.clip(field, low, high), -amplitude, amplitude)
         if surface_points is not None and surface_sel is not None and len(surface_points) > 0:
             # Overlap-proximity fade over the 3D surface (see docstring).
-            overlap_indicator = overlap[surface_sel].astype(np.float64)
+            overlap_indicator = fit_overlap[surface_sel].astype(np.float64)
             density = _voxel_neighborhood_mean(
                 surface_points,
                 overlap_indicator,
@@ -4064,12 +4162,32 @@ def delight_projections(
             fade_surface = np.clip(density / max(float(fade_density_full), 1e-9), 0.0, 1.0)
             fade = np.zeros(field.shape, dtype=np.float64)
             fade[surface_sel] = fade_surface
-            fade[overlap] = 1.0
+            fade[fit_overlap] = 1.0
             field = field * fade
         correction = np.exp(-field).astype(np.float32)
         corrected = np.clip(rgbs[view] * correction[:, :, None], 0.0, 1.0)
-        before = float(np.abs(rgbs[view][overlap] - rgbs[src][overlap]).mean())
-        after = float(np.abs(corrected[overlap] - rgbs[src][overlap]).mean())
+        # Revert gate over ALL fitted partners, weighted like the fit.
+        before_num = 0.0
+        after_num = 0.0
+        den = 0.0
+        for other in range(view_count):
+            if other == view:
+                continue
+            pair_overlap = (
+                (weights[other] > weight_floor) & (weights[view] > weight_floor)
+            )
+            if not pair_overlap.any():
+                continue
+            pair_weight = float(np.minimum(
+                weights[other][pair_overlap], weights[view][pair_overlap]).sum())
+            before_num += pair_weight * float(
+                np.abs(rgbs[view][pair_overlap] - rgbs[other][pair_overlap]).mean())
+            after_num += pair_weight * float(
+                np.abs(corrected[pair_overlap] - rgbs[other][pair_overlap]).mean())
+            den += pair_weight
+        before = before_num / max(den, 1e-9)
+        after = after_num / max(den, 1e-9)
+        overlap = fit_overlap
         exclusive = (weights[view] > weight_floor) & ~overlap
         row.update(
             disagreement_before=round(before, 4),
@@ -4427,7 +4545,7 @@ def resolve_projection_conflicts(
 def protect_observed_texels(
     projections: Sequence[Dict[str, Any]],
     *,
-    protect_floor: float = 0.25,
+    protect_floor: float = 0.02,
 ) -> Dict[str, Any]:
     """Generated views COMPLETE the surface; they never REVISE it.
 
@@ -4439,11 +4557,18 @@ def protect_observed_texels(
     weight ratio: a real photo is evidence, a generated view is plausible
     synthesis, and synthesis must contribute nothing where evidence exists.
 
-    On texels where the strongest REAL view holds a credible claim
-    (weight >= `protect_floor`, matching the conflict-resolution priority
-    floor), generated weights go to zero; below the floor they ramp back
-    linearly so the handoff at the protection boundary stays smooth
-    (real grazing rim -> generated head-on content, no weight step).
+    `protect_floor` is deliberately at the photo's own COVERAGE edge
+    (weight 0.02 ~ its 0.2 facing cutoff), not at a "credible claim"
+    level: a 0.25 floor left every obliquely-photographed surface (ear
+    tops, brow ridges, foot tops at facing 0.2-0.5) open to generated
+    content, and correctly-registered references measurably repainted the
+    subject's front with drifted tone (photo fidelity deltaE 19.2 -> 25.3;
+    an earlier registration bug had been hiding the leak by pushing the
+    references' rims off the mesh). Stretched oblique photo content is
+    still the subject's own appearance — the certified single-photo path
+    ships exactly that band — while a generated view is somebody's guess
+    about it. Below the floor the generated weights ramp back linearly,
+    so the handoff sits at the photo's own fade-out.
 
     Mutates generated projections' weights in place; returns stats.
     """
@@ -5482,6 +5607,7 @@ def bake_projection_texture(
                 elevation_deg=view_elevation,
                 camera_distance=view_distance,
                 ortho_half_extent=float(view_half_extent),
+                normals_texture=normals_texture,
             )
             reg_stats["overlap_alignment"] = overlap_stats
             # Dense residual: global transforms cannot satisfy per-feature

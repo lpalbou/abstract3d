@@ -2,6 +2,65 @@
 
 ## Unreleased
 
+### Fixed (generated references — four-audit root-cause program on the owl)
+
+Four adversarial audits (fusion math, geometry-anchored alignment, tone
+junction physics, mesh forensics) converged on the user-visible owl
+defects (displaced tail, distorted wing, left flank band). Mesh audit
+verdict: the mesh is clean and symmetric — every defect was pipeline-
+caused. Root causes fixed, in causal order:
+
+- **Clay guides were pitch black off-front** (`rendering.py`): the
+  offscreen renderer's key light was FIXED IN WORLD SPACE, so back/side
+  clay renders sat at the Lambert clamp floor (measured: back interior a
+  constant 24/255 over a 16/255 canvas — the i2i generator was
+  conditioned on a near-invisible blob and INVENTED the interior features
+  it was never shown: painted tail 0.36x the real wedge width, wing-V
+  rotated and displaced 57 px). Untextured renders now default to a
+  HEADLIGHT (light = view direction: n.v > 0 on every visible surface, no
+  clamp, no terminator) so guides show the true relief from every angle;
+  regenerated references paint the tail on the mesh's actual wedge.
+  `lighting="fixed"` remains for the photometric pose estimator, whose
+  margins were calibrated against the legacy shading (the headlight
+  gradient field flipped a validated declared-pose case).
+- **Registration matched far-side views against surface they cannot see**
+  (`register_reference_by_source_overlap`): the overlap set had no
+  visibility test — for an orthographic back camera every front texel is
+  "in frame" THROUGH the body, so the fit aligned the back photo against
+  front-photo content and drove every reference to the search bound
+  (+-0.08 = 61 px: the mechanical part of "the tail moved"). Overlap now
+  requires the surface to face the reference camera, and a silhouette
+  guard rejects any warp that costs more than 1% of the view's on-mesh
+  sample coverage (texture-locking fits measured 46-61 px shifts on
+  views whose silhouette IoU was already 0.93+).
+- **Two-band fusion edge math** (`blend_projections`): the low band is
+  now a WEIGHT-carrying normalized convolution (binary-coverage masks
+  admitted weight-crushed rim texels at full strength; the one-sided edge
+  mean then turned rim shading into a large negative detail band —
+  measured as a flank strip darker than BOTH witnesses, Y 0.31 vs
+  0.52/0.57), and detail ownership argmaxes MASK-NORMALIZED smoothed
+  weights with a 30%-of-local-best eligibility floor (plain smoothing
+  halves a view's weight within sigma of its own coverage edge, letting
+  grazing views own detail strips they saw 3x worse).
+- **Photo sovereignty extended to the photo's own coverage edge**
+  (`protect_observed_texels` floor 0.25 -> 0.02): correctly-registered
+  references repainted obliquely-photographed front surfaces (ear tops,
+  brow ridges at facing 0.2-0.5) with drifted tone — photo fidelity
+  deltaE 19.2 -> 25.3; the old registration bug had masked the leak by
+  pushing reference rims off the mesh. Stretched oblique photo content is
+  the subject's own appearance; synthesis owns only what the photo never
+  saw. Whole-bake gate on the final owl: PASS (fidelity 18.86 < 19.46).
+- **Delight now applies to chain-constrained views** (consensus
+  application): the SH delight fit always constrained far-side views
+  through reference-reference overlap pairs, but the application and its
+  fade were keyed to SOURCE overlap — structurally zero for a back view
+  (facing cones end at ~66 and start at ~101 degrees), and the fade
+  zeroed the sides' corrections exactly at the side|back junction where
+  the seams form. Application, clipping, fade, and the revert gate are
+  now keyed to the union of each view's FITTED overlaps; views whose
+  gauge reaches the source only through a chain get half the amplitude
+  budget.
+
 ### Changed (bake fusion — two-band detail ownership, research-grounded)
 
 A three-track literature review (photogrammetry texturing practice,

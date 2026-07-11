@@ -173,6 +173,7 @@ def _render_mesh_views_moderngl(
     size: int,
     azimuths: Sequence[float],
     elevation: float,
+    lighting: str = "headlight",
 ) -> List[Image.Image]:
     import moderngl
 
@@ -245,6 +246,7 @@ def _render_mesh_views_moderngl(
             uniform vec3 u_base_color_factor;
             uniform vec3 u_light;
             uniform vec3 u_view_dir;
+            uniform int u_headlight;
             void main() {
                 vec3 base = v_color;
                 if (u_use_texture == 1) {
@@ -254,19 +256,38 @@ def _render_mesh_views_moderngl(
                     base = texture(u_tex, vec2(v_uv.x, 1.0 - v_uv.y)).rgb * u_base_color_factor;
                 }
                 vec3 normal = normalize(v_nrm);
-                float diffuse = max(dot(normal, normalize(u_light)), 0.0);
                 // Textured previews review the baked albedo, so shading must
                 // stay close to flat: strong ridge shading re-draws the
                 // mesh's own geometric features (eye sockets, brows, lips)
                 // over the photo albedo and reads as a ghosted second face
                 // whenever geometry and texture disagree by even a few
                 // percent. A 12% diffuse cue keeps just enough depth to see
-                // silhouettes. Untextured geometry keeps the strong single
-                // key light so shape readability stays high.
+                // silhouettes.
+                //
+                // UNTEXTURED (clay) renders are geometry GUIDES: the i2i
+                // conditioning, the silhouette/IoU authority, and every
+                // structure proxy read them. Under `u_headlight` they use
+                // a HEADLIGHT — the light is the view direction, so
+                // diffuse = n.v, which is positive on every visible
+                // surface: no Lambert clamp, no terminator, creases read
+                // as dark valleys from EVERY azimuth. The previous fixed
+                // world light rendered whole non-front hemispheres at the
+                // clamp floor (measured: the back clay's interior at a
+                // constant 24/255 — the conditioning panel was a
+                // near-invisible blob and the generator invented the
+                // interior features it was never shown). `lighting=
+                // "fixed"` keeps the legacy world light for consumers
+                // whose scoring was calibrated against it (the
+                // photometric pose estimator).
                 float shade;
                 if (u_use_texture == 1) {
+                    float diffuse = max(dot(normal, normalize(u_light)), 0.0);
                     shade = 0.88 + 0.12 * diffuse;
+                } else if (u_headlight == 1) {
+                    float headlight = max(dot(normal, normalize(u_view_dir)), 0.0);
+                    shade = 0.15 + 0.85 * headlight;
                 } else {
+                    float diffuse = max(dot(normal, normalize(u_light)), 0.0);
                     shade = 0.24 + 0.76 * diffuse;
                 }
                 f_color = vec4(base * shade, 1.0);
@@ -297,8 +318,9 @@ def _render_mesh_views_moderngl(
             float(base_color_factor[1]),
             float(base_color_factor[2]),
         )
+    if "u_headlight" in program:
+        program["u_headlight"].value = 1 if str(lighting) == "headlight" else 0
     program["u_light"].value = (0.45, -0.35, 0.82)
-
     images: List[Image.Image] = []
     target = np.zeros(3, dtype=np.float32)
     up = np.array([0.0, 0.0, 1.0], dtype=np.float32)
@@ -438,7 +460,7 @@ def _render_mesh_views_matplotlib(mesh, *, size: int = 420, azimuths: Sequence[f
     return images
 
 
-def render_mesh_views(mesh, *, size: int = 420, azimuths: Sequence[float] = (35.0, 125.0, 215.0, 305.0), elevation: float = 20.0) -> List[Image.Image]:
+def render_mesh_views(mesh, *, size: int = 420, azimuths: Sequence[float] = (35.0, 125.0, 215.0, 305.0), elevation: float = 20.0, lighting: str = "headlight") -> List[Image.Image]:
     global _LAST_RENDERER_BACKEND
     _LAST_RENDERER_BACKEND = None
     # Exports present the glTF viewer frame (Y-up / front +Z) and carry a
@@ -466,7 +488,9 @@ def render_mesh_views(mesh, *, size: int = 420, azimuths: Sequence[float] = (35.
             )
         )
     try:
-        images = _render_mesh_views_moderngl(mesh, size=size, azimuths=azimuths, elevation=elevation)
+        images = _render_mesh_views_moderngl(
+            mesh, size=size, azimuths=azimuths, elevation=elevation,
+            lighting=lighting)
         if images:
             _LAST_RENDERER_BACKEND = "moderngl"
             return images

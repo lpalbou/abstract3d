@@ -1246,6 +1246,36 @@ whenever the estimators disagree again.)
   candidate vs baseline through the SAME renderer, and correct for
   lighting before attributing render-space band differences to the
   texture (a fixed key light dims the back view by ~13 L).
+- A geometry GUIDE is only as good as its lighting: a fixed world-space
+  key light rendered every non-front clay guide at the Lambert clamp
+  floor (back interior: constant 24/255 on a 16/255 canvas), so the i2i
+  generator was conditioned on a silhouette with NO interior structure
+  and invented tail/wing positions (median painted-feature-to-true-ridge
+  distance 32 px — beyond any safe warp). Guides must use a headlight
+  (light = view direction: n.v > 0 on every visible pixel, no clamp, no
+  terminator). Post-hoc warping of invented features was measured and
+  refuted: the error is partly topological (painted narrow tail vs broad
+  geometric wedge), and a gradient-matching flow against a mostly-empty
+  target degenerates into feature erasure that its own validation gate
+  approves. Fix visibility at generation time; gate (reject/re-roll)
+  after; warp only capped curve-anchored residuals, never dense.
+- Photometric fits need MUTUAL-VISIBILITY tests, not in-frame tests: an
+  orthographic far-side camera has every front texel "in frame" through
+  the body, so an overlap fit without a facing gate aligns a back photo
+  against front content it cannot see (measured: all four references
+  driven to the +-61 px search bound; identical overlap counts for all —
+  the impossible statistic that exposed it). Photometric registration
+  additionally needs a silhouette guard: a texture-locking fit (grain on
+  grain) can improve overlap color error while dragging the matte off
+  the mesh footprint (reject when on-mesh sample coverage drops >1%).
+- When a bug is fixed, re-audit every behavior that was CALIBRATED while
+  the bug was active: correct registration exposed a photo-sovereignty
+  leak (floor 0.25 left obliquely-photographed front surfaces open to
+  generated repainting; the buggy +-61 px warps had been pushing the
+  references' rims off the mesh, hiding it), and the headlight guide
+  change shifted the photometric pose estimator's score field enough to
+  flip a validated declared-pose case (its margins were calibrated on
+  the fixed-light shading — it now pins `lighting="fixed"`).
 - Do not recalibrate a certified defect detector to flatter a new feature:
   the owl's 13 close-zoom dark fragments (vs certified 0) all localize to
   the unwitnessed underside band — crevice shading speckle in a regime
