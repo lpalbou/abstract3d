@@ -225,6 +225,16 @@ shipping contract:
   measured identity drift the material gates cannot see; no identity
   oracle exists yet.
 
+Final product-path results (2026-07-11, all gates active, headlight
+guides): starship gate PASS with 4/4 strict angles; chair gate PASS with
+1/4 (three honest material-gate rejections — the fabric class); portrait
+refused under `auto` (person policy) and gate PASS 4/4 under the explicit
+person acknowledgment; sports-car `t23d` end-to-end produced clean
+geometry with all 4 reference angles honestly rejected by the
+part-material gate (worst part deltaE 27-31: high-gloss automotive paint
+joins upholstered fabric as a documented known-hard class — the pipeline
+ships the photo-only bake rather than wrong-material synthesis).
+
 Zero-hint validation (2026-07-10, four subjects, Klein-4B composite,
 crash-isolated hands-off runs): owl 4/4 angles strict-pass (carved
 plumage relief preserved, coverage 0.30 -> 0.81), spaceship 4/4,
