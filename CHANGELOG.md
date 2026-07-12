@@ -2,6 +2,505 @@
 
 ## Unreleased
 
+### Validated (integrator end-to-end matrix over the combined texture-fix tree, 2026-07-12)
+
+Adversarial integrator pass over the whole uncommitted program (per-view
+two-key gates + retry ladder, rebake/pipeline parity + identity-repair
+background fix, whole-bake tone-damage gate, consensus tone
+reconciliation). Full report with artifacts: /tmp/fix3/report.md.
+
+- **Test suite**: 300 passed + 3 xfailed at entry; 304 passed +
+  3 skipped (opt-in parity canaries) + 3 xfailed after this pass's
+  additions.
+- **Pinned car pair** (sportscar_v7 + twokey views, production
+  semantics, 2048): gate ACCEPT reproduced — tone dark/bright
+  0.000/0.000, fidelity 34.06 -> 33.86 at (17.5, 8.0)
+  origin=baseline_stats, handoff ledger 10196 texels p50 0.182 /
+  p95 0.398 (F1 margins and F2 ledger numbers within noise).
+- **Fleet rebakes from persisted references** (CPU): starship ACCEPT
+  (fidelity 19.77 -> 19.58), chair ACCEPT (24.65 -> 24.62, seam info
+  improved), portrait ACCEPT (12.60 -> 14.12, inside +2.0 slack).
+  Texel drift vs stored outputs is attributed: F2's intended
+  relighting (starship/portrait) and the pose-guard correcting the
+  chair's old az -27.5 estimator spike to the honest (0,0) — fresh
+  chair measures MORE photo-faithful than the stored bake (24.62 vs
+  24.80) with the stored bake's black armrest holes gone.
+- **Owl i23d end-to-end** (fresh generation): healthy, 4/4 references
+  accepted, whole-bake ACCEPT (fidelity 17.02 -> 18.34 within slack,
+  tone 0/0, hue 0.068/1.0), coverage 0.83, renders indistinguishable
+  from the approved owl_redo_refs standard. No regression.
+- **Car t23d end-to-end** (user's verbatim command): exit 0 with
+  `VECLIB_MAXIMUM_THREADS=1` (two prior attempts died in the HOST's
+  threaded Accelerate GEMM — pre-existing .ips signatures; KB entry),
+  closed-roof input, 4/4 references accepted on attempt 1 (seed 2025).
+  The run exposed the pose-guard dead zone fixed above (shipped
+  baseline at (0,0), coverage 0.057, "healthy"); post-fix rebake:
+  pose silhouette_rescue (40, 15), coverage 0.170, sanity floors
+  pass, product visibly photo-true from the source pose. The
+  whole-bake gate refused THIS draw's candidate on an independent
+  fidelity regression (37.32 vs 32.31+2.0) — references still ship
+  only when they earn it; the pinned v7 candidate keeps ACCEPTing.
+- **Retry-ladder determinism**: two separate-process back-angle
+  generations at base seed 2025 — raw payload md5-identical, all gate
+  metrics identical, same accepted seed. (Both under
+  VECLIB_MAXIMUM_THREADS=1; the threaded-GEMM host bug is the prime
+  suspect for the previously recorded same-seed drift.)
+- **Break attempts**: F2's consensus pass held all worst cases
+  (sub-floor overlap -> structural no-op; content confound -> full
+  revert; source-starved component -> relative-only reconciliation;
+  evidence-faded deep-exclusive bit-identity) — now pinned as tests.
+  F1's tone axis had one measured hole (chroma-only damage) — closed
+  (see the hue-damage entry above).
+- **Parity canaries landed** (the parity audit's P1/P2 spec):
+  `artifacts/validation/parity/sportscar_v7/` +
+  `scripts/parity_canary.py` + opt-in `tests/test_parity_canary.py`
+  (ABSTRACT3D_PARITY_CANARY=1; CPU-only). First run: 3/3 pass — P1
+  refs-off 2048 rebake bit-identical to the pin (1.000 / max delta 0),
+  P2 two 1024 rebakes md5-identical AND equal to the July parity
+  audit's recorded md5 (c84f2e49…: the single-photo lane is
+  bit-stable across the whole fix program), P3 face 2048 md5-stable
+  (e32ba995…, the fix-2 canary value).
+
+### Fixed (source pose — the guard's reject-but-don't-rescue dead zone; sanity floors on the refused-candidate branch)
+
+End-to-end integrator run (fresh t23d car draw, seed 2025): the pose
+guard's shape-decisive override VETOED the NCC commit on decisive
+double-keyed evidence (commit riou 0.773 vs basin best 0.896 @ (40,15),
+commit aspect err 0.159), then the rescue lane's own second key — the
+DECLARED pose's aspect error, 0.113 < 0.15 — refused to move, so the
+bake ran at declared (0,0): coverage 0.0574, all non-front surface
+mottled fill. Measured A/B at the basin pose (40,15): coverage 0.1877
+(3.3x), photo fidelity 32.71 -> 21.59 dE, single-view sanity floors
+pass (at (0,0) two of three floors fail). Fix: an override veto IS
+decisive shape evidence, so it now counts as the rescue's second key
+(`estimate_pose_with_silhouette_guard`; the double-key doctrine is
+preserved — the override itself required the commit-side aspect key).
+Fleet control (7 bundles): only the fresh car moves ((0,0) ->
+silhouette_rescue (40,15)); v7 car/starship/portrait keep their NCC
+commits, owl/face keep declared, and the chair's override veto still
+correctly refuses to move (basin gap 0.064 < 0.10 — its (0,0) is
+honest). Companion fix: when the whole-bake gate refuses a candidate,
+the shipped BASELINE now runs the same `evaluate_single_view_bake`
+sanity floors as the no-references branch (both `hunyuan3d_runtime`
+and `rebake_bundle`) — the measured incident shipped a coverage-0.058
+baseline with verdict "healthy" while the floors existed one branch
+below (`quality_verdict=degraded` + loud warning now).
+
+### Added (texture acceptance — composition hue-damage axis closes the measured chroma hole)
+
+Adversarial integrator probe (2026-07, /tmp/fix3): the whole-bake gate's
+tone axis is L-based, so CHROMA-only damage — a car back reference
+hue-rotated 30 deg at constant L (red -> orange) — passed every voting
+axis (fidelity IMPROVED 34.12 -> 33.75 at the estimated pose, tone
+damage 0.000/0.000, brightness clean) and the visibly orange-backed bake
+would have shipped. In production the per-view two-key gates refuse that
+reference one layer earlier (consensus 31.1 > 16, cloud evidence 28.5 >
+11), but `rebake_bundle` accepts CALLER-provided references ungated —
+the whole-bake gate is the only defense on that path. Landed
+(`bake_acceptance._chroma_field_damage`): coherent low-band hue-rotation
+axis, same construction as the tone axis (masked smoothing sigma 24 @
+512) on the LAB ab fields, angle between candidate/baseline ab vectors
+integrated beyond a 10-deg floor (the pipeline's own sanctioned ab
+drift: `match_tone_lab` clamps ab at 10, ~11 deg at anchor chroma) on
+mutually saturated surface (smoothed chroma >= 15; the saturated-area
+weight keeps gray subjects structurally quiet — starship measures 0.000
+with sat_frac 0.00), budget 1.0. Raw ab-displacement was measured
+NON-separating first (legit content replacement displaces ab 4.1-5.4 vs
+damage 5.2 — inverted); the ANGLE separates. Calibration on the 12
+fix-program pairs + 3 synthesized chroma pairs: every labeled accept
+<= 0.460 (car 0.202, owl 0.109, portrait 0.133, chairs 0.31-0.46 —
+2.2x under budget), hue-rotated back @30deg 2.310, @20deg 1.528 (1.5x
+over budget), both rotated sides @30deg 6.609; all 11 prior verdicts
+unchanged. Known limit (tracked, mirror of the tone axis's dark-back
+limit): a subject whose true unseen side is a different hue family
+(two-tone vehicles) would ship the baseline — safe direction, missed
+rescue; no fixture of that class exists yet. New tests:
+`test_constant_l_hue_rotation_is_rejected`,
+`test_scattered_hue_detail_is_not_rejected`.
+
+### Fixed (texture bake — view-boundary tone consistency for generated references)
+
+The car candidate (4 accepted references, visually correct content)
+shipped an objectively poor VIEW-BOUNDARY composite: handoff ledger
+boundary step p50 0.214 / p95 0.446, with every dominant boundary pair
+93-99% LUMINANCE — tone levels, not content. Root cause, measured: the
+delight lane's gauge never reaches the photo on low-coverage subjects
+(at its 0.05 pair floor the source participates in ZERO pairs >= 400
+texels — front|top_rear 0, front|side_right 55), and its joint SH solve
+sacrifices small rim-dominated overlaps to the dominant pair
+(back|top_rear, 7.7k texels at log-ratio 1.1 — one generated view
+reading 3x brighter than another on shared surface), so the sides'
+corrections WORSENED their own overlaps (0.250 -> 0.279, 0.231 -> 0.319)
+and the fail-closed revert correctly refused them: the composite shipped
+half-relit. Landed (`texturing.equalize_projection_tone`, called from
+`bake_projection_texture` after delight; stats key `tone_consensus`):
+
+- **Stage 1 — consensus tone levels**: one log-luminance gain per
+  generated view, solved jointly over pairwise overlap medians (panorama
+  gain compensation) at the photo-evidence floor 0.02
+  (`protect_observed_texels`' own floor; reconnects the gauge chain —
+  front|top_rear carries 1.8k texels there). Real photo views are
+  gauge-FIXED (photos define the level; synthesis conforms); components
+  with no real member keep their weighted-mean level (the common mode is
+  unobservable from ratios). Chained-gauge cap halving as in delight.
+- **Stage 2 — local consensus field**: the residual disagreement is
+  spatially varying (log-ratio IQRs 0.68-1.55 — regional shading each
+  generator invented), which is what the SH fit had to revert on the
+  sides. Per generated view, the deviation from the witness consensus —
+  weighted with the DOWNSTREAM composition semantics, i.e. the photo's
+  reading wherever it holds a protected claim — is voxel-ball smoothed
+  at 3% of the subject diagonal (radius sweep in the docstring), capped
+  at the chained amplitude budget, faded by evidence density,
+  luminance-only.
+- **Witness-ranked fail-closed gate** for both stages: a correction
+  ships only if it measurably improves agreement with one witness class
+  (real photos / other generated views) WITHOUT worsening the other — a
+  single mass-weighted aggregate structurally silences the photo class
+  (its rim overlap carries ~1% of a big view's pair mass; measured:
+  top_rear's field improved the photo pair and reverted on the
+  aggregate).
+- **Handoff ledger pair attribution** (`blend_projections`): the
+  `handoff_seams` ledger now names the owner pairs with per-pair
+  p50/p95, luminance share, and co-witnessed fraction (pixel-inert;
+  this is the instrument that located the defect).
+
+Measured on the car candidate (2048, before -> after): handoff p50
+0.214 -> 0.190, p95 0.446 -> 0.395; per-pair p95: back|top_rear
+0.508 -> 0.326, side_right|top_rear 0.405 -> 0.338, side_left|top_rear
+0.445 -> 0.399, back|side_right 0.379 -> 0.195. Photo fidelity at the
+diagnostic pose improved 35.29 -> 35.02 (baseline 32.83). Render-space
+long-edge ratio at the worst view (az0_el50) 0.047 -> 0.044 (baseline
+0.026): the residual is measured to be mostly NOT view-boundary tone —
+long-edge attribution puts 1786/2934 px on observed|fill class borders
+and 55 px on ownership boundaries, and the shipped composite's ownership
+steps are already small (p50 0.011 / p95 0.084: the screened-Poisson
+composite bridges them); what remains is reference content contours the
+featureless baseline fill lacks (the mis-ranking the acceptance-gate
+entry below closes) plus the source's protected stretched rim band
+(photo sovereignty; not repaintable by tone lanes). Controls: owl ledger
+p50 0.177 -> 0.163 / p95 0.459 -> 0.429 with fidelity 18.80 -> 18.73 and
+worst-view seam 0.027 -> 0.024 (all views far under its recorded 0.045
+acceptance ceiling); face single-photo bake md5-identical across two
+rebakes before and after (e32ba995d43da1d68fbc06fb3f0a44a8) — the pass
+is structurally inert without generated views. Full suite green
+(300 passed). New tests:
+`test_equalize_projection_tone_levels_chained_views`,
+`test_equalize_projection_tone_pins_real_views`,
+`test_equalize_projection_tone_local_field_regional_deviation`,
+`test_equalize_projection_tone_fails_closed_on_content_confound`,
+`test_blend_projections_handoff_ledger_attributes_pairs`.
+
+### Fixed (texture acceptance — whole-bake gate: composition tone damage replaces the long-edge seam vote)
+
+Closes the "seam budget's structural bias" item the parity audit left
+open. An 11-fixture calibration program (production-semantics rebakes of
+car@2048/@1024, owl, portrait, starship, chair — plus synthesized
+true-regression chairs: +/-25 L mis-toned back under both compositors,
+8% content-shifted back, and a +12 L control inside the sanctioned
+range) measured the old long-edge seam axis mis-ranking BOTH sides on
+the current stack:
+
+- It refused the labeled-GOOD car candidate (worst-view long-edge ratio
+  0.0592 -> 0.0886 against the +0.02 budget) whose fidelity and
+  brightness both improved at the true pose (34.06 -> 33.82 dE) — the
+  counted edges are the roof glass frame and real panel contours that
+  references legitimately add to previously blank fill (overlay proof in
+  the fix report).
+- It passed ALL FOUR synthesized true regressions (mis-toned +25 L:
+  seam delta +0.013 gradient / +0.016 legacy; content-shifted: -0.005;
+  -25 L: -0.006): gradient-domain compositing smooths real tone damage
+  below any step threshold, so the sharp-step class the axis was
+  calibrated on (v2 chair, 0.102 -> 0.138) no longer exists in the form
+  it detects. The texture-space `handoff_seams` ledger cannot replace it
+  either: it is blind to reference-to-fill frontiers (the chair
+  candidate records boundary_texels == 0 while carrying an obvious back
+  handoff — its front/back observed sets never touch in UV).
+
+Landed in `bake_acceptance.evaluate_generated_bake`:
+
+- **Composition tone damage axis (votes)**: per turnaround view, smooth
+  each side's L over its own foreground (normalized convolution, sigma
+  24 @ 512 — texture/specular detail that references legitimately change
+  decorrelates below this scale; measured sweep sigma 8/16/24 gives
+  1.5x/2.4x/4.7x accept-vs-refuse separation), take the signed delta on
+  the co-foreground interior, and integrate the excess beyond a 25 L
+  floor per direction. The floor is the pipeline's own sanctioned
+  tone-adjustment budget (generation tone-match clamps at 15 L,
+  in-bake harmonization/leveling within ~10 L) — correct content cannot
+  legitimately move further. Directional budgets because baseline fill
+  is dark-biased by construction (references legitimately BRIGHTEN it:
+  measured up to 0.228 on labeled accepts; legitimate darkening beyond
+  the floor is identically 0.000 on all 7 accepts): darken budget 0.03
+  (3.3x under the weakest true regression, 0.100), brighten budget 0.7
+  (3.1x over the worst accept, 4.0x under the weakest mis-tone, 2.80).
+- **Long-edge seam ratio and handoff ledger stay in `metrics`,
+  vote-less** — fleet drift stays observable, and the measured
+  mis-ranking is documented in the module docstring.
+- **Fidelity pose from the bake's own stats**: the gate now takes
+  `baseline_stats`/`candidate_stats` and resolves the fidelity pose
+  itself (explicit `source_pose` still wins; provenance recorded in
+  metrics). Both call sites (`hunyuan3d_runtime`, `rebake_bundle`) pass
+  stats instead of hand-extracting the pose. The measured (0,0) trap —
+  a diagnostic bake without `projection_model="orthographic"` never
+  estimates a pose and silently gates at (0,0), charging ~9 dE of pose
+  error to both sides — is now visible in the verdict (`origin:
+  "default"`).
+
+Calibration (fixture -> verdict -> margin, /tmp/fix1/report.md for the
+full program): car@2048 ACCEPT (dark 0.000/0.03, bright 0.006/0.7),
+car@1024 ACCEPT (0.000, 0.005), owl ACCEPT (0.000, 0.000), portrait
+ACCEPT (0.000, 0.224), starship ACCEPT (0.000, 0.000), chair-clean
+ACCEPT (0.000, 0.0003), chair +12 L ACCEPT (0.000, 0.228); chair +25 L
+REFUSE at 4.0x budget (both compositors), chair -25 L REFUSE at 11x,
+chair content-shift REFUSE at 3.3x. The previously-refused clean car
+candidate now ships; every synthesized regression the old gate passed
+now refuses. Note for the record: a pure-translation "mis-registration"
+(shifting the reference frame 8%) is a measured NULL — the canonical
+alpha-bbox recenter undoes it exactly (candidate texture md5-identical
+to the clean rebuild); the real class is content displaced INSIDE the
+silhouette, which is what the shipped fixture synthesizes.
+
+### Fixed (identity repair — miniature-photo stamp on gray-background subjects)
+
+User-reported: a small duplication of the texture inside the texture on
+the car's hood. Root cause: `_register_photo_to_render` (feature-fringe
+repair) classified photo foreground by distance from WHITE (calibrated
+on the white-background face proof); the car photo's neutral-GRAY studio
+backdrop made the whole frame "foreground", the bbox correspondence
+degenerated, the NCC search pegged at its scale boundary (recorded:
+registration [1.125, 0, 0.1025] — the exact signature the code's own
+comment warns about), and the repair stamped a miniature of the entire
+photo — background included — onto the hood. Fixes: (a) background
+estimated from the frame's border median (reduces to the white rule on
+white backgrounds, correct on gray); (b) fail-closed veto — the repair
+refuses to run when the correspondence NCC < 0.55 or the scale sits at
+the search bound (the certified face alignment scores ~0.9; below the
+floor the "evidence" is not the surface it claims). Measured: the
+mini-photo is gone from the rebuilt candidate; the stage remains active
+and beneficial on the face proof. The owl/face never hit this because
+their backgrounds are white — the failure class was gray-backdrop
+product photos, which is most studio photography.
+
+### Fixed (texture acceptance — parity + calibration audits)
+
+Two adversarial audits closed the loop on why car textures oscillated
+between runs. Parity audit: NEITHER prior car bake had shipped a single
+generated texel — the whole-bake gate refused both candidates and both
+paths shipped single-photo baselines (md5-proven), differing only by
+resolution (2048 vs 1024: the 1024 fill-detail calibration hits its
+hard cap and mottles ~88%-fill subjects 5.8x darker). Calibration
+audit: both per-view strict thresholds sat AT the correct-class median
+(per-seed strict pass 3-8%), so any acceptance was a coin flip carried
+by generator seed stochasticity (worst_part std 5.29 dE) plus k-means
+gate noise (3.15 dE; a recorded 24.12 REJECT of a clean red back
+re-scored at 15.2 mean under resampling). Landed, each with its
+measurement:
+
+- **Rebake/pipeline parity** (`rebake_bundle`): threads the bundle's
+  recorded seed and caption (was: hardcoded 11 and None — guaranteed
+  different candidates per path); persists refused candidates'
+  generated views (was: refusal destroyed the evidence); both paths now
+  gate photo-fidelity at the baseline's estimated pose, not (0,0)
+  (pose error charged ~9 dE to both sides and inflated the candidate
+  regression +0.88 -> +4.03 on the az-17.5 car; owl-class subjects at
+  declared (0,0) unaffected).
+- **5-restart consensus** (`part_material_fidelity`): median over 5
+  fixed k-means restarts of the k-ensemble (gate RNG 3.15 -> 1.13 dE at
+  ~2s CPU against a ~200s generation).
+- **Two-key anchor-class strict line** (`generate_reference_views` +
+  new `gate_witnessed_consistency` + `cloud_evidence_delta`): measured
+  on 71 labeled candidates, NO global palette threshold separates
+  correct from wrong on vivid gloss (correct 3.9-24.4, wrong 11.1-40 —
+  a wrong red-painted glass canopy scored 11.97, clean red backs
+  23.99/24.12). The residual wrongness is POSITIONAL: the gate projects
+  the source photo onto the mesh (witnessed vertices, no fill), renders
+  expected colors from the candidate's angle, and vetoes on
+  chroma_flip/bright_flip/tile-median (12/14 wrong tops, 0/10 false
+  fires). Witnessed angles accept at consensus <= 22 + veto;
+  witness-starved angles (a back witnesses ~600 px from a front photo)
+  at consensus <= 16 + cloud-evidence <= 11. flat_delta leaves anchor
+  strict entirely (zero discrimination; it alone blocked 3
+  material-passing correct backs). Fleet controls unchanged (13/13).
+- **Best-of-6 spaced-seed ladder** for anchor angles (seeds
+  base+1000*attempt, steps alternating 8/12, early stop): measured 97%
+  angle acceptance / 94% rerun agreement vs coin-flip; floor-band still
+  never ships (the glass-painted-red failure is seed-STABLE — 3/8
+  seeds — so seed consensus would ratify it; the positional veto is the
+  guard, not agreement).
+
+End-to-end validation (car rebake, 5 angles): per-view acceptance is
+now deterministic and correct — back accepted on attempt 6 (13.35 +
+cloud 8.45; its 6-seed trail shows the ladder working), both sides and
+top_rear on attempt 1, and the top correctly refused on ALL 6 attempts
+by the witness veto (canopy painted body-red every seed: the exact
+class that must never ship). The whole-bake gate still refuses the
+composite (fidelity +3.2 dE, seams 0.026 -> 0.055): the accepted
+references paint white rim blotches onto the hood near the source's
+coverage edge. That projection-stage defect (and the seam budget's
+structural bias against low-coverage subjects) is the remaining open
+item on this line.
+
+### Fixed (mesh quality — three-audit program on the sports-car geometry)
+
+Three adversarial audits (comparative mesh forensics; shape-path code
+audit with controlled decode/generation A/Bs; external research +
+symmetry/repair prototyping) investigated why the owl mesh is excellent
+while car meshes came out lumpy with wrong topology. The decisive
+measurement ACQUITS the pipeline's surfacing: decoding identical car
+latents with our `_AdaptiveVolumeDecoder` and upstream's dense
+`VanillaVolumeDecoder` yields ZERO sign disagreements across 57M grid
+vertices and bit-identical meshes (ours ~10x faster) — every observed
+defect already exists in the DiT/VAE field. The defects toggle with the
+INPUT IMAGE: the t2i stage drew open-cockpit convertibles (12-21%
+deep-shadow pixels vs owl 2.8%), and the shape model invents what it
+cannot see — melted cabin (50x the interior angle-defect energy of a
+closed coupe at identical seed/settings), all four wheels floating
+1.4-1.9 grid cells off the arches (the "5 bodies"), ~200 micro-tunnels
+on unseen surfaces. Much of the headline genus is REAL: a spoked wheel
+alone is genus ~10, so genus is not gated. Changes landed:
+
+- **t23d closed-body input policy** (`_default_text_to_image_prompt`):
+  for subjects whose t2i priors default to open thin-shell forms
+  (vehicle/boat noun list), the source-image prompt now biases to
+  "closed body, no open top" UNLESS the user's text asks for an open
+  form (convertible/roadster/cockpit/...). Measured on the car A/B:
+  cockpit junk eliminated, mirror deviation -17%, dihedral RMS -11%.
+- **Default octree resolution 384 -> 512**: measured strictly better at
+  equal adaptive-decode time (car dihedral roughness 8.0% -> 6.7%,
+  topology converged; 256 is catastrophic: euler -208). Guidance stays
+  5.0 (7.5 fused wheels into the body), steps stay 50.
+- **Floater filter matched to upstream** (0.5% of total faces, was 2%
+  of largest component — measured 3.2x more aggressive; a detached side
+  mirror sits exactly in the amputation range).
+- **Mesh-aware quality verdict**: disconnected bodies after floater
+  removal now ship `quality_verdict: degraded` with the reason (the v5
+  car shipped "healthy" with four floating wheels — the verdict never
+  looked at the mesh). Raw pre-cleanup topology is recorded as
+  `topology_raw` so surfacing regressions stay visible.
+- **Adaptive-decoder band hardening**: the refinement band now scales
+  with the field's measured near-surface logit magnitude
+  (1.5x the sign-change-shell median) instead of a fixed 0.95 — the
+  shipped checkpoint cleared the fixed band by 0.003 logit units, and a
+  saturating field would silently weld thin gaps shut through the
+  interpolated fill (proven synthetically: 21k sign flips).
+- **Docstring correction**: upstream `HierarchicalVolumeDecoding` fails
+  from an int-truncation bug (cell size cast to 0), not from
+  thin-geometry/MPS scatter as previously claimed here.
+
+End-to-end validation. Owl regression at the new defaults: unchanged
+excellence (genus 0, 1 body, healthy verdict, clean bake). Car t23d
+rerun: the first wording of the closed-body policy (trailing "closed
+body, no open top") measurably FAILED — the t2i model still drew a
+convertible; the landed subject-position clause ("a hardtop with a
+fully closed solid roof...", placed directly after the user text) drew
+closed hardtops on every tested seed — prompt placement matters as
+much as content (same finding as the texture color anchor). With the
+closed-roof input the shipped car is 1 connected body (wheels attached;
+v5: 4 floating), the cabin-junk failure surface is gone, and — the
+compounding win — 3 of 4 texture references now pass STRICT material
+gates (9.56-11.21 vs 0 accepted at v5's strict line), because the
+references no longer show a dark open cockpit. Remaining top-view gap:
+its candidates still reject at 17.84 (fill covers the roof), tracked
+with the anchor-class recalibration.
+
+Tracked, not landed: multi-view geometry conditioning for hard classes
+(the 2mv checkpoint path is already wired for i23d reference views;
+synthesizing views BEFORE the shape stage in t23d is the follow-up both
+audits rank as the real fix for open/complex forms), an opt-in
+voxel-SDF repair stage (measured: genus 67 -> 9, 5 bodies -> 1 at 0.57%
+chamfer), and the symmetry detector as a diagnostic gate (bilateral
+subjects measure support >= 0.946, organic ones <= 0.804; post-hoc
+vertex symmetrization REGRESSED dihedral roughness on every subject and
+is rejected).
+
+### Fixed (generated references — gloss-class audit follow-through)
+
+The sports-car incident audit (seed-exact reconstruction of all 12
+rejected attempts + an 11-candidate prompt/model ladder, every artifact
+persisted) proved the rejections were 100% generation infidelity — the
+i2i editor echoed the gray clay guide, collapsing foreground chroma to
+2-28% of the source — and that the generator IS capable once the prompt
+carries the measured color. Changes, each with the measurement that
+forced it:
+
+- **Chroma-collapse guard now uses chroma DISPERSION** (std of
+  foreground ab magnitudes, `part_material_fidelity`): the
+  chroma-of-mean form left a fully-gray PORTRAIT strict-passing the
+  entire gate battery (skin's mean chroma sits below the arming floor)
+  and cancels complementary hues. Measured separation: collapsed
+  candidates <= 0.18 of the source's dispersion (gray portrait 0.06),
+  every accepted fleet view >= 0.53; guard arms at source std >= 5,
+  fails below ratio 0.35. A collapse verdict now records
+  `worst_part_delta_e` 40.0 instead of None (None scored as ZERO palette
+  penalty in candidate ranking, letting a collapsed candidate outrank
+  floor-band ones in the record).
+- **Part gate scores the minimum over k in {3,4,5}**: single-k k-means
+  adds 14-24 points of pure correspondence noise near part boundaries —
+  a PERFECT copy plus one realistic windshield reflection scored 25.3
+  (the reflection steals a centroid); the ensemble scores it 1.56. True
+  palette flips stay far under every k (hue+30: 30.95); all 9
+  previously-accepted fleet views stay accepted (max 9.79).
+- **Smooth-finish prompt variant when the color anchor fires**
+  (`_view_prompt`): the relief enumeration ("carving depth, grooves,
+  grain, cracks, fibers") plus "Do not smooth, polish, glaze" plus "no
+  gloss" rendered craquelure on a crack-free car in 8 of 8 candidates —
+  the audit refuted the old "self-normalizing relief vocabulary" claim
+  for this class. With the anchor + smooth wording the same model, seed
+  and steps produced clean red paint at material strict-pass 10.87
+  (validated against the audit's persisted candidate K). The texture
+  escalation clause is likewise skipped for anchor subjects (it
+  re-injects the craquelure bias) and no longer fires on material-only
+  failures (the mechanism change for those is the steps/seed re-roll).
+- **flat_delta strict relaxes to 0.18 for anchor-marked subjects**
+  (gate call in `generate_reference_views`): strict 0.12 punishes the
+  smoothness that is CORRECT for vivid gloss (clean-paint candidate
+  0.138 rejected while 7 of 8 craquelure candidates passed — the
+  source's band energy is specular structure and panel lines, not
+  micro-relief). Floor 0.20 and relief_ratio strict unchanged.
+- **Triage metadata**: every failed attempt now records a
+  `failure_family` string (silhouette / chroma_collapse / palette_flip /
+  texture / speculars — the gray-car diagnosis needed a full
+  regeneration to learn what one string could have said), material rows
+  persist the per-k ensemble and dispersion numbers, and the
+  rejected-image budget rises 12 -> 15 (5 angles x 3 attempts; 12
+  silently dropped a fifth angle's rejects).
+
+- **Pose guard: shape-decisive override of an accepted NCC commit**
+  (`estimate_pose_with_silhouette_guard`): the v4 car exposed the gap —
+  a photometric spike can land BETWEEN the declared pose and the truth
+  (commit az 12.5: registered silhouette IoU 0.787, ABOVE declared
+  0.746, so the worse-than-declared veto passed it, while the true
+  basin at az -25/+35 measured 0.908 and coverage collapsed to 5.2%).
+  An accepted commit is now additionally tested against the rescue
+  lane's double-keyed decisive evidence, with the aspect key measured
+  at the COMMIT pose (a correct commit renders the photo's aspect, so
+  its own small aspect error blocks the override). Revalidated: car v4
+  az +20, car v2 az +30, chair az 0 (override corrects a spurious NCC
+  commit at az -27.5 back to declared), owl/face unchanged, starship's
+  correct NCC commit az +30 untouched.
+
+End-to-end validation (sports car, t23d, Klein-4B): v2-v4 shipped
+degraded (exit 3, coverage 0.05, zero accepted references, gray or
+misprojected candidates). With the full fix set the same command ships
+HEALTHY (exit 0): pose recovered by silhouette rescue (az -25, riou
+0.900 vs 0.736 declared), both side views accepted with clean red
+paint (ensemble 6.9/9.4), coverage 0.194. Back and top remain
+fill-completed: their best candidates score ensemble 12.42-13.03
+against strict 12 — visually correct red but inside the [12, 14.2]
+ambiguity band between the worst accepted fleet view (9.79) and the
+smallest measured true failure (14.2). Strict is NOT loosened to admit
+them (the chair incident is the precedent against shipping the
+ambiguity band); recalibrating the anchor-class strict line on the
+now-persisted corpus is the tracked follow-up.
+
+Known limitations carried forward from the audit, tracked not fixed:
+`image_strength` is parsed and silently discarded by the FLUX.2 edit
+routes (abstractvision backend — dead lever, removed from any planned
+escalation ladder); G2 baked-specular threshold cannot fire on
+dark-palette subjects (recalibration held pending a corpus margin
+check); despecular treats 0% of large clear-coat lobes (inert-safe;
+real clear-coat handling belongs to cross-view reconciliation).
+
 ### Fixed (generated references — four-audit root-cause program on the owl)
 
 Four adversarial audits (fusion math, geometry-anchored alignment, tone

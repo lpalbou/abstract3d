@@ -210,11 +210,22 @@ def _register_photo_to_render(photo_rgba: Any, render_rgb: Any,
         # a real matte: alpha carries the silhouette
         photo_fg = photo[:, :, 3] > 8
     else:
-        # RGB photo (or opaque alpha): the identity gate's white-distance
-        # rule — a fully-opaque alpha selects the whole frame and drives
-        # the bbox map to the search boundary (measured: registration
-        # scale pegged at 1.125, evidence garbage)
-        photo_fg = np.abs(photo_rgb - 255.0).max(axis=2) > 18
+        # RGB photo (or opaque alpha): background distance against the
+        # photo's own BORDER median, not literal white. The white-distance
+        # rule (|rgb-255| > 18) silently classified a neutral-gray studio
+        # background as foreground (measured on the car photo: the whole
+        # frame became "foreground", the bbox map degenerated, the NCC
+        # residual pegged at the search boundary, and the repair stamped
+        # a miniature of the photo — background included — onto the
+        # hood). Studio photos put background at every border; the
+        # border-median estimate reduces to the white rule on white-
+        # background photos and generalizes to gray ones.
+        border = np.concatenate([
+            photo_rgb[0, :], photo_rgb[-1, :],
+            photo_rgb[:, 0], photo_rgb[:, -1],
+        ], axis=0)
+        background = np.median(border, axis=0)
+        photo_fg = np.abs(photo_rgb - background[None, None, :]).max(axis=2) > 18
     # the identity gate's foreground rule: largest component, closed,
     # then hole-filling BY FLOOD FROM THE (0,0) CORNER — background
     # pockets connected to other borders but not to that corner count as
@@ -322,7 +333,7 @@ def _register_photo_to_render(photo_rgba: Any, render_rgb: Any,
     sy = (yy_f - cy) / scale + cy - dy * h / scale
     warped = _bilinear(canvas, sx, sy)
     warped_mask = _bilinear(canvas_fg.astype(np.float32), sx, sy) > 0.5
-    return warped, warped_mask & render_fg, best
+    return warped, warped_mask & render_fg, (*best, best_score)
 
 
 def _build_gate_photo_evidence(
@@ -351,6 +362,17 @@ def _build_gate_photo_evidence(
     warped, warped_mask, residual = _register_photo_to_render(
         photo_array, render_rgb, render_fg)
     if warped is None:
+        return None
+    # FAIL-CLOSED on a degenerate correspondence: repairing with
+    # misregistered photo evidence stamps displaced content (measured on
+    # the car: NCC pegged at the scale search boundary 1.125 and the
+    # repair pasted a miniature of the whole photo onto the hood). The
+    # gate's own alignment on the certified face proof scores NCC ~0.9;
+    # below 0.55 the "evidence" is not the surface it claims to be, and
+    # NO repair is strictly better than a confident wrong one.
+    ncc_score = float(residual[3]) if len(residual) > 3 else 1.0
+    scale_pegged = abs(float(residual[0]) - 1.0) >= 0.124
+    if ncc_score < 0.55 or scale_pegged:
         return None
 
     positions = np.asarray(positions_texture, dtype=np.float32)

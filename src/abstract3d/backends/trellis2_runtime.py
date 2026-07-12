@@ -807,12 +807,11 @@ def _prepare_image(image: Any, *, remove_background: Optional[bool], foreground_
 
 
 def _default_text_to_image_prompt(prompt: str) -> str:
-    suffix = (
-        "single centered object, studio product photo, neutral light gray background, "
-        "fully visible, no crop, no extra objects, realistic lighting"
-    )
-    base = str(prompt or "").strip()
-    return f"{base}, {suffix}" if base else suffix
+    # Shared closed-body policy for open-form-prone subjects (measured on
+    # the sports-car incident) lives with the TripoSR implementation.
+    from .triposr_runtime import _default_text_to_image_prompt as _shared
+
+    return _shared(prompt)
 
 
 def _default_image_generator(owner: Any) -> Callable[..., Any]:

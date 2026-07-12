@@ -88,8 +88,11 @@ def test_select_dtype_policy() -> None:
 
 
 def test_postprocess_keeps_significant_components_and_outward_normals() -> None:
-    big = trimesh.creation.icosphere(subdivisions=4, radius=1.0)
-    # 80 faces vs 5120: far below the 2% significance threshold.
+    big = trimesh.creation.icosphere(subdivisions=5, radius=1.0)
+    # 80 faces vs 20480: 0.39% of total faces, below the upstream-matched
+    # 0.5%-of-total floater rule (the old 2%-of-largest rule was measured
+    # 3.2x more aggressive and would amputate genuine detached parts the
+    # size of a side mirror).
     floater = trimesh.creation.icosphere(subdivisions=1, radius=0.02)
     floater.apply_translation([3.0, 0.0, 0.0])
     combined = trimesh.util.concatenate([big, floater])
@@ -102,6 +105,20 @@ def test_postprocess_keeps_significant_components_and_outward_normals() -> None:
     normals = np.asarray(cleaned.vertex_normals)
     outward = ((vertices - vertices.mean(axis=0)) * normals).sum(axis=1)
     assert float((outward > 0).mean()) > 0.95
+
+
+def test_postprocess_keeps_detached_parts_above_upstream_floater_rule() -> None:
+    # A genuine detached part (1.5% of total faces — a side-mirror-sized
+    # component) must SURVIVE: the upstream rule keeps anything >= 0.5%
+    # of total faces.
+    big = trimesh.creation.icosphere(subdivisions=4, radius=1.0)
+    part = trimesh.creation.icosphere(subdivisions=1, radius=0.05)
+    part.apply_translation([2.0, 0.0, 0.0])
+    combined = trimesh.util.concatenate([big, part])
+
+    cleaned, _applied, _warnings = runtime._hunyuan_postprocess_mesh(combined, max_facenum=0)
+
+    assert cleaned.body_count == 2
 
 
 def test_postprocess_decimates_to_face_budget() -> None:

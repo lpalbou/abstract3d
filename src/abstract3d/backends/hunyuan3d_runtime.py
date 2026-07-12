@@ -119,7 +119,12 @@ _RUNTIME_LOCK = threading.Lock()
 
 _DEFAULT_NUM_INFERENCE_STEPS = 50
 _DEFAULT_GUIDANCE_SCALE = 5.0
-_DEFAULT_OCTREE_RESOLUTION = 384
+# 512 measured strictly better than 384 at EQUAL decode time with the
+# adaptive decoder (car: dihedral roughness 8.0% -> 6.7%, converged
+# topology; 216s vs 228s). 256 is catastrophic on thin-shell subjects
+# (84 extra spurious handles, euler -208 on the car). Guidance stays 5.0:
+# 7.5 fused two wheels into the body (genus 17 -> 37).
+_DEFAULT_OCTREE_RESOLUTION = 512
 _DEFAULT_NUM_CHUNKS = 8000
 _DEFAULT_MPS_NUM_CHUNKS = 32768
 # Bounded by texture quality, not geometry fidelity: marching-cubes
@@ -345,12 +350,21 @@ def _download_official_weights(
 class _AdaptiveVolumeDecoder:
     """Coarse-to-fine SDF grid decoder that is safe for thin structures.
 
-    The upstream `HierarchicalVolumeDecoding` starts from a 63^3 grid; thin
-    geometry (a starship hull, chair legs) can fall entirely between coarse
-    samples, so the refinement finds no surface cells and the final level
-    receives zero queries (`torch.cat(): expected a non-empty list`). Its
-    scatter bookkeeping also relies on multi-axis advanced indexing that is
-    unreliable on Apple MPS.
+    The upstream `HierarchicalVolumeDecoding` is arithmetically broken as
+    shipped: it casts the float grid cell size to int (0 for any bounds
+    within +-1.01 at octree >= 252), so every refinement query collapses to
+    the cell corner and the decode crashes for EVERY subject on every
+    device (reproduced on CPU and MPS; the earlier diagnosis here — thin
+    geometry between coarse samples, MPS scatter — described real
+    fragilities but not the actual failure, which fires before either).
+
+    Correctness note (adversarially measured): on identical latents this
+    decoder and upstream's dense `VanillaVolumeDecoder` produce the SAME
+    field to fp32 precision — 0 sign disagreements across 57M grid
+    vertices, bit-identical meshes, on both a smooth compact subject (owl)
+    and a thin-shell/high-genus one (car) — at ~10x less decode time
+    (228s vs 2362s at 384^3 on MPS). Mesh defects observed on hard
+    subjects live in the DiT/VAE field itself, not in this surfacing.
 
     This decoder:
     - starts from a dense grid at the largest exact halving of the final
@@ -493,7 +507,20 @@ class _AdaptiveVolumeDecoder:
                 pad_hi[axis] = (1, 0)
                 surface |= np.pad(changed, pad_lo, mode="constant")
                 surface |= np.pad(changed, pad_hi, mode="constant")
-            surface |= np.abs(grid - level_value) < self.band
+            # The |logit| band must scale with the FIELD, not carry a fixed
+            # constant: unqueried cells inherit interpolated coarse values,
+            # and on a hard-saturating field a thin gap whose straddling
+            # samples all sit just outside a fixed band gets welded shut by
+            # that fill (proven synthetically: 21k sign flips; the shipped
+            # checkpoint clears the fixed 0.95 band by only 0.003 — one
+            # retrain from silent failure). The sign-change shell measures
+            # the near-surface logit scale directly; 1.5x that median keeps
+            # every cell within ~1.5 cells of a crossing queried.
+            band = self.band
+            if surface.any():
+                shell_scale = float(np.median(np.abs(grid - level_value)[surface]))
+                band = max(self.band, 1.5 * shell_scale)
+            surface |= np.abs(grid - level_value) < band
             surface = ndimage.binary_dilation(surface, iterations=2)
 
             scale = next_resolution // current_resolution
@@ -577,8 +604,13 @@ def _hunyuan_postprocess_mesh(
         components = list(processed.split(only_watertight=False))
         if len(components) > 1:
             components = sorted(components, key=lambda item: (len(item.faces), float(item.area)), reverse=True)
-            largest_faces = max(1, int(len(components[0].faces)))
-            threshold = max(64, int(round(largest_faces * 0.02)))
+            # Floater rule matched to upstream's (0.5% of TOTAL faces).
+            # The previous 2%-of-largest was measured 3.2x more
+            # aggressive: on an 844k-face car it would amputate genuine
+            # detached parts in the 4k-13k face range (a side mirror is
+            # exactly that size), which upstream keeps.
+            total_faces = max(1, int(sum(len(item.faces) for item in components)))
+            threshold = max(64, int(round(total_faces * 0.005)))
             kept = [item for item in components if len(item.faces) >= threshold]
             if not kept:
                 kept = [components[0]]
@@ -1238,6 +1270,11 @@ class Hunyuan3DShapeBackend:
             raw_mesh,
             max_facenum=max_facenum,
         )
+        # Raw (pre-cleanup) topology: without it a surfacing regression is
+        # invisible — the shipped numbers conflate decoder output with
+        # floater removal and decimation (measured: raw euler -110 ->
+        # post -124 on a car, fully explained by junk removal).
+        topology_raw = _mesh_topology(raw_mesh)
         canonicalize = _owner_cfg_bool(self._owner, "scene3d_hunyuan_canonicalize_export_axes", True)
         axis_applied: List[str] = []
         if canonicalize:
@@ -1394,10 +1431,19 @@ class Hunyuan3DShapeBackend:
 
                     baseline_mesh_bake, baseline_stats = bake_projection_texture(
                         mesh.copy(), observed_views=baseline_views, **bake_kwargs)
+                    # The gate resolves the fidelity pose from the
+                    # baseline bake's own stats (a hardcoded (0,0) on a
+                    # pose-estimated subject charges ~9 dE of pure pose
+                    # error to both sides: measured +0.88 true regression
+                    # read as +4.03 on the az-17.5 car). Declared-pose
+                    # subjects are unaffected — (0,0) IS their recorded
+                    # pose.
                     verdict = evaluate_generated_bake(
                         baseline_mesh_bake,
                         export_mesh,
                         source_rgba=baseline_views[0]["rgba"],
+                        baseline_stats=baseline_stats,
+                        candidate_stats=texture_stats,
                     )
                     if reference_generation_report is not None:
                         reference_generation_report["bake_acceptance"] = verdict
@@ -1411,6 +1457,29 @@ class Hunyuan3DShapeBackend:
                             "shipping the baseline. Reasons: "
                             + "; ".join(verdict["reasons"])
                         )
+                        # The refused-candidate branch ships the BASELINE
+                        # — which is a single-photo bake that never met
+                        # the A/B machinery and can be broken on its own
+                        # (measured, integrator program: a pose-guard
+                        # dead zone shipped a coverage-0.058 baseline
+                        # here with verdict "healthy" while the sanity
+                        # floors existed one branch below). Same
+                        # self-healing contract as the no-references
+                        # branch: mark it loudly.
+                        from ..bake_acceptance import evaluate_single_view_bake
+
+                        single_verdict = evaluate_single_view_bake(texture_stats)
+                        texture_stats["single_view_sanity"] = single_verdict
+                        if not single_verdict["accepted"]:
+                            quality_verdict = {
+                                "verdict": "degraded",
+                                "reasons": single_verdict["reasons"],
+                            }
+                            postprocess_warnings.append(
+                                "shipped baseline failed the single-view "
+                                "sanity floors (quality_verdict=degraded): "
+                                + "; ".join(single_verdict["reasons"])
+                            )
                 else:
                     # SINGLE-VIEW SANITY (self-healing contract): a bake
                     # with no accepted generated views ships ungated by
@@ -1443,6 +1512,31 @@ class Hunyuan3DShapeBackend:
                     f"Hunyuan3D texture bake failed, exporting geometry only: {type(exc).__name__}: {exc}"
                 )
             texture_s = round(time.perf_counter() - texture_started, 4)
+
+        # Mesh-aware verdict: the measured v5 car shipped "healthy" with
+        # four wheels floating off the body — the verdict only ever looked
+        # at texture. Disconnected bodies on a single-subject generation
+        # mean the field split parts across sub-resolution gaps (measured:
+        # wheel-to-arch air channels of 1.4-1.9 grid cells); the mesh is
+        # usable but not sound, so it ships as degraded with the reason.
+        # Genus is deliberately NOT gated: high genus is legitimate for
+        # many subjects (a spoked wheel alone is genus ~10; an accepted
+        # face proof measures genus 210).
+        mesh_topology = _mesh_topology(mesh)
+        body_count = int(mesh_topology.get("body_count") or 1)
+        if body_count > 1:
+            reason = (
+                f"mesh has {body_count} disconnected bodies after floater "
+                "removal: the shape field split parts across sub-resolution "
+                "gaps (single-subject generations should be one connected "
+                "body; consider multi-view geometry conditioning or a "
+                "closed-form input view)"
+            )
+            if quality_verdict.get("verdict") == "healthy":
+                quality_verdict = {"verdict": "degraded", "reasons": [reason]}
+            else:
+                quality_verdict.setdefault("reasons", []).append(reason)
+            postprocess_warnings.append(reason)
 
         glb_bytes = _mesh_export_bytes(export_mesh, file_type="glb")
         if texture_requested:
@@ -1504,7 +1598,8 @@ class Hunyuan3DShapeBackend:
             # callers need one field to check (the CLI exits 3 on it).
             "quality_verdict": quality_verdict,
             "export_axis_canonicalization": axis_applied,
-            "topology": _mesh_topology(mesh),
+            "topology": mesh_topology,
+            "topology_raw": topology_raw,
             "timings_s": {
                 "source_image_generation": image_generation_s,
                 "preprocess": preprocess_s,

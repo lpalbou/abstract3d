@@ -385,18 +385,20 @@ def part_material_fidelity(
     from scipy.cluster.vq import kmeans2
     from skimage import color as skcolor
 
-    def palette(image_rgba: Any) -> List[Dict[str, Any]]:
+    def palette(image_rgba: Any, cluster_count: int,
+                restart_seed: int) -> List[Dict[str, Any]]:
         rgba = np.asarray(image_rgba.convert("RGBA"), dtype=np.float32) / 255.0
         mask = rgba[:, :, 3] > 0.5
         lab = skcolor.rgb2lab(rgba[:, :, :3]).astype(np.float32)[mask]
         if len(lab) == 0:
             return []
         if len(lab) > 40000:
-            picks = np.random.default_rng(0).choice(len(lab), 40000, replace=False)
+            picks = np.random.default_rng(restart_seed).choice(
+                len(lab), 40000, replace=False)
             lab = lab[picks]
-        _, labels = kmeans2(lab, int(clusters), minit="++", seed=0)
+        _, labels = kmeans2(lab, cluster_count, minit="++", seed=restart_seed)
         parts = []
-        for index in range(int(clusters)):
+        for index in range(cluster_count):
             member = lab[labels == index]
             if len(member) < len(lab) * 0.05:
                 continue
@@ -404,59 +406,338 @@ def part_material_fidelity(
                           "weight": len(member) / len(lab)})
         return parts
 
-    # CHROMA-COLLAPSE GUARD (measured on the sports-car incident): a
-    # MONOCHROME generation of a chromatic subject previously strict-
-    # PASSED the forward-only part test raw (gray hides within the
-    # lightness tolerance of any dark source part; the gray car scored
-    # 11.72) and was only caught through a tone-match interaction — luck,
-    # and `tone_match=False` is a public kwarg. Chroma-of-mean ratio
-    # separates the class cleanly: collapse 0.00-0.31, every legitimate
-    # perturbation tested >= 0.73.
-    def foreground_chroma(image_rgba: Any) -> float:
+    # CHROMA-COLLAPSE GUARD, dispersion form (measured on the sports-car
+    # incident + adversarial recheck): a MONOCHROME generation of a
+    # colorful subject previously strict-PASSED the forward-only part
+    # test raw (gray hides within the lightness tolerance of any dark
+    # source part; the gray car scored 11.72) and was only caught through
+    # a tone-match interaction — luck, and `tone_match=False` is a public
+    # kwarg. The guard measures chroma DISPERSION (std of the foreground
+    # ab magnitudes), not chroma-of-mean: the mean form left a gray
+    # PORTRAIT strict-passing the whole battery (skin's mean chroma sits
+    # below its arming floor) and cancels complementary hues. Measured
+    # separation: collapsed candidates 0.02-0.18 (gray portrait 0.06),
+    # every accepted fleet view >= 0.53.
+    def chroma_dispersion(image_rgba: Any) -> float:
         rgba = np.asarray(image_rgba.convert("RGBA"), dtype=np.float32) / 255.0
         mask = rgba[:, :, 3] > 0.5
         if not mask.any():
             return 0.0
         lab = skcolor.rgb2lab(rgba[:, :, :3]).astype(np.float32)
-        mean_a = float(lab[:, :, 1][mask].mean())
-        mean_b = float(lab[:, :, 2][mask].mean())
-        return float(np.hypot(mean_a, mean_b))
+        chroma = np.hypot(lab[:, :, 1][mask], lab[:, :, 2][mask])
+        return float(chroma.std())
 
-    source_chroma = foreground_chroma(source_rgba)
-    generated_chroma = foreground_chroma(generated_rgba)
-    if source_chroma >= 20.0 and generated_chroma / max(source_chroma, 1e-6) < 0.35:
+    source_dispersion = chroma_dispersion(source_rgba)
+    generated_dispersion = chroma_dispersion(generated_rgba)
+    if source_dispersion >= 5.0 and (
+            generated_dispersion / max(source_dispersion, 1e-6) < 0.35):
         return {"name": "G6_part_material", "passed": False, "floor": False,
-                "worst_part_delta_e": None,
-                "source_chroma": round(source_chroma, 1),
-                "generated_chroma": round(generated_chroma, 1),
+                # A large constant, not None: the selection score treats
+                # None as zero palette penalty, letting a collapsed
+                # candidate outrank floor-band ones in the recorded
+                # ranking (nothing ships, but the record misleads).
+                "worst_part_delta_e": 40.0,
+                "source_chroma_dispersion": round(source_dispersion, 2),
+                "generated_chroma_dispersion": round(generated_dispersion, 2),
                 "reason": "chroma collapse: generation is near-monochrome "
                           "for a chromatic subject"}
 
-    source_parts = palette(source_rgba)
-    generated_parts = palette(generated_rgba)
-    if not source_parts or not generated_parts:
+    # PART-CORRESPONDENCE ENSEMBLE (measured): a single-k clustering adds
+    # 14-24 points of pure correspondence noise near boundaries — a
+    # PERFECT copy plus one realistic windshield reflection scored 25.3
+    # at k=3 (the reflection steals a centroid) and 1.75 under the
+    # ensemble. The subject's true part count is unknown a priori, so the
+    # gate scores the MINIMUM worst-part distance over k in {3,4,5}: a
+    # true palette flip stays far from the source under every k (all
+    # measured true failures remain above strict), while correspondence
+    # artifacts collapse under at least one k.
+    def worst_for_clusters(cluster_count: int, restart_seed: int) -> Optional[float]:
+        source_parts = palette(source_rgba, cluster_count, restart_seed)
+        generated_parts = palette(generated_rgba, cluster_count, restart_seed)
+        if not source_parts or not generated_parts:
+            return None
+        worst = 0.0
+        for part in generated_parts:
+            if part["weight"] < float(min_part_weight):
+                continue
+            best = float("inf")
+            for source_part in source_parts:
+                chroma_distance = float(np.hypot(
+                    part["median"][1] - source_part["median"][1],
+                    part["median"][2] - source_part["median"][2]))
+                lightness_excess = max(
+                    0.0, abs(float(part["median"][0] - source_part["median"][0]))
+                    - float(lightness_tolerance))
+                best = min(best, chroma_distance + 0.5 * lightness_excess)
+            worst = max(worst, best)
+        return worst
+
+    # RESTART CONSENSUS (measured): even the k-ensemble carries 3.15 dE
+    # median RNG noise per candidate (up to 6.85) from the k-means draw —
+    # a recorded 24.12 REJECT re-scored at 15.2 mean under resampling,
+    # i.e. a verdict was condemned by clustering luck. The median over 5
+    # fixed restarts cuts the noise to 1.13 dE at ~2s CPU against a
+    # ~200s generation. Restart seeds are fixed so the gate stays
+    # deterministic.
+    restart_scores: List[float] = []
+    for restart_seed in range(5):
+        ensemble = [value for value in (
+            worst_for_clusters(k, restart_seed)
+            for k in (int(clusters), int(clusters) + 1, int(clusters) + 2))
+            if value is not None]
+        if ensemble:
+            restart_scores.append(min(ensemble))
+    if not restart_scores:
         return {"name": "G6_part_material", "passed": True, "floor": True,
                 "reason": "empty palette"}
-    worst = 0.0
-    for part in generated_parts:
-        if part["weight"] < float(min_part_weight):
-            continue
-        best = float("inf")
-        for source_part in source_parts:
-            chroma_distance = float(np.hypot(
-                part["median"][1] - source_part["median"][1],
-                part["median"][2] - source_part["median"][2]))
-            lightness_excess = max(
-                0.0, abs(float(part["median"][0] - source_part["median"][0]))
-                - float(lightness_tolerance))
-            best = min(best, chroma_distance + 0.5 * lightness_excess)
-        worst = max(worst, best)
+    consensus = float(np.median(restart_scores))
     return {
         "name": "G6_part_material",
-        "worst_part_delta_e": round(worst, 2),
-        "passed": worst <= float(strict_delta_e),
-        "floor": worst <= float(floor_delta_e),
+        "worst_part_delta_e": round(consensus, 2),
+        "restart_delta_e": [round(value, 2) for value in restart_scores],
+        "passed": consensus <= float(strict_delta_e),
+        "floor": consensus <= float(floor_delta_e),
     }
+
+
+def cloud_evidence_delta(
+    generated_rgba: Any,
+    source_rgba: Any,
+    *,
+    min_part_weight: float = 0.10,
+    lightness_tolerance: float = 25.0,
+    trim_quantile: float = 0.05,
+) -> Optional[float]:
+    """Worst generated part's distance to the nearest EVIDENCE in the
+    source's pixel cloud (chroma-first, trim-quantile), min over k.
+
+    Motivation (measured on unseen car backs): a visually-correct "dark
+    shaded red" part scores 18-24 under the part-MEDIAN metric because
+    k-means absorbs the source's dark-red shadow pixels into a neutral
+    black cluster — the evidence exists in the source CLOUD but not among
+    the k cluster medians. The trim quantile keeps a few stray source
+    pixels from vouching for a whole generated part. True flips stay far
+    (camouflage/gold pixels have no source evidence). Calibrated as a
+    SECONDARY key only: correct backs 4.6-13.0, wrong v2-era backs
+    11.5-21.9 — the lines cross at 11-13, so it never accepts alone.
+    """
+
+    import numpy as np
+    from scipy.cluster.vq import kmeans2
+    from skimage import color as skcolor
+
+    def fg_lab(image_rgba: Any, cap: int) -> Any:
+        rgba = np.asarray(image_rgba.convert("RGBA"), dtype=np.float32) / 255.0
+        mask = rgba[:, :, 3] > 0.5
+        lab = skcolor.rgb2lab(rgba[:, :, :3]).astype(np.float32)[mask]
+        if len(lab) > cap:
+            picks = np.random.default_rng(0).choice(len(lab), cap, replace=False)
+            lab = lab[picks]
+        return lab
+
+    source_cloud = fg_lab(source_rgba, 20000)
+    generated_lab = fg_lab(generated_rgba, 40000)
+    if len(source_cloud) == 0 or len(generated_lab) == 0:
+        return None
+    values = []
+    for k in (3, 4, 5):
+        _, labels = kmeans2(generated_lab, k, minit="++", seed=0)
+        worst = 0.0
+        for index in range(k):
+            member = generated_lab[labels == index]
+            if len(member) < len(generated_lab) * 0.05:
+                continue
+            if len(member) / len(generated_lab) < float(min_part_weight):
+                continue
+            median = np.median(member, axis=0)
+            ab = np.hypot(source_cloud[:, 1] - median[1],
+                          source_cloud[:, 2] - median[2])
+            l_excess = np.maximum(
+                0.0, np.abs(source_cloud[:, 0] - median[0])
+                - float(lightness_tolerance))
+            evidence = float(np.quantile(ab + 0.5 * l_excess, trim_quantile))
+            worst = max(worst, evidence)
+        values.append(worst)
+    return min(values) if values else None
+
+
+def gate_witnessed_consistency(
+    generated_rgba: Any,
+    mesh: Any,
+    source_rgba: Any,
+    *,
+    azimuth_deg: float,
+    elevation_deg: float,
+    source_pose: Tuple[float, float] = (0.0, 0.0),
+    min_witnessed_px: int = 10000,
+    chroma_flip_max: float = 0.65,
+    bright_flip_max: float = 0.25,
+    witnessed_tile_median_max: float = 20.0,
+    render_size: int = 768,
+    tile_grid: int = 12,
+) -> Dict[str, Any]:
+    """Positional consistency against the surface the SOURCE PHOTO
+    witnessed, rendered from the candidate's own angle.
+
+    Global foreground statistics measurably cannot separate the residual
+    anchor-class failure modes (glass canopy painted body-red scored
+    11.97 — inside the old strict line — while clean red backs scored
+    23.99/24.12): the wrongness is POSITIONAL. Projecting the source onto
+    the mesh (witnessed vertices only, NO fill) and rendering the
+    expected colors + witness mask from the target angle gives per-pixel
+    expectations exactly where the photo is evidence. Physically
+    grounded: the bake paints witnessed texels from the photo regardless,
+    so a reference contradicting them is objectively inconsistent — no
+    subject knowledge involved. Calibrated: fires on 12/14 wrong tops
+    with 0/10 false fires on correct tops; backs at az 180 witness ~600
+    px from a front source (physics), so the gate reports
+    `witnessed: False` and the caller falls to the starved-angle keys.
+
+    Veto keys (all measured bands): `chroma_flip` — witnessed dark-glass
+    pixels that came out chromatic (canopy painted body color);
+    `bright_flip` — witnessed dark pixels that came out >= 30 L brighter
+    and achromatic (gray-clay canopy); witnessed tile-median distance
+    (broad drift).
+    """
+
+    import numpy as np
+    from PIL import Image
+    from skimage import color as skcolor
+
+    from .rendering import render_mesh_views
+    from .reference_generation import clay_silhouette, project_source_witness
+
+    import trimesh as _trimesh
+
+    witnessed, colors = project_source_witness(
+        mesh, source_rgba, source_pose=source_pose)
+
+    def render_vertex_colors(values: Any) -> Any:
+        colored = mesh.copy()
+        colored.visual = _trimesh.visual.ColorVisuals(
+            colored, vertex_colors=values)
+        return render_mesh_views(
+            colored, size=render_size, azimuths=[float(azimuth_deg)],
+            elevation=float(elevation_deg))[0]
+
+    vertex_rgba = np.zeros((len(colors), 4), dtype=np.uint8)
+    vertex_rgba[:, :3] = (np.clip(colors, 0.0, 1.0) * 255).astype(np.uint8)
+    vertex_rgba[:, 3] = 255
+    expected = np.asarray(
+        render_vertex_colors(vertex_rgba).convert("RGB"),
+        dtype=np.float32) / 255.0
+
+    marker = np.zeros((len(colors), 4), dtype=np.uint8)
+    marker[witnessed] = (255, 255, 255, 255)
+    marker[~witnessed, 3] = 255
+    witness_mask = np.asarray(
+        render_vertex_colors(marker).convert("L"), dtype=np.float32) / 255.0
+
+    clay = render_mesh_views(
+        mesh, size=render_size, azimuths=[float(azimuth_deg)],
+        elevation=float(elevation_deg))[0].convert("RGBA")
+    silhouette = clay_silhouette(clay)
+
+    generated = generated_rgba.convert("RGBA")
+    if generated.size != (witness_mask.shape[1], witness_mask.shape[0]):
+        generated = generated.resize(
+            (witness_mask.shape[1], witness_mask.shape[0]), Image.LANCZOS)
+    generated_array = np.asarray(generated, dtype=np.float32) / 255.0
+    generated_mask = generated_array[:, :, 3] > 0.5
+
+    valid = generated_mask & silhouette & (witness_mask > 0.85)
+    result: Dict[str, Any] = {
+        "name": "witnessed_consistency",
+        "witnessed_px": int(valid.sum()),
+        "witnessed": bool(valid.sum() >= int(min_witnessed_px)),
+    }
+    if not result["witnessed"]:
+        return result
+
+    generated_lab = skcolor.rgb2lab(generated_array[:, :, :3]).astype(np.float32)
+    expected_lab = skcolor.rgb2lab(expected).astype(np.float32)
+    g = generated_lab[valid]
+    e = expected_lab[valid]
+    g_chroma = np.hypot(g[:, 1], g[:, 2])
+    e_chroma = np.hypot(e[:, 1], e[:, 2])
+    expected_dark = (e_chroma < 20.0) & (e[:, 0] < 45.0)
+    chroma_flip = (float((g_chroma[expected_dark] > 30.0).mean())
+                   if expected_dark.any() else 0.0)
+    bright_flip = (float(((g[expected_dark, 0] - e[expected_dark, 0] >= 30.0)
+                          & (g_chroma[expected_dark] <= 30.0)).mean())
+                   if expected_dark.any() else 0.0)
+
+    # Tile medians on bbox-normalized 480px crops (the calibration
+    # pipeline's exact frame: thresholds transfer only with the pipeline).
+    def crop_to_bbox(array: Any, mask: Any) -> Tuple[Any, Any]:
+        rows = np.any(mask, axis=1)
+        cols = np.any(mask, axis=0)
+        r0, r1 = int(np.argmax(rows)), int(len(rows) - np.argmax(rows[::-1]))
+        c0, c1 = int(np.argmax(cols)), int(len(cols) - np.argmax(cols[::-1]))
+        return array[r0:r1, c0:c1], mask[r0:r1, c0:c1]
+
+    def tiles(image_rgb: Any, fg_mask: Any, weight: Optional[Any]) -> List[Optional[Any]]:
+        lab = skcolor.rgb2lab(image_rgb.astype(np.float32))
+        height, width = fg_mask.shape
+        th, tw = height // tile_grid, width // tile_grid
+        out: List[Optional[Any]] = []
+        for row in range(tile_grid):
+            for col in range(tile_grid):
+                fm = fg_mask[row * th:(row + 1) * th, col * tw:(col + 1) * tw]
+                if fm.mean() < 0.6:
+                    out.append(None)
+                    continue
+                if weight is not None:
+                    wm = weight[row * th:(row + 1) * th, col * tw:(col + 1) * tw]
+                    if wm[fm].mean() < 0.7:
+                        out.append(None)
+                        continue
+                out.append(np.median(
+                    lab[row * th:(row + 1) * th, col * tw:(col + 1) * tw][fm],
+                    axis=0))
+        return out
+
+    def resize_pair(array: Any, mask: Any, *, nearest: bool = False) -> Tuple[Any, Any]:
+        size = (480, 480)
+        image = Image.fromarray((array * 255).astype(np.uint8)).resize(size, Image.LANCZOS)
+        mask_image = Image.fromarray((mask * 255).astype(np.uint8)).resize(size, Image.NEAREST)
+        return (np.asarray(image, dtype=np.float32) / 255.0,
+                np.asarray(mask_image) > 128)
+
+    gen_crop, gen_crop_mask = crop_to_bbox(generated_array[:, :, :3], generated_mask)
+    exp_crop, exp_crop_mask = crop_to_bbox(expected, silhouette)
+    wit_crop, _ = crop_to_bbox(witness_mask[:, :, None], silhouette)
+    gen_480, gen_mask_480 = resize_pair(gen_crop, gen_crop_mask)
+    exp_480, exp_mask_480 = resize_pair(exp_crop, exp_crop_mask)
+    wit_480 = np.asarray(
+        Image.fromarray((wit_crop[:, :, 0] * 255).astype(np.uint8)).resize(
+            (480, 480), Image.NEAREST), dtype=np.float32) / 255.0
+
+    generated_tiles = tiles(gen_480, gen_mask_480, None)
+    expected_tiles = tiles(exp_480, exp_mask_480, wit_480)
+    distances = []
+    for gt, et in zip(generated_tiles, expected_tiles):
+        if gt is None or et is None:
+            continue
+        chroma_distance = float(np.hypot(gt[1] - et[1], gt[2] - et[2]))
+        lightness_excess = max(0.0, abs(float(gt[0] - et[0])) - 25.0)
+        distances.append(chroma_distance + 0.5 * lightness_excess)
+    tile_median = float(np.median(distances)) if distances else None
+
+    vetoed = bool(
+        chroma_flip > float(chroma_flip_max)
+        or bright_flip > float(bright_flip_max)
+        or (tile_median is not None
+            and tile_median > float(witnessed_tile_median_max))
+    )
+    result.update(
+        chroma_flip=round(chroma_flip, 3),
+        bright_flip=round(bright_flip, 3),
+        witnessed_tile_median=(
+            round(tile_median, 2) if tile_median is not None else None),
+        passed=not vetoed,
+    )
+    return result
 
 
 def evaluate_material_fidelity(generated: Any, source: Any) -> Dict[str, Any]:

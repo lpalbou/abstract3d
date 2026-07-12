@@ -161,36 +161,27 @@ def clay_silhouette(clay_image: Any) -> Any:
     return distance > 0.04
 
 
-def tint_mesh_from_source(
+def project_source_witness(
     mesh: Any,
     source_rgba: Any,
     *,
     source_pose: Tuple[float, float] = (0.0, 0.0),
     grid: int = 256,
     facing_min: float = 0.15,
-) -> Any:
-    """Copy of `mesh` with vertex colors sampled from the source photo —
-    the "part-tinted clay" conditioning guide.
-
-    A neutral gray clay panel makes the generator GUESS each part's
-    material, and on multi-part subjects it guesses wrong (measured: a
-    wood-armed chair regenerated with upholstered arms from gray clay,
-    while every part the source photo witnesses is unambiguous). Tinting
-    every vertex with its observed color — and unseen vertices with their
-    nearest witnessed neighbor's (mirror-symmetric candidates included) —
-    hands the generator the per-part base color assignment so it refines
-    materials instead of inventing them. The tint is a PRIOR, not truth:
-    the acceptance gates still judge the result against the source photo.
+) -> Tuple[Any, Any]:
+    """Project the source photo onto the mesh: `(witnessed_mask, colors)`
+    per vertex, no fill for unseen vertices.
 
     Projection is the clay camera's own formula (azimuth/elevation of the
     SOURCE view), with the photo's foreground bbox letterbox-mapped onto
-    the mesh's projected bbox; visibility is a coarse-grid z-buffer (a
-    tint needs part-level correctness, not texel accuracy).
+    the mesh's projected bbox; visibility is a coarse-grid z-buffer (part-
+    level correctness, not texel accuracy). Shared by the part-tinted
+    conditioning guide (which fills unseen vertices) and the witnessed-
+    consistency gate (which must NOT fill — its whole point is judging
+    only where the photo is evidence).
     """
 
     import numpy as np
-    import trimesh
-    from scipy.spatial import cKDTree
 
     vertices = np.asarray(mesh.vertices, dtype=np.float32)
     centered = vertices - vertices.mean(axis=0, keepdims=True)
@@ -215,8 +206,9 @@ def tint_mesh_from_source(
 
     photo = np.asarray(source_rgba.convert("RGBA"), dtype=np.float32) / 255.0
     alpha = photo[:, :, 3] > 0.5
+    colors = np.zeros((len(centered), 3), dtype=np.float32)
     if not alpha.any():
-        return mesh.copy()
+        return np.zeros(len(centered), dtype=bool), colors
     prow = np.any(alpha, axis=1)
     pcol = np.any(alpha, axis=0)
     pr0, pr1 = int(np.argmax(prow)), int(len(prow) - np.argmax(prow[::-1]))
@@ -252,26 +244,66 @@ def tint_mesh_from_source(
     vi = np.clip(vs.astype(np.int32), 0, photo.shape[0] - 1)
     on_subject = alpha[vi, ui]
     witnessed = visible & on_subject
-
-    colors = np.full((len(centered), 3), 0.72, dtype=np.float32)
     if witnessed.any():
         colors[witnessed] = photo[vi[witnessed], ui[witnessed], :3]
-        seen_points = centered[witnessed]
-        tree = cKDTree(seen_points)
-        unseen = ~witnessed
-        if unseen.any():
-            query = centered[unseen]
-            d_direct, i_direct = tree.query(query, workers=-1)
-            mirrored = query.copy()
-            mirrored[:, 1] *= -1.0  # canonical frame: x-z symmetry plane
-            d_mirror, i_mirror = tree.query(mirrored, workers=-1)
-            use_mirror = d_mirror < d_direct
-            nearest = np.where(use_mirror, i_mirror, i_direct)
-            colors[unseen] = colors[witnessed][nearest]
+    return witnessed, colors
+
+
+def tint_mesh_from_source(
+    mesh: Any,
+    source_rgba: Any,
+    *,
+    source_pose: Tuple[float, float] = (0.0, 0.0),
+    grid: int = 256,
+    facing_min: float = 0.15,
+) -> Any:
+    """Copy of `mesh` with vertex colors sampled from the source photo —
+    the "part-tinted clay" conditioning guide.
+
+    A neutral gray clay panel makes the generator GUESS each part's
+    material, and on multi-part subjects it guesses wrong (measured: a
+    wood-armed chair regenerated with upholstered arms from gray clay,
+    while every part the source photo witnesses is unambiguous). Tinting
+    every vertex with its observed color — and unseen vertices with their
+    nearest witnessed neighbor's (mirror-symmetric candidates included) —
+    hands the generator the per-part base color assignment so it refines
+    materials instead of inventing them. The tint is a PRIOR, not truth:
+    the acceptance gates still judge the result against the source photo.
+    """
+
+    import numpy as np
+    import trimesh
+    from scipy.spatial import cKDTree
+
+    witnessed, colors = project_source_witness(
+        mesh, source_rgba, source_pose=source_pose, grid=grid,
+        facing_min=facing_min)
+    if not witnessed.any():
+        return mesh.copy()
+
+    vertices = np.asarray(mesh.vertices, dtype=np.float32)
+    centered = vertices - vertices.mean(axis=0, keepdims=True)
+    scale = float(np.max(np.linalg.norm(centered, axis=1))) or 1.0
+    centered = centered / scale
+
+    tint = np.full_like(colors, 0.72)
+    tint[witnessed] = colors[witnessed]
+    seen_points = centered[witnessed]
+    tree = cKDTree(seen_points)
+    unseen = ~witnessed
+    if unseen.any():
+        query = centered[unseen]
+        d_direct, i_direct = tree.query(query, workers=-1)
+        mirrored = query.copy()
+        mirrored[:, 1] *= -1.0  # canonical frame: x-z symmetry plane
+        d_mirror, i_mirror = tree.query(mirrored, workers=-1)
+        use_mirror = d_mirror < d_direct
+        nearest = np.where(use_mirror, i_mirror, i_direct)
+        tint[unseen] = tint[witnessed][nearest]
 
     tinted = mesh.copy()
     tinted.visual = trimesh.visual.ColorVisuals(
-        tinted, vertex_colors=(np.clip(colors, 0.0, 1.0) * 255).astype(np.uint8))
+        tinted, vertex_colors=(np.clip(tint, 0.0, 1.0) * 255).astype(np.uint8))
     return tinted
 
 
@@ -762,6 +794,32 @@ def _view_prompt(label: str, subject_noun: Optional[str],
             f" The subject's main color is {color_anchor}, the same color "
             "as in the left photo — never the gray of the model."
             if color_anchor else "")
+        # Surface clause, class-conditional (measured, sports-car ladder):
+        # the relief enumeration ("carving depth, grooves, grain, cracks,
+        # fibers") plus "Do not smooth, polish, glaze" plus "no gloss" is
+        # right for carved/fibrous subjects but measurably WRONG for the
+        # vivid smooth-finish class the color anchor marks — 8 of 8
+        # candidates under the relief wording rendered craquelure on a
+        # crack-free car, while dropping it (candidate K) produced clean
+        # paint at material strict-pass. The docstring's old claim that
+        # relief vocabulary is "self-normalizing" was refuted by that
+        # measurement. If a vivid subject genuinely has relief, the
+        # escalation ladder restores the relief demand on attempt 2.
+        if color_anchor:
+            surface_clause = (
+                "Reproduce the same colors and pattern, and the same "
+                "surface finish as the left photo: smooth, clean and "
+                "unbroken — no cracks, no weathering, no added aging. "
+                "Do not change any material type. ")
+            finish = "soft diffuse lighting."
+        else:
+            surface_clause = (
+                "Reproduce the same surface relief, carving depth, grooves, "
+                "grain, cracks, fibers and micro-texture, and the same "
+                "colors and pattern. Match the roughness of each left "
+                "surface exactly. Do not change any material type. Do not "
+                "smooth, polish, glaze or simplify any surface. ")
+            finish = "soft diffuse lighting, no gloss."
         return (
             f"Left panel: a photo of {noun}. Right panel: {right_panel} "
             f"{phrase}. Make the right panel a real "
@@ -770,14 +828,11 @@ def _view_prompt(label: str, subject_noun: Optional[str],
             "part keeps its own material, color and texture from the left "
             f"photo — never spread one part's material onto a different part."
             f"{tint_clause}{color_clause} "
-            "Reproduce the same surface relief, carving depth, grooves, "
-            "grain, cracks, fibers and micro-texture, and the same colors "
-            "and pattern. Match the roughness of each left surface exactly. "
-            "Do not change any material type. Do not smooth, polish, glaze "
-            "or simplify any surface. Keep the right panel's exact shape, "
+            + surface_clause +
+            "Keep the right panel's exact shape, "
             "pose and framing. Output only the finished right view as a "
-            "single image, on a plain dark background, soft diffuse "
-            "lighting, no gloss." + _person_clause(noun)
+            "single image, on a plain dark background, "
+            + finish + _person_clause(noun)
         )
     if conditioning == "rotate":
         return (
@@ -1070,15 +1125,29 @@ def generate_reference_views(
         #                            upholstery -> camouflage)
         #   gate_baked_speculars – glossy highlight fields (wet-look hair)
         from .material_gates import (
+            cloud_evidence_delta,
             gate_baked_speculars,
+            gate_witnessed_consistency,
             part_material_fidelity,
             texture_fidelity,
         )
 
         candidates: List[Dict[str, Any]] = []
         escalated = False
-        for attempt in range(int(max_attempts)):
-            attempt_seed = int(seed) + attempt
+        # Anchor-class retry ladder (measured): per-seed two-key pass is
+        # ~0.44 on the hardest angle, so best-of-6 spaced seeds reaches
+        # 97% angle acceptance with 94% rerun agreement (early stop keeps
+        # the EXPECTED attempt count near 2). Seeds are spaced 1000 apart
+        # (adjacent seeds measured uncorrelated; spacing costs nothing)
+        # and steps alternate 8/12 (steps-12 is NOT better on average —
+        # same-seed 8->12 moved scores up to 15 dE in BOTH directions —
+        # but alternation decorrelates the ladder from any per-steps
+        # bias). Non-anchor subjects keep the short ladder: every
+        # recorded fleet run passed by attempt 2.
+        anchor_class = bool(color_anchor)
+        attempt_budget = 6 if anchor_class else int(max_attempts)
+        for attempt in range(attempt_budget):
+            attempt_seed = int(seed) + (1000 * attempt if anchor_class else attempt)
             prompt = base_prompt + (TEXTURE_ESCALATION_CLAUSE if escalated else "")
             call_kwargs = dict(request)
             if negative_prompt:
@@ -1087,7 +1156,9 @@ def generate_reference_views(
             # The distilled klein default is 4 denoise steps — too few for
             # micro-texture; measured on the owl back, the relief ratio
             # rises with steps. The schedule escalates alongside the prompt.
-            if attempt < len(steps_schedule) and steps_schedule[attempt]:
+            if anchor_class:
+                call_kwargs["steps"] = 8 if attempt % 2 == 0 else 12
+            elif attempt < len(steps_schedule) and steps_schedule[attempt]:
                 call_kwargs["steps"] = int(steps_schedule[attempt])
             attempt_row: Dict[str, Any] = {"seed": attempt_seed,
                                            "escalated": escalated,
@@ -1119,6 +1190,7 @@ def generate_reference_views(
                 iou = silhouette_iou(matted, clay)
                 attempt_row["silhouette_iou"] = round(iou, 4)
                 if iou < float(silhouette_iou_min):
+                    attempt_row["failure_family"] = "silhouette"
                     entry["attempts"].append(attempt_row)
                     continue  # same prompt, next seed
                 # Post-processing BEFORE the texture gate: the gate must
@@ -1140,7 +1212,18 @@ def generate_reference_views(
                         attempt_row["tone_match"] = {
                             "applied": False,
                             "error": f"{type(exc).__name__}: {exc}"}
-                texture = texture_fidelity(processed, source_rgba)
+                # F7 (measured on the sports-car ladder): the flat_delta
+                # strict threshold 0.12 is calibrated on relief subjects;
+                # on the anchor-marked smooth-finish class it rejects the
+                # smoothness that is CORRECT (the one clean-paint
+                # material-strict candidate scored 0.138 while 7 of 8
+                # craquelure candidates passed) — the source's band energy
+                # there is specular structure and panel lines, not
+                # micro-relief. Strict relaxes to 0.18 for this class;
+                # floor (0.20) and relief_ratio strict stay unchanged.
+                texture = texture_fidelity(
+                    processed, source_rgba,
+                    **({"flat_delta_max": 0.18} if color_anchor else {}))
                 material = part_material_fidelity(processed, source_rgba)
                 specular = gate_baked_speculars(processed)
                 # Diagnosis stats (persist-for-diagnosis contract): the
@@ -1157,12 +1240,75 @@ def generate_reference_views(
                               "s50", "selection_score", "reason")}
                 attempt_row["material"] = {
                     k: material.get(k)
-                    for k in ("passed", "floor", "worst_part_delta_e", "reason")}
+                    for k in ("passed", "floor", "worst_part_delta_e", "reason",
+                              "ensemble_delta_e", "source_chroma_dispersion",
+                              "generated_chroma_dispersion")
+                    if material.get(k) is not None}
                 attempt_row["speculars"] = {
                     k: specular.get(k)
                     for k in ("passed", "worst_blob_fraction")}
-                strict_pass = bool(texture["passed"] and material["passed"]
-                                   and specular["passed"])
+                if anchor_class:
+                    # TWO-KEY STRICT LINE for the anchor class (measured:
+                    # NO threshold on the global palette score separates
+                    # this corpus — correct 3.9-24.4 vs wrong 11.1-40
+                    # under every aggregation; the residual wrongness is
+                    # POSITIONAL). Witnessed angles: consensus fence at
+                    # 22 plus the witnessed-region veto. Witness-starved
+                    # angles (a back from a front photo witnesses ~600
+                    # px — physics): tighter consensus 16 plus the cloud-
+                    # evidence key at 11. flat_delta leaves strict
+                    # entirely (zero discrimination on 71 labeled
+                    # candidates; it alone blocked 3 material-passing
+                    # correct backs). Relief keeps only its floor; the
+                    # collapse guard (consensus 40) and speculars stay.
+                    consensus = material.get("worst_part_delta_e")
+                    relief_ok = (
+                        "relief_ratio" not in texture
+                        or float(texture.get("relief_ratio") or 0.0) >= 0.65)
+                    witness = gate_witnessed_consistency(
+                        processed, mesh, source_rgba,
+                        azimuth_deg=azimuth, elevation_deg=elevation,
+                        source_pose=source_pose)
+                    attempt_row["witness"] = {
+                        k: witness.get(k)
+                        for k in ("witnessed", "witnessed_px", "chroma_flip",
+                                  "bright_flip", "witnessed_tile_median",
+                                  "passed")
+                        if witness.get(k) is not None}
+                    if consensus is None:
+                        material_ok = False
+                    elif witness["witnessed"]:
+                        material_ok = (float(consensus) <= 22.0
+                                       and bool(witness["passed"]))
+                    else:
+                        cloud = cloud_evidence_delta(processed, source_rgba)
+                        attempt_row["cloud_evidence_delta"] = (
+                            round(cloud, 2) if cloud is not None else None)
+                        material_ok = (float(consensus) <= 16.0
+                                       and cloud is not None
+                                       and float(cloud) <= 11.0)
+                    strict_pass = bool(material_ok and relief_ok
+                                       and specular["passed"])
+                else:
+                    strict_pass = bool(texture["passed"] and material["passed"]
+                                       and specular["passed"])
+                # Triage without pixels: name the failure class in the
+                # record (the gray-car diagnosis needed a full regeneration
+                # to learn what one string could have said).
+                if not strict_pass:
+                    material_reason = str(material.get("reason") or "")
+                    if "chroma collapse" in material_reason:
+                        attempt_row["failure_family"] = "chroma_collapse"
+                    elif anchor_class and attempt_row.get("witness", {}).get("passed") is False:
+                        attempt_row["failure_family"] = "witness_veto"
+                    elif anchor_class:
+                        attempt_row["failure_family"] = "palette_flip"
+                    elif not material["passed"]:
+                        attempt_row["failure_family"] = "palette_flip"
+                    elif not texture["passed"]:
+                        attempt_row["failure_family"] = "texture"
+                    else:
+                        attempt_row["failure_family"] = "speculars"
                 floor_pass = bool(texture.get("floor", texture["passed"])
                                   and material.get("floor", material["passed"]))
                 # One score to rank candidates: relief fidelity minus
@@ -1184,7 +1330,15 @@ def generate_reference_views(
                 entry["attempts"].append(attempt_row)
                 if strict_pass:
                     break  # strict pass: stop the ladder
-                escalated = True  # systematic defect: escalate the prompt
+                # Escalate the literal-copy texture clause only where it
+                # targets the defect: relief smoothing on a relief subject.
+                # On the anchor-marked smooth class the clause re-injects
+                # the craquelure bias it exists to fight (measured: every
+                # relief-worded car candidate rendered cracked paint), and
+                # for material/chroma failures the mechanism change is the
+                # steps/seed re-roll, not texture wording.
+                if not texture["passed"] and not color_anchor:
+                    escalated = True
             except Exception as exc:
                 attempt_row["error"] = f"{type(exc).__name__}: {exc}"
                 entry["attempts"].append(attempt_row)
@@ -1209,9 +1363,11 @@ def generate_reference_views(
             # callers write these small copies to `rejected_refs/`.
             # The exact pixels the gates judged, downscaled; raw payloads
             # stay reproducible via seed + md5.
+            # Cap 15 = 5 angles x 3 attempts: the previous 12 silently
+            # dropped a fifth angle's rejects.
             rejected_images = report.setdefault("rejected_images", [])
             for attempt_index, candidate in enumerate(candidates):
-                if len(rejected_images) >= 12:
+                if len(rejected_images) >= 15:
                     break
                 small = candidate["rgba"].copy()
                 small.thumbnail((512, 512))

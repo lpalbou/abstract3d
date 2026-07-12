@@ -1398,14 +1398,38 @@ def estimate_pose_with_silhouette_guard(
 
     if ncc.get("estimated"):
         commit_key = (float(ncc["azimuth_deg"]), float(ncc["elevation_deg"]))
+        commit_mask = masks.get(commit_key)
+        if commit_mask is None:
+            _, commit_mask = render_mask(*commit_key)
         committed_riou = riou.get(commit_key)
         if committed_riou is None:
-            _, commit_mask = render_mask(*commit_key)
             committed_riou, _ = register_mask(photo_alpha, commit_mask)
         vetoed = committed_riou < declared_riou - float(veto_tolerance)
+        # Shape-decisive override (v4 car): a photometric spike can land
+        # BETWEEN the declared pose and the truth — commit az 12.5 scored
+        # riou 0.787, above declared 0.746, so the worse-than-declared
+        # veto passed it while the true basin at az -25 measured 0.908
+        # and coverage collapsed to 5.2% again. The override fires only
+        # on the rescue lane's double-keyed decisive evidence, with the
+        # aspect key measured at the COMMIT (a correct commit renders the
+        # photo's aspect, so its own aspect error stays small and blocks
+        # the override even if some far pose spuriously out-scores it).
+        commit_aspect = bbox_aspect(commit_mask)
+        commit_aspect_err = (
+            abs(math.log(photo_aspect / commit_aspect))
+            if photo_aspect and commit_aspect else 0.0
+        )
+        shape_override = (
+            (best_riou - float(committed_riou)) > float(rescue_min_riou_gap)
+            and commit_aspect_err > float(rescue_min_aspect_err)
+            and best_riou > float(rescue_min_best_riou)
+        )
+        vetoed = vetoed or shape_override
         result_trail["veto"] = {
             "committed_riou": round(float(committed_riou), 4),
             "delta_vs_declared": round(float(committed_riou - declared_riou), 4),
+            "commit_aspect_err": round(commit_aspect_err, 4),
+            "shape_override": bool(shape_override),
             "fires": bool(vetoed),
         }
         if not vetoed:
@@ -1414,13 +1438,33 @@ def estimate_pose_with_silhouette_guard(
             accepted["guard_trail"] = result_trail
             return accepted
 
+    # Second key for the rescue: the declared pose's own aspect error, OR
+    # a shape-decisive override veto upstream. The dead zone this closes
+    # (measured, integrator program): a fresh 3/4 car draw whose NCC
+    # commit was override-vetoed (commit riou 0.773 vs basin best 0.896,
+    # commit aspect err 0.159) then failed the rescue's declared-aspect
+    # key (0.113 < 0.15) — strong enough shape evidence to REJECT the
+    # commit, then judged not strong enough to MOVE, so the bake ran at
+    # declared (0,0): coverage 0.0574 vs 0.1877 at the basin pose,
+    # fidelity 32.7 vs 21.6 dE (A/B in /tmp/fix3/car_pose_ab.log). The
+    # override veto is itself double-keyed decisive evidence (riou gap
+    # at the commit + aspect error at the commit), so counting it as the
+    # rescue's second key preserves the double-key doctrine. Stayers
+    # measured unmoved (their gap key alone keeps them): owl 0.000,
+    # face 0.054, chair 0.064 — the chair's override veto fires but its
+    # basin gap (0.064 < 0.10) still refuses the move.
+    override_vetoed = bool(
+        (result_trail.get("veto") or {}).get("shape_override")
+        and (result_trail.get("veto") or {}).get("fires"))
     gate_ok = (
         (best_riou - declared_riou) > float(rescue_min_riou_gap)
-        and declared_aspect_err > float(rescue_min_aspect_err)
+        and (declared_aspect_err > float(rescue_min_aspect_err)
+             or override_vetoed)
         and best_riou > float(rescue_min_best_riou)
     )
     result_trail["rescue_gate"] = {
         "riou_gap": round(best_riou - declared_riou, 4),
+        "override_vetoed_key": override_vetoed,
         "fires": bool(gate_ok),
     }
     if not gate_ok:
@@ -2480,30 +2524,68 @@ def blend_projections(
             observed[1:, :] & observed[:-1, :]
             & (winner[1:, :] != winner[:-1, :]))
         steps: List[Any] = []
-        if boundary_h.any():
-            rows_h, cols_h = np.nonzero(boundary_h)
-            left_owner = winner[rows_h, cols_h]
-            right_owner = winner[rows_h, cols_h + 1]
-            low_stack = np.stack(view_low, axis=0)
-            steps.append(np.abs(
-                low_stack[left_owner, rows_h, cols_h]
-                - low_stack[right_owner, rows_h, cols_h]).mean(axis=1))
-        if boundary_v.any():
-            rows_v, cols_v = np.nonzero(boundary_v)
-            top_owner = winner[rows_v, cols_v]
-            bottom_owner = winner[rows_v + 1, cols_v]
-            low_stack = np.stack(view_low, axis=0)
-            steps.append(np.abs(
-                low_stack[top_owner, rows_v, cols_v]
-                - low_stack[bottom_owner, rows_v, cols_v]).mean(axis=1))
+        owners_a: List[Any] = []
+        owners_b: List[Any] = []
+        co_witnessed: List[Any] = []
+        low_stack = np.stack(view_low, axis=0)
+        for boundary, (dr, dc) in ((boundary_h, (0, 1)), (boundary_v, (1, 0))):
+            if not boundary.any():
+                continue
+            rows_b, cols_b = np.nonzero(boundary)
+            owner_a = winner[rows_b, cols_b]
+            owner_b = winner[rows_b + dr, cols_b + dc]
+            steps.append(
+                low_stack[owner_a, rows_b, cols_b]
+                - low_stack[owner_b, rows_b, cols_b])
+            owners_a.append(owner_a)
+            owners_b.append(owner_b)
+            # A boundary texel is CO-WITNESSED when both owners hold weight
+            # on both sides of the switch: the low-band average can ramp
+            # across it. Where one owner's coverage simply ENDS, the handoff
+            # is one-sided and only as wide as the coverage feather.
+            co_witnessed.append(
+                (weight_stack[owner_a, rows_b + dr, cols_b + dc] > 0.0)
+                & (weight_stack[owner_b, rows_b, cols_b] > 0.0))
         if steps:
-            all_steps = np.concatenate(steps)
+            all_steps_rgb = np.concatenate(steps, axis=0)
+            all_steps = np.abs(all_steps_rgb).mean(axis=1)
+            pair_a = np.concatenate(owners_a)
+            pair_b = np.concatenate(owners_b)
+            pair_co = np.concatenate(co_witnessed)
             handoff_seams = {
                 "boundary_texels": int(all_steps.size),
                 "step_p50": round(float(np.percentile(all_steps, 50)), 4),
                 "step_p95": round(float(np.percentile(all_steps, 95)), 4),
                 "step_max": round(float(all_steps.max()), 4),
             }
+            # Per-pair attribution: which view pairs carry the steps, how
+            # much of each step is luminance (a lighting/tone difference the
+            # delight/compositor lanes can reconcile) vs chroma, and whether
+            # the boundary is co-witnessed. Diagnosis data for the whole-bake
+            # gate; adds no pixel-affecting behavior.
+            labels = [
+                str(projection.get("label") or f"view_{index + 1:02d}")
+                for index, (_r, _w, projection) in enumerate(prepared)]
+            lum_steps = np.abs(all_steps_rgb @ np.array(
+                [0.299, 0.587, 0.114], dtype=np.float32))
+            lo = np.minimum(pair_a, pair_b)
+            hi = np.maximum(pair_a, pair_b)
+            pair_key = lo.astype(np.int64) * len(prepared) + hi
+            pair_rows: List[Dict[str, Any]] = []
+            for key in np.unique(pair_key):
+                sel = pair_key == key
+                pair_rows.append({
+                    "views": [labels[int(key) // len(prepared)],
+                              labels[int(key) % len(prepared)]],
+                    "boundary_texels": int(sel.sum()),
+                    "step_p50": round(float(np.percentile(all_steps[sel], 50)), 4),
+                    "step_p95": round(float(np.percentile(all_steps[sel], 95)), 4),
+                    "lum_share_p50": round(float(np.percentile(
+                        lum_steps[sel] / np.maximum(all_steps[sel], 1e-6), 50)), 4),
+                    "co_witnessed_frac": round(float(pair_co[sel].mean()), 4),
+                })
+            pair_rows.sort(key=lambda row: -row["boundary_texels"])
+            handoff_seams["pairs"] = pair_rows
         else:
             handoff_seams = {"boundary_texels": 0}
     else:
@@ -4487,6 +4569,473 @@ def delight_projections(
     return stats
 
 
+def equalize_projection_tone(
+    projections: Sequence[Dict[str, Any]],
+    *,
+    positions_texture: Optional[Any] = None,
+    source_index: int = 0,
+    fit_weight_floor: float = 0.02,
+    min_pair_texels: int = 400,
+    luminance_floor: float = 0.02,
+    max_log_gain: float = 1.0,
+    improvement_margin: float = 0.002,
+    fade_radius_frac: float = 0.06,
+    fade_density_full: float = 0.12,
+    field_radius_frac: float = 0.03,
+    protect_floor: float = 0.02,
+) -> Dict[str, Any]:
+    """Consensus tone-LEVEL equalization: one log-luminance gain per view.
+
+    The order-0 fallback lane of `delight_projections`. The SH ratio fit is
+    the right model when overlaps populate the normal sphere, but its joint
+    solve trades small overlaps against large ones: measured on a
+    4-generated-view low-coverage bake (car candidate), the solver spent the
+    side views' 2.6k/5k rim-dominated fit texels satisfying the dominant
+    back|top_rear pair (7.7k texels at log-ratio 1.1), the sides' own
+    overlap disagreement WORSENED (0.250 -> 0.279, 0.231 -> 0.319) and the
+    fail-closed revert correctly refused them — shipping a composite with
+    HALF the views relit and half not. The handoff ledger measured the
+    consequence: boundary step p50 0.214 / p95 0.446, with every dominant
+    boundary pair 93-99% LUMINANCE (a tone level, not content).
+
+    This pass solves the panorama gain-compensation problem instead
+    (Brown & Lowe: one scalar gain per image over pairwise overlap
+    statistics): minimize sum_pairs W_uv * (g_u - g_v - r_uv)^2 with
+    r_uv = median log-luminance ratio on the (u, v) overlap and W_uv the
+    overlap's summed min-weight mass. One unknown per view cannot
+    shape-distort content, which is exactly why it stays reliable on the
+    rim-dominated overlaps where the 9-DOF-per-view fit fails.
+
+    Contracts shared with the delight lane:
+
+    - gauge: every REAL photo view is gauge-fixed at zero — photos are
+      evidence and DEFINE the level; synthesis conforms to them (the
+      witness-ranking doctrine of `protect_observed_texels`), so only
+      generated views receive gains. Views connected to the source only
+      through other references inherit the chain's error, so their gain
+      cap is halved (delight's chained-gauge convention). A connected
+      component with NO real member keeps its weighted-mean gain at zero:
+      the level common to a group is unobservable from ratios (the same
+      albedo/shading ambiguity delight documents), and each image's own
+      level passed the per-view material gates — relative consistency is
+      the only claim the evidence supports.
+    - fit floor `fit_weight_floor` 0.02 = the photo-evidence floor of
+      `protect_observed_texels` (weight 0.02 ~ the 0.2 facing cutoff).
+      Rim texels are legitimate evidence for a weighted STATISTIC; the
+      measured justification is that at delight's 0.05 pair floor the
+      source participates in ZERO pairs >= 400 texels on the low-coverage
+      car (front|top_rear 0, front|side_right 55) — the gauge chain never
+      reaches the photo — while at 0.02 the front|top_rear pair carries
+      1.8k texels. `min_pair_texels` 400 is delight's own pair floor.
+    - luminance-only (chroma untouched); white balance remains
+      `harmonize_and_gate_projection`'s job.
+    - overlap-proximity fade over the 3D surface: full correction near the
+      overlap surface where handoffs form, zero deep inside a view's
+      exclusive territory (same voxel-ball construction and constants).
+    - fail-closed, witness-ranked revert gate: a correction ships only
+      when it measurably improves agreement (by `improvement_margin`) on
+      one evidence class WITHOUT measurably worsening the other, where
+      the classes are pairs against REAL photos vs pairs against other
+      generated views. Judging one aggregate instead structurally
+      silences the photo: its rim overlap carries ~1% of a big view's
+      pair mass BY CONSTRUCTION (facing demotions), so a correction that
+      conforms a generated view to the photo where they meet — the exact
+      boundary the handoff ledger flags — could never carry a
+      mass-weighted gate (measured on the car candidate: top_rear's
+      field improved the front pair and reverted on the aggregate).
+      Every participating pair carries >= `min_pair_texels` texels, so
+      neither class is ever judged on statistical noise.
+
+    STAGE 2 — LOCAL CONSENSUS FIELD (generated views only). A single gain
+    per view removes the level, but the measured pairwise disagreement is
+    spatially varying: post-delight log-ratio IQRs on the car candidate
+    were 0.68-1.55 across the top_rear pairs — independently synthesized
+    views paint different regional shading (a roof bright in the elevated
+    view, dark in the side view), which is exactly the structure the SH
+    normal fit models and had to revert on the rim-dominated side
+    overlaps. Stage 2 reconciles it in POSITION space, where the evidence
+    lives: per generated view, the per-texel log-luminance deviation from
+    the projection-weight-averaged consensus of the texel's witnesses,
+    weighted with the DOWNSTREAM composition semantics — wherever a real
+    photo holds a protected claim (weight >= `protect_floor`, the same
+    floor `protect_observed_texels` enforces later), the consensus IS the
+    photo's reading (generated weights are zeroed there exactly as
+    protection will zero them); elsewhere it is the mixture the low band
+    will blend, the view's own reading included (self-inclusion makes
+    the deviation a shrinkage toward the shipped tone rather than full
+    conformance to partners). The deviation is smoothed over the surface
+    with the fill lanes' voxel-ball statistics at `field_radius_frac` *
+    diagonal — a REGIONAL statistic ~20x the detail-fusion scale at 2048.
+    Default 0.03 from the car-candidate radius sweep: overlap
+    disagreement on the side_left|top_rear pair dropped
+    -10.5/-10.6/-12.5/-14.2% at radius 0.06/0.04/0.03/0.02, but at 0.02
+    the fitted fields saturate the amplitude cap (side_left field_p95
+    0.465 vs cap 0.5; 0.301 at 0.03) — a saturated field is cap-clipped
+    rather than evidence-shaped, so 0.03 keeps ~90% of the measured gain
+    with clear amplitude headroom.
+    Capped at half `max_log_gain` (the chained-amplitude budget: the
+    local gauge is inherited through the same reference chain), faded by
+    evidence density (delight's fade constants), and accepted per view
+    under the same fail-closed revert gate. Real photo views are never
+    field-corrected: photos are evidence and DEFINE the consensus;
+    synthesis conforms to it (the witness-ranking doctrine of
+    `protect_observed_texels`).
+
+    Runs AFTER `delight_projections` (it consumes the SH-corrected colors
+    and settles the residual LEVELS the SH lane could not gauge or had to
+    revert) and before harmonization/protection. Mutates projection rgba in
+    place (weights untouched) and returns stats.
+    """
+    import numpy as np
+
+    stats: Dict[str, Any] = {"applied": False, "views": [], "pairs": []}
+    view_count = len(projections)
+    if view_count < 2:
+        return stats
+
+    weights = [np.asarray(p["weight"], dtype=np.float32) for p in projections]
+    rgbs = [np.asarray(p["rgba"], dtype=np.float32)[:, :, :3] for p in projections]
+
+    def luminance(rgb: Any) -> Any:
+        return 0.299 * rgb[:, :, 0] + 0.587 * rgb[:, :, 1] + 0.114 * rgb[:, :, 2]
+
+    lums = [luminance(rgb) for rgb in rgbs]
+
+    # ---- pairwise overlap level ratios -----------------------------------
+    pair_rows: List[Dict[str, Any]] = []
+    for u in range(view_count):
+        for v in range(u + 1, view_count):
+            overlap = (
+                (weights[u] > float(fit_weight_floor))
+                & (weights[v] > float(fit_weight_floor))
+                & (lums[u] > float(luminance_floor))
+                & (lums[v] > float(luminance_floor))
+            )
+            count = int(overlap.sum())
+            if count < int(min_pair_texels):
+                continue
+            ratio = float(np.median(
+                np.log(lums[u][overlap].astype(np.float64))
+                - np.log(lums[v][overlap].astype(np.float64))))
+            mass = float(np.minimum(
+                weights[u], weights[v])[overlap].sum())
+            pair_rows.append({
+                "u": u, "v": v, "ratio": ratio, "mass": mass,
+                "texels": count, "overlap": overlap,
+            })
+    if not pair_rows:
+        return stats
+
+    # ---- weighted least squares on the pair graph ------------------------
+    # Real photo views are gauge-FIXED at zero (they define the level);
+    # only generated views are free unknowns. The reduced normal equations
+    # eliminate the fixed variables exactly.
+    src = int(source_index)
+    real_views = {
+        i for i in range(view_count) if not projections[i].get("generated")
+    }
+    real_views.add(src)
+    free = [i for i in range(view_count) if i not in real_views]
+    if not free:
+        return stats
+    col_of = {view: k for k, view in enumerate(free)}
+    normal = np.zeros((len(free), len(free)), dtype=np.float64)
+    rhs = np.zeros(len(free), dtype=np.float64)
+    for row in pair_rows:
+        u, v, mass, ratio = row["u"], row["v"], row["mass"], row["ratio"]
+        cu, cv = col_of.get(u), col_of.get(v)
+        if cu is not None:
+            normal[cu, cu] += mass
+            rhs[cu] += mass * ratio
+        if cv is not None:
+            normal[cv, cv] += mass
+            rhs[cv] -= mass * ratio
+        if cu is not None and cv is not None:
+            normal[cu, cv] -= mass
+            normal[cv, cu] -= mass
+    # A component with no real member leaves its block singular (gains
+    # only determined up to a constant); the tiny ridge makes the solve
+    # well-posed and the exact mean-zero gauge is re-imposed below.
+    ridge = 1e-9 * max(float(np.trace(normal)), 1.0)
+    try:
+        solved = np.linalg.solve(normal + ridge * np.eye(len(free)), rhs)
+    except np.linalg.LinAlgError:
+        return stats
+    gains = np.zeros(view_count, dtype=np.float64)
+    for view, col in col_of.items():
+        gains[view] = solved[col]
+
+    # connected components over the pair graph (union-find)
+    parent = list(range(view_count))
+
+    def find(a: int) -> int:
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    for row in pair_rows:
+        ra, rb = find(row["u"]), find(row["v"])
+        if ra != rb:
+            parent[ra] = rb
+    component = [find(i) for i in range(view_count)]
+    view_mass = np.zeros(view_count, dtype=np.float64)
+    for row in pair_rows:
+        view_mass[row["u"]] += row["mass"]
+        view_mass[row["v"]] += row["mass"]
+    for comp in set(component):
+        members = [i for i in range(view_count) if component[i] == comp]
+        if not any(m in real_views for m in members):
+            mass = view_mass[members]
+            gains[members] -= (
+                float((gains[members] * mass).sum() / max(mass.sum(), 1e-9)))
+
+    fitted = {i for row in pair_rows for i in (row["u"], row["v"])}
+    direct_source = {
+        row["u"] if row["v"] in real_views else row["v"]
+        for row in pair_rows
+        if (row["u"] in real_views) != (row["v"] in real_views)
+    }
+
+    def classed_disagreement(view: int, view_rgb: Any) -> Dict[str, float]:
+        """Mass-weighted mean |rgb - partner| per witness class."""
+        sums = {"real": 0.0, "generated": 0.0}
+        masses = {"real": 0.0, "generated": 0.0}
+        for row in pair_rows:
+            if view not in (row["u"], row["v"]):
+                continue
+            other = row["v"] if row["u"] == view else row["u"]
+            klass = "real" if other in real_views else "generated"
+            overlap = row["overlap"]
+            sums[klass] += row["mass"] * float(
+                np.abs(view_rgb[overlap] - rgbs[other][overlap]).mean())
+            masses[klass] += row["mass"]
+        return {
+            klass: sums[klass] / masses[klass]
+            for klass in sums if masses[klass] > 0.0
+        }
+
+    def witness_ranked_accept(
+            before: Dict[str, float], after: Dict[str, float]) -> bool:
+        """Ship only if one class measurably improves and none worsens.
+
+        A trade rule (photo-agreement gains paying for generated-mutual
+        losses) was considered and NOT adopted: it would activate strong
+        certified-lane relights (measured on the owl top view: field p95
+        0.37 over 132k texels against a recorded whole-bake fidelity
+        margin of 0.34) whose net product effect this margin-free
+        heuristic cannot bound. Fail closed instead.
+        """
+        margin = float(improvement_margin)
+        improves = any(
+            after[klass] < before[klass] - margin for klass in before)
+        worsens = any(
+            after[klass] > before[klass] + margin for klass in before)
+        return improves and not worsens
+    for row in pair_rows:
+        stats["pairs"].append({
+            "views": [projections[row["u"]].get("label"),
+                      projections[row["v"]].get("label")],
+            "texels": row["texels"],
+            "log_ratio": round(row["ratio"], 4),
+        })
+
+    # ---- fade support (same construction as delight_projections) ---------
+    surface_points: Optional[Any] = None
+    surface_sel: Optional[Any] = None
+    diagonal = 1.0
+    if positions_texture is not None:
+        positions_arr = np.asarray(positions_texture, dtype=np.float32)
+        surface_sel = positions_arr[:, :, 3] > 0.0
+        surface_points = positions_arr[:, :, :3][surface_sel].astype(np.float64)
+        if len(surface_points) > 0:
+            diagonal = float(np.linalg.norm(
+                surface_points.max(axis=0) - surface_points.min(axis=0))) or 1.0
+
+    applied_any = False
+    for view in range(view_count):
+        if view in real_views or view not in fitted:
+            continue
+        chained = view not in direct_source
+        cap = float(max_log_gain) * (0.5 if chained else 1.0)
+        gain = float(np.clip(gains[view], -cap, cap))
+        view_pairs = [row for row in pair_rows if view in (row["u"], row["v"])]
+        fit_overlap = np.zeros(weights[view].shape, dtype=bool)
+        for row in view_pairs:
+            fit_overlap |= row["overlap"]
+        row_stats: Dict[str, Any] = {
+            "index": view,
+            "label": projections[view].get("label"),
+            "gain_log": round(gain, 4),
+            "chained_gauge": bool(chained),
+            "applied": False,
+        }
+        if abs(gain) < 1e-4:
+            stats["views"].append(row_stats)
+            continue
+        field = np.full(weights[view].shape, gain, dtype=np.float64)
+        if (surface_points is not None and surface_sel is not None
+                and len(surface_points) > 0):
+            overlap_indicator = fit_overlap[surface_sel].astype(np.float64)
+            density = _voxel_neighborhood_mean(
+                surface_points,
+                overlap_indicator,
+                max(float(fade_radius_frac) * diagonal, 1e-9),
+            )
+            density = np.where(np.isfinite(density), density, 0.0)
+            fade_surface = np.clip(
+                density / max(float(fade_density_full), 1e-9), 0.0, 1.0)
+            fade = np.zeros(field.shape, dtype=np.float64)
+            fade[surface_sel] = fade_surface
+            fade[fit_overlap] = 1.0
+            field = field * fade
+        correction = np.exp(-field).astype(np.float32)
+        corrected = np.clip(rgbs[view] * correction[:, :, None], 0.0, 1.0)
+        # Fail-closed witness-ranked revert gate (see docstring; partners
+        # corrected earlier in this loop are compared in their corrected
+        # state — the delight lane's sequential semantics).
+        before = classed_disagreement(view, rgbs[view])
+        after = classed_disagreement(view, corrected)
+        row_stats.update(
+            disagreement_before={k: round(v, 4) for k, v in before.items()},
+            disagreement_after={k: round(v, 4) for k, v in after.items()},
+        )
+        if witness_ranked_accept(before, after):
+            covered = weights[view] > 0.0
+            scarce = projections[view].get("scarce_weight")
+            if scarce is not None:
+                covered = covered | (np.asarray(scarce, dtype=np.float32) > 0.0)
+            out = np.asarray(projections[view]["rgba"], dtype=np.float32)
+            out[:, :, :3][covered] = corrected[covered]
+            projections[view]["rgba"] = out
+            rgbs[view] = corrected
+            lums[view] = luminance(corrected)
+            row_stats["applied"] = True
+            applied_any = True
+        stats["views"].append(row_stats)
+
+    # ---- stage 2: local consensus field (generated views only) -----------
+    field_cap = 0.5 * float(max_log_gain)
+    for view in range(view_count):
+        if view in real_views or view not in fitted:
+            continue
+        view_pairs = [row for row in pair_rows if view in (row["u"], row["v"])]
+        # The consensus weighting mirrors the DOWNSTREAM composition
+        # semantics: wherever a real photo holds a protected claim
+        # (weight >= protect_floor, `protect_observed_texels`' own floor),
+        # the shipped texel IS the photo's — generated weights are zeroed
+        # there exactly as protection will zero them, so the consensus is
+        # the photo's reading. Elsewhere the consensus is the weighted
+        # mixture the low band will blend, the view's own reading
+        # included (self-inclusion makes the deviation a shrinkage toward
+        # the shipped tone rather than full conformance to partners).
+        protected = np.zeros(weights[view].shape, dtype=bool)
+        for other in real_views:
+            protected |= weights[other] >= float(protect_floor)
+        evidence = np.zeros(weights[view].shape, dtype=bool)
+        consensus_num = np.zeros(weights[view].shape, dtype=np.float64)
+        consensus_den = np.zeros(weights[view].shape, dtype=np.float64)
+        for row in view_pairs:
+            other = row["v"] if row["u"] == view else row["u"]
+            overlap = row["overlap"]
+            evidence |= overlap
+            other_weight = weights[other].astype(np.float64)
+            if other not in real_views:
+                other_weight = np.where(protected, 0.0, other_weight)
+            other_lum = np.clip(
+                lums[other].astype(np.float64), float(luminance_floor), None)
+            consensus_num += np.where(
+                overlap, other_weight * np.log(other_lum), 0.0)
+            consensus_den += np.where(overlap, other_weight, 0.0)
+        if int(evidence.sum()) < int(min_pair_texels):
+            continue
+        own_log = np.log(np.clip(
+            lums[view].astype(np.float64), float(luminance_floor), None))
+        own_weight = np.where(
+            protected, 0.0, weights[view].astype(np.float64))
+        good = evidence & (consensus_den > 1e-9)
+        deviation = np.zeros(weights[view].shape, dtype=np.float64)
+        total = consensus_den + np.where(evidence, own_weight, 0.0)
+        consensus_log = np.zeros_like(consensus_num)
+        consensus_log[good] = (
+            consensus_num[good] + own_weight[good] * own_log[good]
+        ) / total[good]
+        deviation[good] = own_log[good] - consensus_log[good]
+        # Bounded influence: a misregistered partner's content outlier
+        # (a wheel read against an arch) must not steer the regional
+        # field; the clip bounds any single texel's pull at the amplitude
+        # the correction itself is allowed.
+        deviation = np.clip(deviation, -2.0 * field_cap, 2.0 * field_cap)
+        row_stats = {
+            "index": view,
+            "label": projections[view].get("label"),
+            "stage": "local_field",
+            "evidence_texels": int(good.sum()),
+            "applied": False,
+        }
+        if (surface_points is None or surface_sel is None
+                or len(surface_points) == 0):
+            # The field is a SURFACE statistic; without positions there is
+            # no honest smoothing support, so stage 2 stands down (stage 1
+            # still ran — levels need no geometry).
+            stats["views"].append(row_stats)
+            continue
+        evidence_surface = good[surface_sel].astype(np.float64)
+        deviation_surface = np.where(good, deviation, 0.0)[surface_sel]
+        radius = max(float(field_radius_frac) * diagonal, 1e-9)
+        density = _voxel_neighborhood_mean(
+            surface_points, evidence_surface, radius)
+        smoothed = _voxel_neighborhood_mean(
+            surface_points, deviation_surface, radius)
+        density = np.where(np.isfinite(density), density, 0.0)
+        smoothed = np.where(np.isfinite(smoothed), smoothed, 0.0)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            field_surface = np.where(
+                density > 1e-9, smoothed / np.maximum(density, 1e-9), 0.0)
+        field_surface = np.clip(field_surface, -field_cap, field_cap)
+        # Evidence-density fade at the delight lane's constants: the
+        # correction dies away from the surface that justified it.
+        fade_density = _voxel_neighborhood_mean(
+            surface_points, evidence_surface,
+            max(float(fade_radius_frac) * diagonal, 1e-9))
+        fade_density = np.where(np.isfinite(fade_density), fade_density, 0.0)
+        fade_surface = np.clip(
+            fade_density / max(float(fade_density_full), 1e-9), 0.0, 1.0)
+        field = np.zeros(weights[view].shape, dtype=np.float64)
+        field[surface_sel] = field_surface * fade_surface
+        if float(np.abs(field).max()) < 1e-4:
+            stats["views"].append(row_stats)
+            continue
+        correction = np.exp(-field).astype(np.float32)
+        corrected = np.clip(rgbs[view] * correction[:, :, None], 0.0, 1.0)
+        before = classed_disagreement(view, rgbs[view])
+        after = classed_disagreement(view, corrected)
+        row_stats.update(
+            field_p95=round(float(np.percentile(
+                np.abs(field[good]), 95)) if good.any() else 0.0, 4),
+            disagreement_before={k: round(v, 4) for k, v in before.items()},
+            disagreement_after={k: round(v, 4) for k, v in after.items()},
+        )
+        if witness_ranked_accept(before, after):
+            covered = weights[view] > 0.0
+            scarce = projections[view].get("scarce_weight")
+            if scarce is not None:
+                covered = covered | (np.asarray(scarce, dtype=np.float32) > 0.0)
+            out = np.asarray(projections[view]["rgba"], dtype=np.float32)
+            out[:, :, :3][covered] = corrected[covered]
+            projections[view]["rgba"] = out
+            rgbs[view] = corrected
+            lums[view] = luminance(corrected)
+            row_stats["applied"] = True
+            applied_any = True
+        stats["views"].append(row_stats)
+
+    for row in pair_rows:
+        row.pop("overlap", None)
+    stats["applied"] = applied_any
+    return stats
+
+
 def harmonize_and_gate_projection(
     projection: Dict[str, Any],
     *,
@@ -5983,6 +6532,26 @@ def bake_projection_texture(
             source_index=0,
         )
 
+    # CONSENSUS TONE LEVEL (order-0 fallback; see `equalize_projection_tone`):
+    # independently synthesized views are mutually tone-inconsistent as a
+    # LEVEL, not just as normal-dependent shading (measured on the car
+    # candidate: back reads 3x brighter than top_rear on 7.7k shared
+    # texels), and when the SH fit above cannot hold all pairs it reverts
+    # per view, shipping a half-relit set whose ownership boundaries step
+    # by the residual level (handoff p50 0.214, 93-99% luminance). The
+    # scalar consensus solve settles those levels with the same gauge,
+    # fade and fail-closed revert contracts. Enabled where generated views
+    # participate (the measured failure class); real-photo-only multi-view
+    # bakes keep today's behavior until their own A/B — the same
+    # measured-validation scoping as strand_comb / tone_bottom_cap.
+    tone_level_stats: Dict[str, Any] = {"applied": False}
+    if len(projections) > 1 and any(p.get("generated") for p in projections):
+        tone_level_stats = equalize_projection_tone(
+            projections,
+            positions_texture=positions_texture,
+            source_index=0,
+        )
+
     # Harmonize and quality-gate references IN ATLAS SPACE against the union
     # of everything already accepted (source first, then references in
     # order): overlap texels compare the same physical surface points,
@@ -6858,6 +7427,7 @@ def bake_projection_texture(
         "fill_detail": fill_detail_stats,
         "fill_floor": fill_floor_stats,
         "delight": delight_stats,
+        "tone_consensus": tone_level_stats,
         "generated_protection": generated_protection_stats,
         "handoff_seams": blend.get("handoff_seams"),
         "symmetry_completion": symmetry_stats,

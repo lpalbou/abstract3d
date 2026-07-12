@@ -143,6 +143,7 @@ def rebake_bundle(
     subject_hint: Optional[str] = None,
     allow_person_subjects: bool = False,
     owner: Any = None,
+    seed: Optional[int] = None,
     texture_resolution: Optional[int] = None,
     texture_completion: str = "auto",
     projection_model: str = "orthographic",
@@ -184,6 +185,23 @@ def rebake_bundle(
             generate_reference_views,
         )
 
+        # Rebake/pipeline parity (measured on the sports-car incident):
+        # rebakes previously regenerated references with a HARDCODED seed
+        # while the pipeline threads the generation seed — same bundle,
+        # guaranteed different candidates, and per-angle verdicts flipped
+        # across the strict line (back 11.21 accepted vs 24.12 rejected).
+        # Default both the seed and the subject hint from the bundle's own
+        # record so a plain rebake reproduces the pipeline's inputs.
+        if seed is None:
+            recorded_seed = loaded.metadata.get("seed")
+            seed = int(recorded_seed) if recorded_seed is not None else 11
+        if subject_hint is None:
+            recorded_caption = (
+                (loaded.metadata.get("texture_artifacts") or {})
+                .get("reference_generation") or {}
+            ).get("caption")
+            subject_hint = str(recorded_caption) if recorded_caption else None
+
         ready, readiness_reason = auto_generation_ready(owner, subject_hint)
         if generate_references == "auto" and not ready:
             generation_report = {"skipped": readiness_reason}
@@ -195,6 +213,7 @@ def rebake_bundle(
                     owner=owner,
                     angles=generation_angles or DEFAULT_ANGLES,
                     subject_hint=subject_hint,
+                    seed=int(seed),
                     # The tint projection needs the source camera; the pose
                     # override is that fact when the capture recorded one.
                     source_pose=tuple(source_pose_override or (0.0, 0.0)),
@@ -223,12 +242,16 @@ def rebake_bundle(
     started = time.perf_counter()
     # Snapshot the real views BEFORE the candidate bake: the bake registers
     # views in place (view["rgba"] is replaced by its aligned version), and
-    # the A/B baseline must start from the same pristine inputs.
+    # the A/B baseline must start from the same pristine inputs. The
+    # generated snapshots survive a bake-acceptance refusal — without them
+    # a refused candidate left NO pixels behind (measured: the maxvis
+    # rebake recorded 3 accepted views in metadata while persisting none).
     generated_present = any(view.get("generated") for view in views)
     baseline_views = (
         [dict(view) for view in views if not view.get("generated")]
         if generated_present else None
     )
+    generated_view_snapshots = [dict(view) for view in views if view.get("generated")]
     bake_kwargs = dict(
         texture_resolution=resolution,
         texture_completion=texture_completion,
@@ -253,11 +276,18 @@ def rebake_bundle(
         baseline_mesh = loaded.geometry_mesh()
         baseline_textured, baseline_stats = texturing.bake_projection_texture(
             baseline_mesh, observed_views=baseline_views, **bake_kwargs)
+        # The gate resolves the fidelity pose from the baseline bake's own
+        # stats (measuring at a hardcoded (0,0) on a pose-estimated
+        # subject charges ~9 dE of pure pose error to BOTH sides:
+        # measured +0.88 true regression read as +4.03 on the az-17.5
+        # car). An explicit override remains the external capture fact.
         verdict = evaluate_generated_bake(
             baseline_textured,
             textured,
             source_rgba=baseline_views[0]["rgba"],
-            source_pose=tuple(source_pose_override or (0.0, 0.0)),
+            source_pose=source_pose_override,
+            baseline_stats=baseline_stats,
+            candidate_stats=stats,
         )
         if generation_report is None:
             generation_report = {}
@@ -268,6 +298,14 @@ def rebake_bundle(
             # honest record of what was tried and why it was refused.
             textured, stats = baseline_textured, baseline_stats
             views = baseline_views
+            # The shipped baseline is a single-photo bake that never met
+            # the A/B machinery; run the same sanity floors the
+            # no-references path records, so a broken-on-its-own baseline
+            # (pose collapse: measured coverage 0.058 shipped "healthy")
+            # is loud in the metadata instead of silent.
+            from .bake_acceptance import evaluate_single_view_bake
+
+            stats["single_view_sanity"] = evaluate_single_view_bake(stats)
     bake_seconds = round(time.perf_counter() - started, 3)
 
     if write_outputs:
@@ -318,12 +356,14 @@ def rebake_bundle(
         if generation_report is not None:
             rejected_images = generation_report.pop("rejected_images", None)
             metadata["generated_references"] = _json_safe(generation_report)
-            for view in views:
-                if view.get("generated"):
-                    view["rgba"].save(out / f"generated_{view['label']}.png")
-                    clay = view.get("clay_render")
-                    if clay is not None:
-                        clay.save(out / f"generated_{view['label']}_clay.png")
+            # Persist from the pre-bake snapshots, not the shipped view
+            # list: after a bake-acceptance refusal the shipped list is
+            # the baseline and the candidate's pixels would vanish.
+            for view in generated_view_snapshots:
+                view["rgba"].save(out / f"generated_{view['label']}.png")
+                clay = view.get("clay_render")
+                if clay is not None:
+                    clay.save(out / f"generated_{view['label']}_clay.png")
             if rejected_images:
                 # Persist-for-diagnosis: the exact (downscaled) pixels the
                 # gates rejected, budget-capped — a rejected class must be

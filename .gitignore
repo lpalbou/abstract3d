@@ -42,6 +42,9 @@ artifacts/validation/final-proof/*
 !artifacts/validation/iter3-multiview-fixed/
 artifacts/validation/iter3-multiview-fixed/*
 !artifacts/validation/iter3-multiview-fixed/face-2mv/
+# Parity canary fixture (scripts/parity_canary.py): the pinned rebake
+# inputs + reference texture must be versioned or the canary is mute.
+!artifacts/validation/parity/
 
 # Generated-reference views feature (current)
 !artifacts/validation/generated-references/

@@ -6,6 +6,71 @@ section with an explanation.
 
 ## Critical insights
 
+### A guard that can REJECT on decisive evidence must be able to ACT on it (pose-guard dead zone)
+
+The pose guard's shape-decisive override vetoes an NCC commit on
+double-keyed evidence measured AT THE COMMIT (riou gap + aspect error),
+while the rescue lane's second key was measured AT THE DECLARED pose.
+A fresh 3/4 car draw landed exactly between them: the override vetoed
+the commit (decisive: gap 0.19, commit aspect err 0.159) and the rescue
+refused to move (declared aspect err 0.113 < 0.15) — the system judged
+the evidence strong enough to reject but not strong enough to act, and
+shipped the worst of both worlds (declared (0,0): coverage 0.0574 vs
+0.1877 at the basin, fidelity 32.7 vs 21.6 dE). The general rule: when
+a veto and a rescue consume the same evidence channel, a
+veto-on-decisive-evidence must satisfy the rescue's evidence bar BY
+CONSTRUCTION (the veto now counts as the rescue's second key), or the
+guard has a dead zone that converts better information into a worse
+product. Calibrate the stayers explicitly: the chair's override veto
+fires while its basin gap (0.064 < 0.10) still correctly refuses the
+move — reject-without-move is legitimate when the evidence names no
+better pose, and only then.
+
+### A refusal branch ships a DIFFERENT product; that product needs its own acceptance
+
+The whole-bake A/B gate refuses a generated candidate and ships the
+no-references baseline — but the baseline is a single-photo bake that
+can be broken on its own (the measured incident: pose collapse shipped
+coverage 0.058 with verdict "healthy"), and the single-view sanity
+floors ran only on the never-had-references branch. Every refusal
+branch must run the acceptance machinery OF WHAT IT ACTUALLY SHIPS,
+not assume the fallback is safe because it is simpler. (Wired in both
+`hunyuan3d_runtime` and `rebake_bundle`: refused-candidate baselines
+now carry `single_view_sanity` and degrade the quality verdict when
+the floors fail.)
+
+### L-based damage axes are blind to chroma; hue-rotation separates ANGULARLY where magnitude inverts
+
+The composition tone-damage axis (smoothed L deltas beyond a floor)
+passed a constant-L 30-deg hue rotation of a car back reference with
+fidelity IMPROVING — chroma damage is invisible to every L statistic by
+construction. The obvious chroma analog (smoothed ab-vector magnitude)
+is measurably NON-separating: legitimate reference work REPLACES
+content (dark fill mottle -> saturated paint), displacing ab by 4.1-5.4
+on labeled-good bakes vs 5.2 for the damage — inverted. The signature
+that separates is the ANGLE between smoothed ab vectors on mutually
+saturated surface (accepts <= 0.46 deg-mass vs damage 1.5-6.6):
+rotation preserves magnitude while replacement changes it, so measure
+the component replacement cannot fake. Same doctrine as the tone axis:
+floor at the pipeline's own sanctioned drift (`match_tone_lab` ab clamp
+10 ~ 11 deg at anchor chroma), saturation-weighted so gray subjects are
+structurally quiet.
+
+### Host: Accelerate BLAS segfaults (exit 139) under threaded float64 GEMM; single-thread it for long runs
+
+Two consecutive `t23d` runs died SIGSEGV (EXC_BAD_ACCESS in
+`libBLAS.dylib cblas_dgemm$NEWLAPACK$ILP64` under a numpy float64 `@`)
+on this macOS host; identical crash signatures exist in
+DiagnosticReports from BEFORE the current tree (Jul 10/11), and the
+tex2 audit hit the same class in harness processes (its skimage-only
+einsum workaround covers lab2rgb but not general matmul). This is host
+instability, not a pipeline regression — but it makes any ~40-min
+pipeline run a coin flip. Mitigation that survived a full pipeline +
+concurrent CPU bakes: `VECLIB_MAXIMUM_THREADS=1` on the pipeline
+process (Accelerate's threaded GEMM is the racy path). Keep harness
+processes' einsum workaround for the lab2rgb case; prefer the env var
+for anything long-running.
+
 ### Coverage-style critiques need per-texel accounting before per-gate surgery (cycle 7)
 
 The owner's "the photos see 57% but the bake paints 21%" critique did not
@@ -1095,6 +1160,96 @@ exactly the thin/stretched coverage that made it weak. (On the current tip
 the width-profile rework happens to register both sides symmetrically, so
 a unified-registration patch measured neutral — the guarantee matters
 whenever the estimators disagree again.)
+
+### An i2i editor echoes its conditioning's statistics — text must carry what pixels cannot
+
+The sports-car incident (12/12 generated references rejected): with a
+gray clay guide labeled "an untextured model", the editor restyled the
+WHOLE canvas toward dark-matte-model photography — it desaturated even
+its copy of the source-photo panel ~4x, collapsing foreground chroma to
+2-28% of the source. Pixels alone cannot carry "saturated red" across
+that prior, and the material-word ban had removed color from every text
+channel. The fix that preserves the ban's doctrine: a MEASURED color
+anchor — a frozen-vocabulary hue term computed from source pixels (no
+free-text slot, no human claim) injected mid-prompt with an explicit
+"never the gray of the model" negation. Measured: 21x chroma recovery,
+first floor-pass; hex codes at the prompt end did nothing (weak tokens,
+wrong position). Corollaries: (a) prompt wording is class-conditional —
+relief vocabulary ("grooves, cracks, fibers") is right for carved
+subjects and measurably wrong for vivid smooth-finish ones (8/8
+candidates rendered craquelure on a crack-free car; dropping the relief
+clauses for anchor-marked subjects produced clean paint at material
+strict-pass with the same model/seed/steps); (b) gate thresholds are
+class-conditional too — flat_delta strict 0.12 punishes the smoothness
+that is correct for gloss (the source's band energy there is specular
+structure, not micro-relief).
+
+### Collapse detection needs dispersion, not the mean; k-means gates need an ensemble
+
+Chroma-of-mean fails twice as a monochrome detector: complementary hues
+cancel (a red+green subject "arms" at ~0), and low-mean-chroma-but-
+chromatic subjects (skin: mean ~14) never arm — a fully-gray portrait
+strict-passed the entire gate battery. The std of foreground ab
+magnitudes separates cleanly: collapsed candidates <= 0.18 of the
+source's dispersion, accepted views >= 0.53. Separately, single-k
+k-means part correspondence carries 14-24 points of pure noise near
+part boundaries (a PERFECT copy plus one realistic reflection scored
+25.3 — the reflection stole a centroid); scoring the minimum over
+k in {3,4,5} collapses artifacts (25.3 -> 1.56) while true palette
+flips stay far under every k. And never let a guard return None for a
+score consumers do arithmetic on: `None or 0.0` scored collapsed
+candidates as having ZERO palette penalty in the ranking.
+
+### Persist what the gates judged, or diagnosis costs a regeneration
+
+The gray-car class was invisible in shipped metadata: every rejected
+pixel was discarded, so the diagnosis required a seed-exact ~25
+min/angle regeneration (valid only while the backend stack is
+bit-stable). Contract now: budget-capped downscaled copies of the exact
+pixels the gates rejected, per-attempt foreground-chroma stats, per-k
+part scores, and a one-string `failure_family` classification — so
+triage never needs pixels to know WHICH failure class occurred. A
+parameter that a backend parses but silently drops (`image_strength` on
+FLUX.2 edit routes) is worse than an unsupported one: every escalation
+ladder built on it is unimplementable while looking reasonable.
+
+### Single-image shape models invent what the input cannot show — fix the input, not the surfacing
+
+The sports-car mesh incident: lumpy cabin, four wheels floating off the
+arches, ~200 micro-tunnels — while the owl from the same pipeline is
+genus-0 clean. Forensics acquitted every stage we own at machine
+precision (our adaptive volume decoder vs upstream dense on identical
+latents: 0/57M sign flips, bit-identical meshes; decimation
+topology-exact). The variable that controls the damage is the INPUT
+IMAGE: t2i drew an open-cockpit convertible with 12-21% deep-shadow
+pixels (owl: 2.8%), and the shape prior fills unseen volumes with mush
+(closed-coupe A/B at identical seed/settings: 50x lower interior
+angle-defect energy, cockpit junk gone). Corollaries: (a) for t23d,
+bias the source image toward the CLOSED form of open-form-prone
+subjects unless the user asked otherwise — the cheapest, largest
+measured mesh-quality lever; (b) the real generalization is multi-view
+geometry conditioning (2mv), synthesizing the unseen views before the
+shape stage instead of only after it for texture; (c) genus and body
+count are class-dependent facts, not universal quality gates — a
+spoked wheel is genus ~10, an accepted face proof measures genus 210,
+so gate on DISCONNECTION (bodies > 1 on single-subject generations),
+not on genus.
+
+### Post-hoc vertex symmetrization is a trap; symmetry belongs in evidence-gated volume space
+
+Measured across the fleet: generated meshes of bilateral subjects are
+already ~97% mirror-symmetric, so vertex-space symmetrization buys
+-1..-11% mirror deviation while REGRESSING dihedral roughness +6..+51%
+on every subject tested, across two independent implementations. What
+does work: symmetry-plane DETECTION as a diagnostic gate (PCA +
+mirror-ICP separates bilateral subjects at support >= 0.946 from
+organic ones <= 0.804 with a provable no-op on the latter), and
+SDF-space mirror-blending inside a voxel remesh when repair is needed
+anyway (strictly dominated the plain remesh: genus 48 -> 44, dihedral
+-5.4%, identical chamfer). Voxel-SDF remesh is the measured repair
+route for spurious handles (genus 67 -> 9, 5 bodies -> 1, 0.57%
+chamfer, 80s CPU); screened Poisson is the wrong tool (slower, genus
+56, roughness UP — screening amplifies noise).
 
 ## Validated practices
 

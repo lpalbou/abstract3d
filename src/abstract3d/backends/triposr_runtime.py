@@ -2531,12 +2531,46 @@ def _zip_bundle(root_dir: Path) -> bytes:
     return buf.getvalue()
 
 
+_OPEN_FORM_WORDS = frozenset((
+    # The user explicitly asked for an open/hollow form: never override.
+    "convertible", "cabriolet", "roadster", "spyder", "spider", "targa",
+    "open-top", "open", "topless", "cockpit", "interior", "hollow",
+    "cutaway", "cross-section",
+))
+
+# Subjects whose t2i priors default to OPEN thin-shell forms that
+# single-image shape models measurably mangle. "a red sports car" drew an
+# open convertible: the shape field then invented the unseen cabin (50x
+# the interior angle-defect energy of a closed coupe from the same seed
+# and settings) and floated all four wheels off the body. A closed body
+# is the same subject with strictly more generable geometry. Only classes
+# with a MEASURED open-form failure belong here.
+_OPEN_FORM_PRONE_WORDS = frozenset((
+    "car", "supercar", "sportscar", "coupe", "sedan", "vehicle",
+))
+
+# Wording is position- and strength-sensitive (measured, seeds 11/2025):
+# the weak trailing "closed body, no open top" still drew a convertible;
+# this subject-level clause right after the user's text drew closed
+# hardtops on every tested seed. Same lesson as the texture color anchor:
+# mid-prompt subject claims move the model, suffix hints do not.
+_CLOSED_FORM_CLAUSE = (
+    "a hardtop with a fully closed solid roof, no convertible, "
+    "no open cockpit"
+)
+
+
 def _default_text_to_image_prompt(prompt: str) -> str:
+    import re
+
     suffix = (
         "single centered object, studio product photo, neutral light gray background, "
         "fully visible, no crop, no extra objects, realistic lighting"
     )
     base = str(prompt or "").strip()
+    words = frozenset(re.findall(r"[a-zA-Z-]+", base.lower()))
+    if (words & _OPEN_FORM_PRONE_WORDS) and not (words & _OPEN_FORM_WORDS):
+        base = f"{base}, {_CLOSED_FORM_CLAUSE}" if base else base
     return f"{base}, {suffix}" if base else suffix
 
 

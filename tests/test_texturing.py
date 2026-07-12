@@ -1541,6 +1541,252 @@ def test_delight_projections_keeps_chroma_and_reverts_on_confound() -> None:
 
 
 # ---------------------------------------------------------------------------
+# consensus tone equalization (level gains + local consensus field)
+# ---------------------------------------------------------------------------
+
+def _tone_case_views(shape=(96, 96), seed: int = 7):
+    """Planar three-view chain: real source, two generated references.
+
+    Column bands with wide overlaps: source [0, 40), gen mid [30, 70),
+    gen far [60, end). Base albedo is shared; per-view level/field errors
+    are injected by the individual tests.
+    """
+    rng = np.random.default_rng(seed)
+    base = 0.45 + 0.05 * rng.standard_normal((*shape, 3)).astype(np.float32)
+    positions = np.zeros((*shape, 4), dtype=np.float32)
+    xs, ys = np.meshgrid(
+        np.linspace(-1.0, 1.0, shape[1]), np.linspace(-1.0, 1.0, shape[0]))
+    positions[:, :, 0] = xs
+    positions[:, :, 1] = ys
+    positions[:, :, 3] = 1.0
+
+    def view(rgb, cols, label, generated):
+        rgba = np.concatenate(
+            [np.clip(rgb, 0.0, 1.0),
+             np.ones((*shape, 1), dtype=np.float32)], axis=2)
+        weight = np.zeros(shape, dtype=np.float32)
+        weight[:, cols[0]:cols[1]] = 0.5
+        return {"rgba": rgba, "weight": weight, "label": label,
+                "generated": generated}
+
+    return base, positions, view
+
+
+def test_equalize_projection_tone_levels_chained_views() -> None:
+    """Scalar stage: level offsets are recovered through the pair chain
+    (far view has NO source overlap), the chained view's cap halves, and
+    corrected views agree with the shared albedo."""
+    base, positions, view = _tone_case_views()
+    src = view(base, (0, 40), "front", generated=False)
+    mid = view(base * 1.6, (30, 70), "mid", generated=True)
+    far = view(base * 0.7, (60, 96), "far", generated=True)
+    projections = [src, mid, far]
+
+    stats = texturing.equalize_projection_tone(
+        projections, positions_texture=positions, source_index=0)
+
+    rows = {row["label"]: row for row in stats["views"]
+            if "gain_log" in row}
+    assert rows["mid"]["applied"] and rows["far"]["applied"]
+    # true gains: log(1.6) = 0.470, log(0.7) = -0.357 (chain-consistent, so
+    # the joint solve recovers them; tolerance covers clipping at 0/1)
+    assert abs(rows["mid"]["gain_log"] - np.log(1.6)) < 0.05
+    assert abs(rows["far"]["gain_log"] + np.log(1 / 0.7)) < 0.05
+    assert not rows["mid"]["chained_gauge"]
+    assert rows["far"]["chained_gauge"]
+    mid_rgb = np.asarray(projections[1]["rgba"])[:, :, :3]
+    far_rgb = np.asarray(projections[2]["rgba"])[:, :, :3]
+    assert abs(float(mid_rgb[:, 30:70].mean()) - float(base[:, 30:70].mean())) < 0.01
+    # full conformance on the overlap evidence; the exclusive far edge
+    # keeps its own level (the correction fades with its evidence)
+    assert abs(float(far_rgb[:, 60:68].mean()) - float(base[:, 60:68].mean())) < 0.01
+    far_original = np.clip(base * 0.7, 0.0, 1.0)
+    assert abs(float(far_rgb[:, 90:].mean()) - float(far_original[:, 90:].mean())) < 0.01
+
+
+def test_equalize_projection_tone_pins_real_views() -> None:
+    """Real photo views are gauge-fixed: a bright REAL reference is never
+    corrected (photos define the level); the generated view conforms."""
+    base, positions, view = _tone_case_views()
+    src = view(base, (0, 40), "front", generated=False)
+    real_ref = view(base * 1.5, (30, 70), "real_side", generated=False)
+    gen = view(base * 0.7, (60, 96), "gen_back", generated=True)
+    projections = [src, real_ref, gen]
+    real_before = np.array(projections[1]["rgba"], copy=True)
+
+    stats = texturing.equalize_projection_tone(
+        projections, positions_texture=positions, source_index=0)
+
+    assert np.array_equal(real_before, np.asarray(projections[1]["rgba"]))
+    labels_with_gain = {row["label"] for row in stats["views"]
+                        if "gain_log" in row}
+    assert labels_with_gain == {"gen_back"}
+    # single-view input is a structural no-op
+    assert texturing.equalize_projection_tone(
+        [dict(src)], source_index=0) == {
+        "applied": False, "views": [], "pairs": []}
+
+
+def test_equalize_projection_tone_local_field_regional_deviation() -> None:
+    """Stage 2: a zero-median REGIONAL deviation (bright top half, dark
+    bottom half — invisible to any scalar gain) is reconciled toward the
+    protected photo consensus; deep-exclusive texels stay bit-identical
+    (fade) and chroma ratios are untouched (luminance-only)."""
+    base, positions, view = _tone_case_views(shape=(128, 128))
+    src = view(base, (0, 60), "front", generated=False)
+    warped = base.copy()
+    warped[:64, 30:] *= 1.45
+    warped[64:, 30:] /= 1.45
+    gen = view(warped, (30, 128), "gen_side", generated=True)
+    projections = [src, gen]
+    gen_before = np.asarray(projections[1]["rgba"])[:, :, :3].copy()
+
+    stats = texturing.equalize_projection_tone(
+        projections, positions_texture=positions, source_index=0)
+
+    field_rows = [row for row in stats["views"]
+                  if row.get("stage") == "local_field"]
+    assert len(field_rows) == 1 and field_rows[0]["applied"]
+    # scalar stage cannot see the deviation (median ~ 0); the field must
+    # carry the correction
+    scalar_rows = [row for row in stats["views"] if "gain_log" in row]
+    assert all(abs(row["gain_log"]) < 0.1 for row in scalar_rows)
+    gen_after = np.asarray(projections[1]["rgba"])[:, :, :3]
+    overlap = slice(35, 55)
+    before_err = float(np.abs(gen_before[:, overlap] - base[:, overlap]).mean())
+    after_err = float(np.abs(gen_after[:, overlap] - base[:, overlap]).mean())
+    # substantially reconciled toward the photo (the protected consensus is
+    # the photo's own reading, so conformance is near-full up to the
+    # smoothing band at the half boundary and the density fade)
+    assert after_err < 0.6 * before_err
+    # deep-exclusive territory (far from any overlap in world units) is
+    # bit-identical: the correction dies with its evidence
+    deep = slice(100, 128)
+    assert np.array_equal(gen_before[:, deep], gen_after[:, deep])
+    # luminance-only: r/g ratios preserved where unclipped
+    sample = (gen_before[:, overlap, 1] > 0.05) & (gen_after[:, overlap].max(axis=2) < 0.999)
+    ratio_before = gen_before[:, overlap, 0][sample] / np.maximum(gen_before[:, overlap, 1][sample], 1e-6)
+    ratio_after = gen_after[:, overlap, 0][sample] / np.maximum(gen_after[:, overlap, 1][sample], 1e-6)
+    assert np.allclose(ratio_before, ratio_after, atol=5e-3)
+
+
+def test_equalize_projection_tone_fails_closed_on_content_confound() -> None:
+    """Overlap disagreement that is CONTENT (random, not tone) must not
+    ship a correction: any applied row must have measurably improved its
+    witness class, otherwise the view is bit-identical."""
+    base, positions, view = _tone_case_views()
+    rng = np.random.default_rng(3)
+    src = view(base, (0, 40), "front", generated=False)
+    noisy = np.clip(
+        base + rng.uniform(-0.3, 0.3, base.shape).astype(np.float32), 0, 1)
+    gen = view(noisy, (30, 70), "gen", generated=True)
+    projections = [src, gen]
+    gen_before = np.array(projections[1]["rgba"], copy=True)
+
+    stats = texturing.equalize_projection_tone(
+        projections, positions_texture=positions, source_index=0)
+
+    applied_rows = [row for row in stats["views"] if row.get("applied")]
+    if applied_rows:
+        for row in applied_rows:
+            before = row["disagreement_before"]
+            after = row["disagreement_after"]
+            assert any(after[k] < before[k] - 0.002 for k in before)
+            assert all(after[k] <= before[k] + 0.002 for k in before)
+    else:
+        assert np.array_equal(gen_before, np.asarray(projections[1]["rgba"]))
+
+
+def test_equalize_projection_tone_tiny_overlap_is_structural_noop() -> None:
+    """Adversarial worst case (integrator program): ONE generated view
+    whose only source overlap is below the 400-texel pair floor must be a
+    structural no-op — no fit, no correction, every pixel bit-identical.
+    (Fitting a whole-view gain on statistical dust was the failure mode
+    the pair floor exists to refuse.)"""
+    base, positions, view = _tone_case_views()
+    src = view(base, (0, 40), "front", generated=False)
+    # 2 overlap columns x 96 rows = 192 texels < 400
+    gen = view(base * 2.0, (38, 96), "gen", generated=True)
+    projections = [src, gen]
+    before = [np.array(p["rgba"], copy=True) for p in projections]
+
+    stats = texturing.equalize_projection_tone(
+        projections, positions_texture=positions, source_index=0)
+
+    assert stats == {"applied": False, "views": [], "pairs": []}
+    for prior, projection in zip(before, projections):
+        assert np.array_equal(prior, np.asarray(projection["rgba"]))
+
+
+def test_equalize_projection_tone_source_starved_keeps_common_mode() -> None:
+    """Adversarial worst case: an all-generated component (no view pairs
+    with the source) has an unobservable common mode — the pass may only
+    reconcile the views RELATIVELY (mean-zero gauge in log space), never
+    relight the group toward some invented level, and the source stays
+    bit-identical."""
+    base, positions, view = _tone_case_views()
+    src = view(base, (0, 30), "front", generated=False)
+    gen_a = view(base * 1.8, (40, 70), "gen_a", generated=True)
+    gen_b = view(base * 0.9, (60, 96), "gen_b", generated=True)
+    projections = [src, gen_a, gen_b]
+    src_before = np.array(src["rgba"], copy=True)
+    overlap = slice(60, 70)
+
+    def log_mean(projection):
+        rgb = np.asarray(projection["rgba"], np.float64)[:, overlap, :3]
+        return float(np.log(np.clip(rgb, 1e-4, None)).mean())
+
+    common_before = 0.5 * (log_mean(gen_a) + log_mean(gen_b))
+    gap_before = abs(log_mean(gen_a) - log_mean(gen_b))
+
+    stats = texturing.equalize_projection_tone(
+        projections, positions_texture=positions, source_index=0)
+
+    assert np.array_equal(src_before, np.asarray(src["rgba"]))
+    # the source participates in no pair: the fit graph is generated-only
+    assert all("front" not in row["views"] for row in stats["pairs"])
+    common_after = 0.5 * (log_mean(gen_a) + log_mean(gen_b))
+    gap_after = abs(log_mean(gen_a) - log_mean(gen_b))
+    # relative disagreement shrinks; the joint (common-mode) level does not
+    # move beyond numerical residue of the mean-zero gauge
+    assert gap_after < 0.5 * gap_before
+    assert abs(common_after - common_before) < 0.02
+
+
+def test_blend_projections_handoff_ledger_attributes_pairs() -> None:
+    """The handoff ledger names the owner pairs, separates luminance from
+    chroma steps, and reports co-witnessing."""
+    shape = (64, 64)
+    lum_step = np.full((*shape, 4), 0.5, dtype=np.float32)
+    lum_step[:, :, 3] = 1.0
+    brighter = lum_step.copy()
+    brighter[:, :, :3] = 0.62  # equal-channel (pure luminance) step
+    chroma = lum_step.copy()
+    chroma[:, :, 0] = 0.62  # red up, blue down: mostly chroma
+    chroma[:, :, 2] = 0.38
+
+    def weights(cols):
+        w = np.zeros(shape, dtype=np.float32)
+        w[:, cols[0]:cols[1]] = 0.9
+        return w
+
+    a = {"rgba": lum_step, "weight": weights((0, 36)), "label": "left"}
+    b = {"rgba": brighter, "weight": weights((28, 64)), "label": "right"}
+    blended = texturing.blend_projections(
+        [a, b], atlas_shape=shape, feather_texels=2.0)
+    pairs = blended["handoff_seams"]["pairs"]
+    assert len(pairs) == 1
+    assert sorted(pairs[0]["views"]) == ["left", "right"]
+    assert pairs[0]["lum_share_p50"] > 0.9
+    assert pairs[0]["co_witnessed_frac"] > 0.9
+
+    c = {"rgba": chroma, "weight": weights((28, 64)), "label": "right"}
+    blended = texturing.blend_projections(
+        [a, c], atlas_shape=shape, feather_texels=2.0)
+    assert blended["handoff_seams"]["pairs"][0]["lum_share_p50"] < 0.5
+
+
+# ---------------------------------------------------------------------------
 # synthesized-texel luminance floor (dark fill fragment sweep)
 # ---------------------------------------------------------------------------
 

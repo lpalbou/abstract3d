@@ -743,6 +743,27 @@ def test_cpu_atlas_rasterizer_interpolates_and_dilates() -> None:
     assert bool(coverage[20, 20]) or bool(coverage[16, 16])
 
 
+def test_t2i_prompt_closes_open_form_prone_subjects() -> None:
+    # Measured (sports-car mesh incident): the open-cockpit convertible the
+    # t2i stage drew is what the shape model mangles; a closed body is the
+    # same subject with strictly more generable geometry. The clause must
+    # sit right after the user's text (suffix-position hints measured
+    # ineffective, same as the texture color anchor's placement finding).
+    prompt = runtime._default_text_to_image_prompt("a red sports car")
+    assert prompt.startswith("a red sports car, a hardtop with a fully closed solid roof")
+
+
+def test_t2i_prompt_respects_explicit_open_form_request() -> None:
+    prompt = runtime._default_text_to_image_prompt("a red convertible sports car")
+    assert "hardtop" not in prompt
+
+
+def test_t2i_prompt_leaves_other_subjects_unchanged() -> None:
+    prompt = runtime._default_text_to_image_prompt("a carved wooden owl")
+    assert "hardtop" not in prompt
+    assert "studio product photo" in prompt
+
+
 def test_atlas_rasterizer_falls_back_to_cpu_when_gl_is_unavailable(monkeypatch) -> None:
     def _raise_gl(**kwargs):
         raise RuntimeError("cannot create standalone GL context")
