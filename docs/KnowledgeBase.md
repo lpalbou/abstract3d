@@ -6,6 +6,55 @@ section with an explanation.
 
 ## Critical insights
 
+### Subordination must survive the WHOLE chain; any one stage can re-admit synthesis below the floor
+
+Measured on the fresh-draw car (photo-sovereignty program, /tmp/gfix2 +
+/tmp/gfix3): a protection floor (linear ramp below 0.02), a
+proportional Poisson screening, a self-inclusive tone consensus and a
+symmetric revert veto EACH re-admitted generated content into photo
+territory below the floor — individually defensible stages, jointly a
++3.2 dE regression of the photo's own surface at the source pose (the
+gate then rightly refused, and the mottled baseline shipped).
+Sovereignty holds only when every stage ranks real evidence above
+synthetic consistency at ANY weight: absolute protection (generated
+weight zero wherever any real weight exists), a photo-anchor pin in
+the screened solve (generated-references bakes only), witness-RANKED
+revert gates, and photo authority on the sub-floor consensus band.
+The feared cost — losing the ramp's handoff blending — did not
+materialize: the isolated ramp-vs-absolute A/B on the owl pins
+measures absolute MORE photo-faithful (17.93 vs 18.23), boundary
+texels FEWER (ownership switches once, at the photo's coverage edge),
+informational seam better, coverage unchanged; the blend feather and
+the gradient-domain composite already carry the handoff. After the
+fix, two consecutive fresh car draws shipped WITH references
+(whole-bake ACCEPT at 0.35/0.53 hue, +0.7/+0.3 dE fidelity inside the
++2.0 slack) — the fresh-draw refusal class was composition math, not
+reference quality.
+
+### The slab signature is a geometric class, not a provenance; a by-design thin wide display disc collides
+
+The ground-slab cutter's three-way signature (plate >= 0.30 of
+footprint hull AND exposed lamina >= 0.25 within 5% H AND overhang
+>= 1.05) was calibrated so every legitimate fleet base/foot/leg is
+spared with margin (owl carved base 0.49/0.00, chair 0.002, face
+0.06/0.14). Adversarial probing (/tmp/gfix3/pedestal_probe.py) locates
+the ONE collision class: a subject standing on a DELIBERATE thin
+(top skin < 5% H), razor-flat display disc WIDER than the subject —
+geometrically indistinguishable from the hallucinated ground plate,
+and the cutter amputates it (the fail-closed >50%-of-area budget does
+not protect it: a wide disc under a figurine costs ~27%). Measured
+mitigations of record: (a) a REAL pedestal-class draw (chess knight on
+a display base, t23d) ships untouched with 11x margin — Hunyuan draws
+display bases as solid rounded discs, so the co-planar plate band
+captures only ~3% of the footprint; the collision needs a razor-flat
+thin wide plate that current draws of legitimate pedestals do not
+produce; (b) every cut is recorded in metadata `ground_slab` (and the
+postprocess `applied` list), so an amputation is auditable, never
+silent. If the class ever ships in practice, the candidate lever is a
+conditioning-image test (does the INPUT show a base?), not threshold
+softening — the thresholds separate the fleet by 1.9x-4x and the real
+defect must keep firing.
+
 ### A guard that can REJECT on decisive evidence must be able to ACT on it (pose-guard dead zone)
 
 The pose guard's shape-decisive override vetoes an NCC commit on

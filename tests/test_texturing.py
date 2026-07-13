@@ -1672,8 +1672,9 @@ def test_equalize_projection_tone_local_field_regional_deviation() -> None:
 
 def test_equalize_projection_tone_fails_closed_on_content_confound() -> None:
     """Overlap disagreement that is CONTENT (random, not tone) must not
-    ship a correction: any applied row must have measurably improved its
-    witness class, otherwise the view is bit-identical."""
+    ship a correction: under the witness-RANKED gate, any applied row must
+    have left the real-photo class no worse AND measurably improved one
+    class; otherwise the view is bit-identical."""
     base, positions, view = _tone_case_views()
     rng = np.random.default_rng(3)
     src = view(base, (0, 40), "front", generated=False)
@@ -1692,7 +1693,8 @@ def test_equalize_projection_tone_fails_closed_on_content_confound() -> None:
             before = row["disagreement_before"]
             after = row["disagreement_after"]
             assert any(after[k] < before[k] - 0.002 for k in before)
-            assert all(after[k] <= before[k] + 0.002 for k in before)
+            if "real" in before:
+                assert after["real"] <= before["real"] + 0.002
     else:
         assert np.array_equal(gen_before, np.asarray(projections[1]["rgba"]))
 
@@ -1784,6 +1786,245 @@ def test_blend_projections_handoff_ledger_attributes_pairs() -> None:
     blended = texturing.blend_projections(
         [a, c], atlas_shape=shape, feather_texels=2.0)
     assert blended["handoff_seams"]["pairs"][0]["lum_share_p50"] < 0.5
+
+
+# ---------------------------------------------------------------------------
+# photo sovereignty for generated references (fresh-draw car decomposition,
+# /tmp/gfix2: the composition math itself regressed source-pose fidelity)
+# ---------------------------------------------------------------------------
+
+def test_protect_observed_texels_absolute_mode_zeroes_under_any_evidence() -> None:
+    """Absolute mode: generated weight is zero wherever ANY real view holds
+    positive weight — including the sub-floor grazing band the ramp used to
+    hand to synthesis at up to 30x the photo's weight (measured 39 dE mean
+    contamination over that band on the fresh-draw car)."""
+    real_weight = np.array([[0.8, 0.25], [0.005, 0.0]], np.float32)
+    generated_weight = np.full((2, 2), 0.6, np.float32)
+    real = {"label": "source", "weight": real_weight.copy()}
+    generated = {"label": "back", "generated": True,
+                 "weight": generated_weight.copy()}
+
+    stats = texturing.protect_observed_texels(
+        [real, generated], mode="absolute")
+
+    out = np.asarray(generated["weight"], np.float32)
+    assert out[0, 0] == 0.0                # strong real evidence
+    assert out[0, 1] == 0.0                # credible real evidence
+    assert out[1, 0] == 0.0                # SUB-FLOOR real evidence: still zero
+    assert out[1, 1] == pytest.approx(0.6)  # no real evidence: intact
+    assert np.array_equal(np.asarray(real["weight"]), real_weight)
+    assert stats["mode"] == "absolute"
+    assert stats["protected_texels"] == 3
+    assert stats["zeroed_by_view"]["back"] == 3
+    # fail-closed structure unchanged: no generated views -> no-op
+    assert texturing.protect_observed_texels(
+        [real], mode="absolute")["applied"] is False
+    # the historical ramp stays the default for direct callers
+    ramped = {"label": "back", "generated": True,
+              "weight": generated_weight.copy()}
+    texturing.protect_observed_texels(
+        [{"label": "source", "weight": real_weight.copy()}, ramped])
+    assert 0.0 < np.asarray(ramped["weight"])[1, 0] < 0.6
+
+
+def test_equalize_projection_tone_ranked_gate_prefers_photo_agreement() -> None:
+    """Witness-RANKED gate: a correction that improves agreement with the
+    REAL photo ships even when generated-mutual agreement pays for it.
+
+    Fixture: two generated views mistoned x1.4 but mutually CONSISTENT.
+    Correcting the first toward the photo transiently breaks the
+    generated-mutual agreement (the second is still mistoned when the
+    first is judged) — the retired symmetric gate vetoed exactly this
+    (measured on the fresh-draw car: the side view's photo-conforming
+    field reverted because generated-mutual moved 0.188 -> 0.204, and
+    source-pose fidelity paid the tone error)."""
+    base, positions, view = _tone_case_views()
+    src = view(base, (0, 40), "front", generated=False)
+    gen_a = view(base * 1.4, (20, 70), "gen_a", generated=True)
+    gen_b = view(base * 1.4, (60, 96), "gen_b", generated=True)
+    projections = [src, gen_a, gen_b]
+
+    stats = texturing.equalize_projection_tone(
+        projections, positions_texture=positions, source_index=0)
+
+    rows = {row["label"]: row for row in stats["views"] if "gain_log" in row}
+    assert rows["gen_a"]["applied"], (
+        "photo-conforming correction must not be held hostage by "
+        "generated-mutual consistency")
+    assert rows["gen_a"]["disagreement_after"]["real"] < \
+        rows["gen_a"]["disagreement_before"]["real"] - 0.002
+    # the second view then conforms through the (now corrected) chain
+    assert rows["gen_b"]["applied"]
+    a_rgb = np.asarray(projections[1]["rgba"])[:, :, :3]
+    b_rgb = np.asarray(projections[2]["rgba"])[:, :, :3]
+    assert abs(float(a_rgb[:, 30:60].mean()) - float(base[:, 30:60].mean())) < 0.02
+    # near its evidence (the gen_a overlap); deep-exclusive territory
+    # legitimately keeps its own level (the fade contract)
+    assert abs(float(b_rgb[:, 62:74].mean()) - float(base[:, 62:74].mean())) < 0.03
+    # ranked does NOT mean unranked in reverse: a correction that would
+    # WORSEN the real class must still revert (fail closed) — pin by
+    # asserting every applied row left the real class no worse.
+    for row in stats["views"]:
+        if row.get("applied") and "real" in (
+                row.get("disagreement_before") or {}):
+            assert row["disagreement_after"]["real"] <= \
+                row["disagreement_before"]["real"] + 0.002
+
+
+def test_equalize_projection_tone_photo_authority_on_subfloor_witness_band() -> None:
+    """Stage 2's consensus is the photo's reading on the WHOLE
+    real-witnessed band, including texels whose photo weight sits under
+    the pair fit floor: grazing photo samples are smeared in detail but
+    valid in regional tone (before the fix, the reference's own
+    self-weight dominated the consensus there and the field pulled it
+    AWAY from the photo on exactly the surface it was about to own)."""
+    base, positions, view = _tone_case_views(shape=(128, 128))
+    src = view(base, (0, 50), "front", generated=False)
+    # photo weight: credible on [0, 25), grazing sub-floor on [25, 50)
+    src["weight"][:, 25:50] = 0.01
+    # regional (zero-median) mistoning so the scalar stage cannot fix it
+    warped = base.copy()
+    warped[:64, 20:] *= 1.4
+    warped[64:, 20:] /= 1.4
+    gen = view(warped, (20, 128), "gen", generated=True)
+    projections = [src, gen]
+    gen_before = np.asarray(projections[1]["rgba"])[:, :, :3].copy()
+
+    stats = texturing.equalize_projection_tone(
+        projections, positions_texture=positions, source_index=0)
+
+    field_rows = [row for row in stats["views"]
+                  if row.get("stage") == "local_field"]
+    assert len(field_rows) == 1 and field_rows[0]["applied"]
+    gen_after = np.asarray(projections[1]["rgba"])[:, :, :3]
+    subfloor_band = slice(30, 46)
+    before_err = float(
+        np.abs(gen_before[:, subfloor_band] - base[:, subfloor_band]).mean())
+    after_err = float(
+        np.abs(gen_after[:, subfloor_band] - base[:, subfloor_band]).mean())
+    assert after_err < 0.6 * before_err, (
+        "the sub-floor witnessed band must be reconciled toward the photo")
+
+
+def test_bake_generated_tone_offset_reference_zero_delta_on_witnessed() -> None:
+    """END-TO-END sovereignty: adding a deliberately tone-offset GENERATED
+    reference must contribute (essentially) ZERO delta on photo-witnessed
+    texels — the surface the source pose renders. Pins the three coupled
+    mechanisms measured on the fresh-draw car (/tmp/gfix2): absolute
+    protection (no sub-floor blend replacement), the screened-Poisson
+    photo-anchor pin (no tone diffusion across the ownership boundary:
+    the pure-photo channel measured 14.1 dE mean from the solve alone),
+    and the photo-anchored tone consensus."""
+    import trimesh
+
+    mesh = trimesh.creation.icosphere(subdivisions=3, radius=0.5)
+    size = 256
+
+    def analytic_photo(azimuth, tone_scale):
+        """Exact hole-free orthographic photo of the sphere: for a camera
+        at elevation 0, the projector's cam-y axis IS world z, so shading
+        by world height is a closed-form function of the pixel (a
+        splatted photo leaves aliasing pinholes that bake as isolated
+        interior fill specks and confound the sovereignty assertion).
+        The shading range is deliberately SHALLOW (0.54-0.90): a strongly
+        dark bottom reads as a dark-material mass to the film-band
+        machinery, whose gradient repaint then legitimately writes
+        photo-derived content — a different mechanism than the one under
+        test."""
+        half_extent = texturing.canonical_ortho_half_extent(
+            mesh, azimuth_deg=azimuth, elevation_deg=0.0, border_ratio=0.15)
+        scale = 0.5 * size / half_extent
+        ys, xs = np.mgrid[0:size, 0:size].astype(np.float32)
+        x_cam = (xs - size / 2.0 + 0.5) / scale
+        y_cam = (size / 2.0 - ys - 0.5) / scale
+        inside = x_cam**2 + y_cam**2 <= (0.5 * 0.995) ** 2
+        shade = np.clip(0.72 + 0.18 * y_cam / 0.5, 0.0, 1.0)
+        photo = np.zeros((size, size, 4), dtype=np.uint8)
+        for channel, level in enumerate((200.0, 70.0, 60.0)):
+            photo[:, :, channel] = np.where(
+                inside,
+                np.clip(level * shade * tone_scale, 0, 255), 0
+            ).astype(np.uint8)
+        photo[:, :, 3] = np.where(inside, 255, 0).astype(np.uint8)
+        return Image.fromarray(photo, mode="RGBA")
+
+    source_view = {
+        "rgba": analytic_photo(0.0, 1.0), "azimuth_deg": 0.0,
+        "elevation_deg": 0.0, "label": "front", "role": "source"}
+    # the reference reads the shared surface 35% brighter: a deliberate
+    # tone offset that MUST stay on the reference's side of the boundary
+    reference_view = {
+        "rgba": analytic_photo(100.0, 1.35), "azimuth_deg": 100.0,
+        "elevation_deg": 0.0, "label": "gen_side", "role": "reference",
+        "generated": True}
+
+    bake_kwargs = dict(
+        texture_resolution=size,
+        texture_completion="none",
+        projection_model="orthographic",
+        source_pose_override=(0.0, 0.0),
+        fill_detail_gain=0.0,
+    )
+    # Record each bake's own fill set (the floor stage receives it as
+    # `synthesized_mask`): chart-edge texels the photo never painted are
+    # FILL in both bakes, and fill tone legitimately differs when the
+    # observed set changes — the sovereignty contract covers only texels
+    # the photo actually painted.
+    fill_masks = []
+    real_floor = texturing.enforce_fill_luminance_floor
+
+    def recording_floor(colors, **kw):
+        fill_masks.append(np.array(kw["synthesized_mask"], copy=True))
+        return real_floor(colors, **kw)
+
+    texturing.enforce_fill_luminance_floor = recording_floor
+    try:
+        _, baseline_stats = texturing.bake_projection_texture(
+            mesh, observed_views=[dict(source_view)], **bake_kwargs)
+        _, candidate_stats = texturing.bake_projection_texture(
+            mesh, observed_views=[dict(source_view), dict(reference_view)],
+            **bake_kwargs)
+    finally:
+        texturing.enforce_fill_luminance_floor = real_floor
+
+    baseline = np.asarray(
+        baseline_stats["texture_image"].convert("RGB"), np.float32)[::-1]
+    candidate = np.asarray(
+        candidate_stats["texture_image"].convert("RGB"), np.float32)[::-1]
+
+    # witnessed interior: the sphere is convex, so facing IS visibility;
+    # stand clear of the coverage-edge feather band (facing 0.35 ~ 10+
+    # texels inside the 0.2 cutoff at this resolution).
+    from abstract3d.backends.triposr_runtime import (
+        _tripo_camera_position, _tripo_make_texture_atlas,
+        _tripo_rasterize_normal_atlas, _tripo_rasterize_position_atlas,
+        _tripo_texture_padding)
+
+    atlas = _tripo_make_texture_atlas(
+        mesh, texture_resolution=size,
+        texture_padding=_tripo_texture_padding(size))
+    raster_kwargs = dict(
+        atlas_vmapping=atlas["vmapping"], atlas_indices=atlas["indices"],
+        atlas_uvs=atlas["uvs"], texture_resolution=size, texture_padding=0)
+    positions = np.asarray(_tripo_rasterize_position_atlas(
+        mesh, **raster_kwargs))
+    normals = np.asarray(_tripo_rasterize_normal_atlas(
+        mesh, **raster_kwargs))[:, :, :3]
+    surface = positions[:, :, 3] > 0
+    unit = normals / np.maximum(
+        np.linalg.norm(normals, axis=2, keepdims=True), 1e-8)
+    eye = _tripo_camera_position(
+        azimuth_deg=0.0, elevation_deg=0.0, camera_distance=3.0)
+    facing = unit @ (eye / np.linalg.norm(eye)).astype(np.float32)
+    witnessed_interior = (
+        surface & (facing > 0.35) & ~fill_masks[0] & ~fill_masks[1])
+    assert int(witnessed_interior.sum()) > 2000
+
+    delta = np.abs(candidate - baseline)[witnessed_interior]
+    assert float(np.percentile(delta, 99)) <= 2.0, (
+        "adding a tone-offset generated reference changed photo-witnessed "
+        f"interior texels (p99 {np.percentile(delta, 99):.2f}/255)")
+    assert float(delta.mean()) <= 0.5
 
 
 # ---------------------------------------------------------------------------

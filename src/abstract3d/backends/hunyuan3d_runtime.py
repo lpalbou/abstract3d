@@ -578,6 +578,220 @@ def _resolve_generation_defaults(owner: Any, *, device: str) -> Dict[str, Any]:
     }
 
 
+# Ground-slab signature thresholds, measured on the 2026-07 fleet (slab car
+# /tmp/fix3/car_final vs controls: slab-free car v7, owl on a legitimate
+# carved base, chair legs, starship fins, face bust). The upstream defect
+# (Hunyuan3D-2.1 issue #48) fuses a hallucinated ground plate under vehicle
+# subjects; the plate is draw-dependent. Three independent conditions are
+# ANDed — each alone is insufficient (the owl's carved base covers 49% of
+# the footprint; a plate gate alone would amputate it):
+#
+#   plate:    bottom-anchored, near-planar down-facing skin whose area is a
+#             large fraction of the whole-mesh footprint hull.
+#             Measured: slab 0.97 vs owl 0.49, all others <= 0.04.
+#   lamina:   an up-facing top skin within 5% of mesh height directly above
+#             the plate (laterally inside the plate's own hull): the
+#             plate is a THIN exposed sheet, not the underside of a solid
+#             base. Measured: slab 0.61 (top skin ~2% H above the bottom)
+#             vs 0.00 on owl/chair/starship/v7 (the owl base's carved top
+#             sits at 10-11% H) and 0.06 on the face bust.
+#   overhang: the plate's lateral hull extends beyond the convex footprint
+#             of everything above it — ground extends past the subject.
+#             Measured: slab 1.30 vs all controls <= 0.65 (a legitimate
+#             base/legs always sit inside the subject's footprint).
+_SLAB_NORMAL_COS_MIN = 0.9  # |n.up| for down/up skins (cone of ~25.8 deg)
+_SLAB_BOTTOM_BAND_FRAC = 0.05  # plate search band above the mesh bottom
+_SLAB_PLANE_BAND_FRAC = 0.01  # co-planarity band around the plate height
+_SLAB_LAMINA_BAND_FRAC = 0.05  # paired top skin must sit within this above the plate
+_SLAB_PLATE_FOOTPRINT_MIN = 0.30  # slab 0.97; strongest control (owl) 0.49
+_SLAB_LAMINA_MIN = 0.25  # slab 0.61; strongest control (face) 0.06
+_SLAB_OVERHANG_MIN = 1.05  # slab 1.30; strongest control (chair) 0.65
+# Fail-closed cut budget: the subject must remain the majority of its own
+# surface. The measured real slab cut removes 38% of the car's area (the
+# plate is two full-footprint skins plus rim); anything beyond half the
+# surface means "plate under a subject" is the wrong reading of the mesh,
+# so detection is reported but the cut is refused.
+_SLAB_MAX_CUT_AREA_FRAC = 0.50
+
+
+def _lateral_hull_area(points_2d: Any) -> float:
+    """Convex-hull area of 2D points; 0.0 for degenerate inputs."""
+    import numpy as np
+
+    points_2d = np.asarray(points_2d, dtype=np.float64)
+    if len(points_2d) < 3:
+        return 0.0
+    try:
+        from scipy.spatial import ConvexHull
+
+        # For 2D inputs qhull's "volume" is the polygon area.
+        return float(ConvexHull(points_2d).volume)
+    except Exception:
+        return 0.0
+
+
+def _hunyuan_cut_ground_slab(
+    mesh: Any,
+    *,
+    up_axis: tuple[float, float, float] = (0.0, 1.0, 0.0),
+) -> tuple[Any, Optional[Dict[str, Any]]]:
+    """Detect and remove an extraneous ground plate fused under the subject.
+
+    Runs in the frame the caller specifies via `up_axis` (the Hunyuan native
+    output is Y-up, hence the default). Detection is the three-way measured
+    signature documented above; removal is a planar cut just above the
+    slab's top skin. The cut leaves an open rim (the pipeline tolerates
+    non-watertight meshes: the bake projects onto visible surface, quadric
+    decimation runs with preserveboundary, and `topology.is_watertight` is
+    recorded, not gated). Returns `(mesh, report)`; `report` is None when no
+    slab is detected, otherwise carries the measurements and the action
+    ("removed", or "refused" when the fail-closed budget blocks the cut).
+    """
+    import numpy as np
+
+    up = np.asarray(up_axis, dtype=np.float64)
+    up = up / np.linalg.norm(up)
+    vertices = np.asarray(mesh.vertices, dtype=np.float64)
+    faces = np.asarray(mesh.faces)
+    if len(faces) == 0 or len(vertices) == 0:
+        return mesh, None
+    face_normals = np.asarray(mesh.face_normals, dtype=np.float64)
+    face_areas = np.asarray(mesh.area_faces, dtype=np.float64)
+    heights = vertices @ up
+    bottom = float(heights.min())
+    height = float(heights.max()) - bottom
+    if height <= 0.0:
+        return mesh, None
+    face_heights = vertices[faces].mean(axis=1) @ up
+    total_area = float(face_areas.sum())
+    if total_area <= 0.0:
+        return mesh, None
+
+    # Lateral frame: the two world axes most orthogonal to up (exact for
+    # the axis-aligned frames this backend works in).
+    lateral_axes = [axis for axis in np.eye(3) if abs(float(axis @ up)) < 0.5][:2]
+    lateral = np.column_stack([vertices @ lateral_axes[0], vertices @ lateral_axes[1]])
+    face_lateral = np.column_stack(
+        [vertices[faces].mean(axis=1) @ lateral_axes[0], vertices[faces].mean(axis=1) @ lateral_axes[1]]
+    )
+    footprint_hull = _lateral_hull_area(lateral)
+    if footprint_hull <= 0.0:
+        return mesh, None
+
+    normal_dot_up = face_normals @ up
+    down_band = (normal_dot_up <= -_SLAB_NORMAL_COS_MIN) & (
+        face_heights < bottom + _SLAB_BOTTOM_BAND_FRAC * height
+    )
+    if int(down_band.sum()) < 3:
+        return mesh, None
+    # Plate height = area-weighted median of the down band: robust against
+    # feet/wheel contact skins sharing the band with the plate.
+    order = np.argsort(face_heights[down_band])
+    cumulative = np.cumsum(face_areas[down_band][order]) / float(face_areas[down_band].sum())
+    plate_height = float(face_heights[down_band][order][np.searchsorted(cumulative, 0.5)])
+    plate = down_band & (np.abs(face_heights - plate_height) < _SLAB_PLANE_BAND_FRAC * height)
+    plate_area = float(face_areas[plate].sum())
+    plate_footprint_frac = plate_area / footprint_hull
+    if plate_footprint_frac < _SLAB_PLATE_FOOTPRINT_MIN:
+        return mesh, None
+
+    # Paired thin top skin: up-facing area within the lamina band above the
+    # plate, laterally restricted to the plate's own 2D convex hull (a
+    # subject's horizontal surfaces elsewhere must not count as slab top).
+    # The hull test is tessellation-independent — an occupancy-grid variant
+    # sampled at face centroids was measured to under-pair coarsely
+    # decimated plates whose triangles span many grid cells.
+    plate_vertex_ids = np.unique(faces[plate].ravel())
+    plate_xy = lateral[plate_vertex_ids]
+    top_band = (
+        (normal_dot_up >= _SLAB_NORMAL_COS_MIN)
+        & (face_heights > plate_height)
+        & (face_heights <= plate_height + _SLAB_LAMINA_BAND_FRAC * height)
+    )
+    top_idx = np.flatnonzero(top_band)
+    if len(top_idx) and len(plate_xy) >= 3:
+        try:
+            from scipy.spatial import ConvexHull
+
+            hull = ConvexHull(plate_xy)
+            # Signed distances to the hull's facet lines (normals are unit
+            # length); a small scale-free margin absorbs plate-rim jitter.
+            margin = 0.02 * float(np.linalg.norm(plate_xy.max(axis=0) - plate_xy.min(axis=0)))
+            homogeneous = np.column_stack([face_lateral[top_idx], np.ones(len(top_idx))])
+            inside = (homogeneous @ hull.equations.T <= margin).all(axis=1)
+            top_idx = top_idx[inside]
+        except Exception:
+            top_idx = top_idx[:0]
+    top_area = float(face_areas[top_idx].sum()) if len(top_idx) else 0.0
+    lamina_ratio = top_area / plate_area if plate_area > 0 else 0.0
+
+    # Overhang: plate hull vs the convex footprint of everything above the
+    # lamina band. An empty "above" region degenerates to infinite overhang
+    # and is then caught by the fail-closed cut budget.
+    plate_hull = _lateral_hull_area(plate_xy)
+    above = heights > plate_height + _SLAB_LAMINA_BAND_FRAC * height
+    subject_hull = _lateral_hull_area(lateral[above]) if int(above.sum()) >= 3 else 0.0
+    overhang_ratio = plate_hull / subject_hull if subject_hull > 0 else float("inf")
+
+    detected = lamina_ratio >= _SLAB_LAMINA_MIN and overhang_ratio >= _SLAB_OVERHANG_MIN
+    if not detected:
+        return mesh, None
+
+    # Slab top level = area-weighted median of the paired top skin; the cut
+    # clears it by a quarter of the slab thickness (floor: 0.5% of height)
+    # so the top skin's own roughness cannot leave rim shards, while the
+    # subject loses at most that sliver at its ground contacts.
+    top_order = np.argsort(face_heights[top_idx])
+    top_cumulative = np.cumsum(face_areas[top_idx][top_order]) / float(face_areas[top_idx].sum())
+    slab_top = float(face_heights[top_idx][top_order][np.searchsorted(top_cumulative, 0.5)])
+    slab_thickness = max(slab_top - plate_height, 0.0)
+    cut_height = slab_top + max(0.005 * height, 0.25 * slab_thickness)
+    cut_faces = face_heights < cut_height
+    cut_area_frac = float(face_areas[cut_faces].sum() / total_area)
+
+    report: Dict[str, Any] = {
+        "plate_footprint_frac": round(plate_footprint_frac, 4),
+        "lamina_ratio": round(lamina_ratio, 4),
+        "overhang_ratio": round(overhang_ratio, 4) if np.isfinite(overhang_ratio) else None,
+        "plate_area": round(plate_area, 6),
+        "plate_height_rel": round((plate_height - bottom) / height, 4),
+        "slab_thickness_rel": round(slab_thickness / height, 4),
+        "cut_height_rel": round((cut_height - bottom) / height, 4),
+        "cut_area_frac": round(cut_area_frac, 4),
+        "faces_before": int(len(faces)),
+    }
+    if cut_area_frac > _SLAB_MAX_CUT_AREA_FRAC:
+        report["action"] = "refused"
+        report["refusal_reason"] = (
+            f"cut would remove {cut_area_frac:.1%} of the surface "
+            f"(budget {_SLAB_MAX_CUT_AREA_FRAC:.0%}): the subject must remain "
+            "the majority of its own mesh"
+        )
+        return mesh, report
+
+    processed = mesh.copy()
+    processed.update_faces(~cut_faces)
+    processed.remove_unreferenced_vertices()
+    # The cut can strand slab shards (rim pieces bridged only through
+    # removed faces). Sweep with the same 0.5%-of-total floater rule the
+    # earlier cleanup uses, so genuine detached parts keep their guarantee.
+    import trimesh
+
+    components = list(processed.split(only_watertight=False))
+    if len(components) > 1:
+        total_faces = max(1, int(sum(len(item.faces) for item in components)))
+        threshold = max(64, int(round(total_faces * 0.005)))
+        kept = [item for item in components if len(item.faces) >= threshold]
+        if not kept:
+            kept = [max(components, key=lambda item: len(item.faces))]
+        if len(kept) != len(components):
+            report["orphans_dropped"] = len(components) - len(kept)
+        processed = kept[0].copy() if len(kept) == 1 else trimesh.util.concatenate(kept)
+    report["action"] = "removed"
+    report["faces_after"] = int(len(processed.faces))
+    return processed, report
+
+
 def _hunyuan_postprocess_mesh(
     mesh: Any,
     *,
@@ -623,6 +837,35 @@ def _hunyuan_postprocess_mesh(
             applied.append("remove_degenerate_faces")
         except Exception as exc:
             warnings.append(f"Hunyuan3D degenerate-face removal skipped: {type(exc).__name__}: {exc}")
+
+        # Ground-slab removal runs BEFORE decimation (the face budget must
+        # go to the subject, not the plate) and in the Hunyuan native frame
+        # (Y-up; canonicalization happens after this postprocess). A
+        # detected-but-refused cut is surfaced as a warning here and
+        # demoted to a degraded verdict by the caller (fail-closed).
+        ground_slab_report: Optional[Dict[str, Any]] = None
+        try:
+            processed, ground_slab_report = _hunyuan_cut_ground_slab(processed, up_axis=(0.0, 1.0, 0.0))
+            if ground_slab_report is not None:
+                measurements = (
+                    f"plate={ground_slab_report['plate_footprint_frac']},"
+                    f"lamina={ground_slab_report['lamina_ratio']},"
+                    f"overhang={ground_slab_report['overhang_ratio']},"
+                    f"cut_area_frac={ground_slab_report['cut_area_frac']}"
+                )
+                if ground_slab_report.get("action") == "removed":
+                    applied.append(
+                        "ground_slab_removed:"
+                        f"{ground_slab_report['faces_before']}->{ground_slab_report['faces_after']}"
+                        f"@{measurements}"
+                    )
+                else:
+                    warnings.append(
+                        "Hunyuan3D ground slab detected but not cut "
+                        f"({ground_slab_report.get('refusal_reason')}); measurements: {measurements}"
+                    )
+        except Exception as exc:
+            warnings.append(f"Hunyuan3D ground-slab check skipped: {type(exc).__name__}: {exc}")
 
         if int(max_facenum) > 0 and len(processed.faces) > int(max_facenum):
             try:
@@ -676,6 +919,15 @@ def _hunyuan_postprocess_mesh(
 
         if hasattr(processed, "remove_unreferenced_vertices"):
             processed.remove_unreferenced_vertices()
+        if ground_slab_report is not None:
+            # Carried on the trimesh metadata dict (survives copy and
+            # transform) so the caller can lift the measurements into the
+            # run metadata; the caller pops it before any export so glTF
+            # extras never grow a private field.
+            try:
+                processed.metadata["abstract3d_ground_slab"] = ground_slab_report
+            except Exception:
+                pass
         return processed, applied, warnings
     except Exception as exc:
         warnings.append(f"Hunyuan3D postprocess skipped: {type(exc).__name__}: {exc}")
@@ -1280,6 +1532,14 @@ class Hunyuan3DShapeBackend:
         if canonicalize:
             mesh, axis_applied = _hunyuan_canonicalize_axes(mesh)
         mesh_s = round(time.perf_counter() - mesh_started, 4)
+        # Ground-slab measurements travel on the trimesh metadata dict; pop
+        # them here so no export path serializes a private field into glTF
+        # extras, then surface them in the run metadata below.
+        ground_slab_report: Optional[Dict[str, Any]] = None
+        try:
+            ground_slab_report = mesh.metadata.pop("abstract3d_ground_slab", None)
+        except Exception:
+            ground_slab_report = None
 
         keep_resident = _owner_cfg_bool(self._owner, "scene3d_hunyuan_keep_resident", False)
         if not keep_resident and resolved_device == "mps":
@@ -1538,6 +1798,20 @@ class Hunyuan3DShapeBackend:
                 quality_verdict.setdefault("reasons", []).append(reason)
             postprocess_warnings.append(reason)
 
+        # Fail-closed ground-slab contract: a detected slab that the cut
+        # budget refused to remove ships with the defect still fused to the
+        # mesh — that must be visible in one machine-readable field, not
+        # only in the warning stream. A cleanly cut slab demotes nothing.
+        if ground_slab_report is not None and ground_slab_report.get("action") == "refused":
+            slab_reason = (
+                "ground slab detected but not removed: "
+                f"{ground_slab_report.get('refusal_reason')}"
+            )
+            if quality_verdict.get("verdict") == "healthy":
+                quality_verdict = {"verdict": "degraded", "reasons": [slab_reason]}
+            else:
+                quality_verdict.setdefault("reasons", []).append(slab_reason)
+
         glb_bytes = _mesh_export_bytes(export_mesh, file_type="glb")
         if texture_requested:
             obj_bytes, obj_texture_sidecars = _tripo_export_obj_with_textures(export_mesh)
@@ -1598,6 +1872,7 @@ class Hunyuan3DShapeBackend:
             # callers need one field to check (the CLI exits 3 on it).
             "quality_verdict": quality_verdict,
             "export_axis_canonicalization": axis_applied,
+            "ground_slab": ground_slab_report,
             "topology": mesh_topology,
             "topology_raw": topology_raw,
             "timings_s": {

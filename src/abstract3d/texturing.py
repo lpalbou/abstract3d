@@ -4359,8 +4359,16 @@ def delight_projections(
       diagonal) / fade_density_full, 0, 1), computed with the same voxel
       ball statistics as the fill floor;
     - revert-on-confound: the correction is kept per reference only when it
-      REDUCES that reference's overlap disagreement against the source by
-      more than `improvement_margin`; otherwise the view reverts unchanged.
+      REDUCES that reference's overlap disagreement against its fitted
+      partners by more than `improvement_margin`; otherwise the view
+      reverts unchanged. For GENERATED views the partners are witness-
+      RANKED (real photos outrank generated-mutual, the same rule as
+      `equalize_projection_tone`): a relight that worsens real-photo
+      agreement never ships, one that improves it ships even at
+      generated-mutual cost — measured on the fresh-draw car, the
+      unranked aggregate let a side reference relight toward two other
+      generated views' invented lighting with zero real overlap in its
+      gate mass, and source-pose fidelity paid for it.
 
     Mutates projection rgba in place (weights untouched) and returns stats
     (per-view disagreement before/after, field amplitude, applied flags).
@@ -4516,9 +4524,11 @@ def delight_projections(
         correction = np.exp(-field).astype(np.float32)
         corrected = np.clip(rgbs[view] * correction[:, :, None], 0.0, 1.0)
         # Revert gate over ALL fitted partners, weighted like the fit.
-        before_num = 0.0
-        after_num = 0.0
-        den = 0.0
+        # Partners are CLASSED (real photos vs generated views) so that
+        # generated views get the witness-RANKED rule below; real
+        # reference views keep the aggregate (real photos reconciling
+        # among themselves have no subordinate class).
+        class_sums = {"real": [0.0, 0.0, 0.0], "generated": [0.0, 0.0, 0.0]}
         for other in range(view_count):
             if other == view:
                 continue
@@ -4529,13 +4539,18 @@ def delight_projections(
                 continue
             pair_weight = float(np.minimum(
                 weights[other][pair_overlap], weights[view][pair_overlap]).sum())
-            before_num += pair_weight * float(
+            klass = (
+                "generated" if projections[other].get("generated") else "real")
+            class_sums[klass][0] += pair_weight * float(
                 np.abs(rgbs[view][pair_overlap] - rgbs[other][pair_overlap]).mean())
-            after_num += pair_weight * float(
+            class_sums[klass][1] += pair_weight * float(
                 np.abs(corrected[pair_overlap] - rgbs[other][pair_overlap]).mean())
-            den += pair_weight
-        before = before_num / max(den, 1e-9)
-        after = after_num / max(den, 1e-9)
+            class_sums[klass][2] += pair_weight
+        den = class_sums["real"][2] + class_sums["generated"][2]
+        before = (
+            class_sums["real"][0] + class_sums["generated"][0]) / max(den, 1e-9)
+        after = (
+            class_sums["real"][1] + class_sums["generated"][1]) / max(den, 1e-9)
         overlap = fit_overlap
         exclusive = (weights[view] > weight_floor) & ~overlap
         row.update(
@@ -4549,7 +4564,34 @@ def delight_projections(
                 4,
             ),
         )
-        if after < before - float(improvement_margin):
+        if projections[view].get("generated"):
+            # Witness-RANKED accept for synthesized views (same rule as
+            # `equalize_projection_tone`): a relight that measurably
+            # worsens agreement with real photos never ships; one that
+            # measurably improves it ships even when generated-mutual
+            # agreement pays for it; real-absent falls back to the
+            # aggregate. Measured need (fresh-draw car, /tmp/gfix2): the
+            # aggregate let a side reference relight toward two OTHER
+            # generated views' invented lighting (zero real overlap in
+            # its gate mass) and the composite carried that light onto
+            # surface visible at the source pose.
+            margin = float(improvement_margin)
+            accept = after < before - margin
+            real_mass = class_sums["real"][2]
+            if real_mass > 0.0:
+                real_before = class_sums["real"][0] / real_mass
+                real_after = class_sums["real"][1] / real_mass
+                row.update(
+                    real_disagreement_before=round(real_before, 4),
+                    real_disagreement_after=round(real_after, 4),
+                )
+                if real_after > real_before + margin:
+                    accept = False
+                elif real_after < real_before - margin:
+                    accept = True
+        else:
+            accept = after < before - float(improvement_margin)
+        if accept:
             covered = weights[view] > 0.0
             # scarce witness candidates must carry the same relight as
             # the view's strict claims (they are the same photo a few
@@ -4632,11 +4674,14 @@ def equalize_projection_tone(
     - overlap-proximity fade over the 3D surface: full correction near the
       overlap surface where handoffs form, zero deep inside a view's
       exclusive territory (same voxel-ball construction and constants).
-    - fail-closed, witness-ranked revert gate: a correction ships only
-      when it measurably improves agreement (by `improvement_margin`) on
-      one evidence class WITHOUT measurably worsening the other, where
-      the classes are pairs against REAL photos vs pairs against other
-      generated views. Judging one aggregate instead structurally
+    - fail-closed, witness-RANKED revert gate: a correction that
+      measurably worsens agreement with REAL photos (by
+      `improvement_margin`) never ships; one that measurably improves it
+      ships even when generated-mutual agreement pays for it; only when
+      the real class is absent or stable does generated-mutual
+      improvement decide (see `witness_ranked_accept` — photos are
+      evidence and define tone, mutual consistency among synthesized
+      views is subordinate). Judging one aggregate instead structurally
       silences the photo: its rim overlap carries ~1% of a big view's
       pair mass BY CONSTRUCTION (facing demotions), so a correction that
       conforms a generated view to the photo where they meet — the exact
@@ -4653,17 +4698,23 @@ def equalize_projection_tone(
     views paint different regional shading (a roof bright in the elevated
     view, dark in the side view), which is exactly the structure the SH
     normal fit models and had to revert on the rim-dominated side
-    overlaps. Stage 2 reconciles it in POSITION space, where the evidence
+    overlaps.     Stage 2 reconciles it in POSITION space, where the evidence
     lives: per generated view, the per-texel log-luminance deviation from
     the projection-weight-averaged consensus of the texel's witnesses,
     weighted with the DOWNSTREAM composition semantics — wherever a real
-    photo holds a protected claim (weight >= `protect_floor`, the same
-    floor `protect_observed_texels` enforces later), the consensus IS the
-    photo's reading (generated weights are zeroed there exactly as
-    protection will zero them); elsewhere it is the mixture the low band
+    photo holds ANY positive claim, the consensus IS the photo's reading
+    with full authority (generated weights are zeroed there exactly as
+    `protect_observed_texels`' absolute mode will zero them, the view's
+    own reading excluded); elsewhere it is the mixture the low band
     will blend, the view's own reading included (self-inclusion makes
     the deviation a shrinkage toward the shipped tone rather than full
-    conformance to partners). The deviation is smoothed over the surface
+    conformance to partners). The real-witnessed band enters the
+    evidence even below the pair fit floor: grazing photo samples are
+    smeared in detail but valid in REGIONAL tone, which is all this
+    stage consumes (measured on the fresh-draw car: weighting the photo
+    by its own 0.001-0.02 grazing weights let reference self-weights
+    dominate the consensus and pulled references AWAY from the photo on
+    exactly the surface they were about to own). The deviation is smoothed over the surface
     with the fill lanes' voxel-ball statistics at `field_radius_frac` *
     diagonal — a REGIONAL statistic ~20x the detail-fusion scale at 2048.
     Default 0.03 from the car-candidate radius sweep: overlap
@@ -4817,21 +4868,43 @@ def equalize_projection_tone(
 
     def witness_ranked_accept(
             before: Dict[str, float], after: Dict[str, float]) -> bool:
-        """Ship only if one class measurably improves and none worsens.
+        """RANKED witness classes: photos outrank generated-mutual.
 
-        A trade rule (photo-agreement gains paying for generated-mutual
-        losses) was considered and NOT adopted: it would activate strong
-        certified-lane relights (measured on the owl top view: field p95
-        0.37 over 132k texels against a recorded whole-bake fidelity
-        margin of 0.34) whose net product effect this margin-free
-        heuristic cannot bound. Fail closed instead.
+        Lexicographic rule: a correction that measurably WORSENS the
+        real-photo class never ships; one that measurably IMPROVES it
+        ships even when generated-mutual agreement pays for it (photos
+        are evidence and define the tone; mutual consistency among
+        synthesized views is subordinate — the same ranking
+        `protect_observed_texels` enforces on weights). Only when the
+        real class is absent or stable does generated-mutual improvement
+        decide.
+
+        History: the first landed gate was SYMMETRIC (any class
+        worsening vetoed). Measured on the fresh-draw car
+        (/tmp/gfix2): the side view's consensus field improved photo
+        agreement 0.208 -> 0.198 and was vetoed because generated-mutual
+        moved 0.188 -> 0.204 — the veto shipped the tone error into the
+        composite and the source-pose fidelity paid it. The symmetric
+        form had been chosen over a mass-weighted TRADE rule (photo
+        gains buying bounded generated losses) whose net effect could
+        not be bounded; the ranked form is not a trade — the real class
+        is still protected by its own margin, it just cannot be held
+        hostage by the subordinate class. Every participating pair
+        carries >= `min_pair_texels` texels, so neither class is judged
+        on statistical noise.
         """
         margin = float(improvement_margin)
-        improves = any(
-            after[klass] < before[klass] - margin for klass in before)
-        worsens = any(
-            after[klass] > before[klass] + margin for klass in before)
-        return improves and not worsens
+        real_before = before.get("real")
+        real_after = after.get("real")
+        if real_before is not None:
+            if real_after > real_before + margin:
+                return False
+            if real_after < real_before - margin:
+                return True
+        gen_before = before.get("generated")
+        gen_after = after.get("generated")
+        return (
+            gen_before is not None and gen_after < gen_before - margin)
     for row in pair_rows:
         stats["pairs"].append({
             "views": [projections[row["u"]].get("label"),
@@ -4921,17 +4994,36 @@ def equalize_projection_tone(
             continue
         view_pairs = [row for row in pair_rows if view in (row["u"], row["v"])]
         # The consensus weighting mirrors the DOWNSTREAM composition
-        # semantics: wherever a real photo holds a protected claim
-        # (weight >= protect_floor, `protect_observed_texels`' own floor),
-        # the shipped texel IS the photo's — generated weights are zeroed
-        # there exactly as protection will zero them, so the consensus is
-        # the photo's reading. Elsewhere the consensus is the weighted
-        # mixture the low band will blend, the view's own reading
-        # included (self-inclusion makes the deviation a shrinkage toward
-        # the shipped tone rather than full conformance to partners).
+        # semantics: wherever a real photo holds ANY positive claim, the
+        # shipped texel IS the photo's (`protect_observed_texels`
+        # absolute mode zeroes generated weights there), so the consensus
+        # on that whole band is the REAL-WITNESS reading with full
+        # authority — no self-inclusion, no other generated view. The
+        # first landed version granted the photo authority only at
+        # weight >= the 0.02 floor and weighted it BY ITS OWN WEIGHT
+        # elsewhere; measured on the fresh-draw car (/tmp/gfix2), the
+        # photo's grazing band carries weights of 0.001-0.02 against
+        # reference self-weights of 0.3-0.6, so the "consensus" there was
+        # the reference's own reading and the field pulled references
+        # AWAY from the photo exactly where they were about to own
+        # photo-adjacent surface. Elsewhere (no real evidence) the
+        # consensus stays the weighted mixture the low band will blend,
+        # the view's own reading included (self-inclusion = shrinkage
+        # toward the shipped tone rather than full conformance to
+        # partners).
         protected = np.zeros(weights[view].shape, dtype=bool)
+        real_num = np.zeros(weights[view].shape, dtype=np.float64)
+        real_den = np.zeros(weights[view].shape, dtype=np.float64)
         for other in real_views:
-            protected |= weights[other] >= float(protect_floor)
+            other_weight = weights[other].astype(np.float64)
+            has_claim = (other_weight > 0.0) & (
+                lums[other] > float(luminance_floor))
+            protected |= has_claim
+            other_lum = np.clip(
+                lums[other].astype(np.float64), float(luminance_floor), None)
+            real_num += np.where(
+                has_claim, other_weight * np.log(other_lum), 0.0)
+            real_den += np.where(has_claim, other_weight, 0.0)
         evidence = np.zeros(weights[view].shape, dtype=bool)
         consensus_num = np.zeros(weights[view].shape, dtype=np.float64)
         consensus_den = np.zeros(weights[view].shape, dtype=np.float64)
@@ -4947,6 +5039,16 @@ def equalize_projection_tone(
             consensus_num += np.where(
                 overlap, other_weight * np.log(other_lum), 0.0)
             consensus_den += np.where(overlap, other_weight, 0.0)
+        # The real-witnessed band this view covers is tone evidence even
+        # where the photo's weight sits under the pair fit floor: the
+        # photo's grazing samples are smeared in DETAIL but valid in
+        # REGIONAL tone, and this stage is a regional statistic (surface
+        # smoothing at `field_radius_frac` x diagonal).
+        own_covers = (
+            (weights[view] > float(fit_weight_floor))
+            & (lums[view] > float(luminance_floor)))
+        real_band = protected & own_covers & (real_den > 1e-9)
+        evidence |= real_band
         if int(evidence.sum()) < int(min_pair_texels):
             continue
         own_log = np.log(np.clip(
@@ -4960,6 +5062,10 @@ def equalize_projection_tone(
         consensus_log[good] = (
             consensus_num[good] + own_weight[good] * own_log[good]
         ) / total[good]
+        # Photo authority on the real-witnessed band overrides the
+        # mixture (downstream composition ships the photo there).
+        consensus_log[real_band] = real_num[real_band] / real_den[real_band]
+        good |= real_band
         deviation[good] = own_log[good] - consensus_log[good]
         # Bounded influence: a misregistered partner's content outlier
         # (a wheel read against an arch) must not steer the regional
@@ -5362,6 +5468,7 @@ def protect_observed_texels(
     projections: Sequence[Dict[str, Any]],
     *,
     protect_floor: float = 0.02,
+    mode: str = "ramp",
 ) -> Dict[str, Any]:
     """Generated views COMPLETE the surface; they never REVISE it.
 
@@ -5383,8 +5490,37 @@ def protect_observed_texels(
     references' rims off the mesh). Stretched oblique photo content is
     still the subject's own appearance — the certified single-photo path
     ships exactly that band — while a generated view is somebody's guess
-    about it. Below the floor the generated weights ramp back linearly,
-    so the handoff sits at the photo's own fade-out.
+    about it.
+
+    `mode` selects what happens BELOW the floor:
+
+    - "ramp" (historical default): generated weights ramp back linearly,
+      so the handoff sits at the photo's own fade-out.
+    - "absolute": generated weight is zeroed wherever ANY real view holds
+      POSITIVE weight — full single-view sovereignty. Measured
+      justification (fresh-draw car decomposition, /tmp/gfix2): on a
+      low-coverage subject at an estimated pose, 25% of the
+      photo-witnessed atlas carried real weight BELOW the 0.02 floor
+      (grazing facing, concavity demotions), and the ramp handed that
+      band to generated references at up to 30x the photo's own weight —
+      |candidate - baseline| on the band measured 39 dE mean over 20k
+      texels, the single largest witnessed-surface contamination
+      channel (photo fidelity at the true pose regressed +3.2 dE; the
+      absolute mode alone recovered 2.2). The doctrine was always
+      "a real photo's stretched rim content outranks plausible
+      synthesis" (the source keeps single-view facing semantics when
+      references are generated); the ramp contradicted it exactly in
+      the band where the photo is weakest. The bake call site uses
+      "absolute"; the coverage-edge handoff smoothing that the ramp
+      provided is carried by the blend feather and the gradient-domain
+      composite instead (measured: no handoff-ledger regression).
+
+    Texels where a real view's claim was ZEROED upstream (per-texel
+    conflict resolution: a head-on reference outranks the photo's
+    stretched rim samples under strong disagreement) hold no real weight
+    by the time this runs, so they stay reference-owned in both modes —
+    that contest was measured net-GOOD for source-pose fidelity (the
+    photo's own grazing smear loses to content that faces the surface).
 
     Mutates generated projections' weights in place; returns stats.
     """
@@ -5399,11 +5535,19 @@ def protect_observed_texels(
         [np.asarray(p["weight"], dtype=np.float32) for p in real], axis=0
     ).max(axis=0)
     floor = max(float(protect_floor), 1e-6)
-    # 1.0 where no real evidence, fading to 0.0 at/above the floor.
-    scale = np.clip((floor - real_weight) / floor, 0.0, 1.0)
-    protected = real_weight >= floor
+    if str(mode) == "absolute":
+        # Synthesis contributes nothing wherever evidence exists, at any
+        # confidence: the photo's weakest witnessed band is still the
+        # subject's own appearance.
+        scale = (real_weight <= 0.0).astype(np.float32)
+        protected = real_weight > 0.0
+    else:
+        # 1.0 where no real evidence, fading to 0.0 at/above the floor.
+        scale = np.clip((floor - real_weight) / floor, 0.0, 1.0)
+        protected = real_weight >= floor
     stats["applied"] = True
     stats["protect_floor"] = floor
+    stats["mode"] = str(mode)
     stats["protected_texels"] = int(protected.sum())
     for projection in generated:
         weight = np.asarray(projection["weight"], dtype=np.float32)
@@ -6601,8 +6745,15 @@ def bake_projection_texture(
     # (which need the overlap texels for their statistics), synthesized
     # weight is removed wherever real evidence exists so the feathered
     # blend can never average plausible synthesis into the user's photo
-    # (see `protect_observed_texels`).
-    generated_protection_stats = protect_observed_texels(projections)
+    # (see `protect_observed_texels`). ABSOLUTE mode: the historical
+    # sub-floor ramp handed the photo's weakest witnessed band (grazing
+    # facing, concavity demotions — 25% of the fresh-car's witnessed
+    # atlas) to references at up to 30x the photo's weight, the largest
+    # measured witnessed-surface contamination channel of the source-pose
+    # fidelity regression (39 dE mean |candidate - baseline| over that
+    # band; decomposition in /tmp/gfix2/report.md).
+    generated_protection_stats = protect_observed_texels(
+        projections, mode="absolute")
 
     # FILM-BAND COMMITMENT (multi-view only; see film_band.py): extend the
     # layered zone into fused film bands under multi-view consensus, vacate
@@ -6749,6 +6900,40 @@ def bake_projection_texture(
             ],
             axis=2,
         )
+        # PHOTO-ANCHOR PIN (generated-references bakes only): the solve's
+        # screening is proportional to blend confidence, so weakly-
+        # witnessed photo texels (grazing facing, weights 0.02-0.4) sit
+        # on an equalization decay length of 20-60 texels — long enough
+        # for the tone step at every photo|reference ownership boundary
+        # to redistribute INTO the photo's own surface. Measured on the
+        # fresh-draw car (/tmp/gfix2): texels witnessed ONLY by the
+        # photo, with every generated weight zero, still moved 14.1 dE
+        # mean from the no-references baseline, and skipping the solve
+        # collapsed that channel to 1.7 — the solve was the carrier.
+        # Where the only other witnesses are synthesized, equalizing the
+        # photo toward them inverts the evidence ranking, so every
+        # real-witnessed texel is pinned at full anchor confidence and
+        # the source boost applies to the photo's whole witnessed set
+        # (`source_confidence_floor` ~ 0): drift is then bounded by
+        # 1/sqrt(lambda_max) ~ 9 texels at 1024 — the blend feather's own
+        # handoff scale — and the boundary tone steps resolve on the
+        # reference side (their anchors stay soft). Bakes with REAL
+        # reference photos keep proportional screening: real cross-view
+        # tone disagreement is exactly what the solve exists to
+        # equalize.
+        solve_anchor_confidence = observed_weight
+        solve_kwargs: Dict[str, Any] = {}
+        if not has_real_references and any(
+                p.get("generated") for p in projections):
+            real_witnessed = np.zeros(surface_mask.shape, dtype=bool)
+            for projection in projections:
+                if not projection.get("generated"):
+                    real_witnessed |= (
+                        np.asarray(projection["weight"], dtype=np.float32)
+                        > 0.0)
+            solve_anchor_confidence = np.where(
+                real_witnessed, 1.0, observed_weight).astype(np.float32)
+            solve_kwargs["source_confidence_floor"] = 1e-6
         solve_started = _time.perf_counter()
         solved = composite_gradient_domain(
             positions_texture=observed_positions,
@@ -6757,7 +6942,7 @@ def bake_projection_texture(
             view_weight=[np.asarray(p["weight"], dtype=np.float32) for p in projections],
             class_map=class_map,
             filled_rgb=blend_rgba,
-            anchor_confidence=observed_weight,
+            anchor_confidence=solve_anchor_confidence,
             view_valid=[
                 np.asarray(p["rgba"], dtype=np.float32)[:, :, 3] > 0.0
                 for p in projections
@@ -6767,6 +6952,7 @@ def bake_projection_texture(
             # one uint8 level (measured: tightening to 5e-6 changes the
             # texture by <1/255 everywhere) and saves ~25% of iterations.
             cg_tol=1e-5,
+            **solve_kwargs,
         )
         if solved is not None:
             solved_rgb, solver_stats = solved

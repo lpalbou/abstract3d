@@ -2,7 +2,239 @@
 
 ## Unreleased
 
-### Validated (integrator end-to-end matrix over the combined texture-fix tree, 2026-07-12)
+### Validated (integrator pass over the combined ground-slab + photo-sovereignty tree; two fresh car draws ship with references)
+
+Adversarial integrator-validator pass over tonight's two landings
+(ground-slab cutter in `hunyuan3d_runtime`; photo-sovereignty
+composition fixes in `texturing.py`) on top of yesterday's validated
+program. Full report with artifacts: /tmp/gfix3/report.md. No
+neutralizations: no fleet case regressed.
+
+- **Test suite**: 314 passed + 3 skipped (opt-in canaries) + 3 xfailed
+  at entry and at exit. Parity canaries 3/3 (P1 refs-off 2048 rebake
+  bit-identical to the pin, P2 md5 c84f2e49… twice, P3 face md5
+  e32ba995… twice) — no re-pin needed: the single-photo lane is
+  untouched by the combined tree.
+- **Pinned pairs reproduce G2's verdicts exactly** (production
+  semantics, 2048, CPU): fresh-draw car ACCEPT (fidelity
+  32.31 -> 33.02 vs max 34.31, tone 0/0.0025, hue 0.9726, pose
+  silhouette_rescue (40,15)); v7 ACCEPT (34.06 -> 32.64, tone 0/0,
+  hue 0.233, ledger p50/p95 0.179/0.389).
+- **Car t23d, TWO fresh draws, both ship WITH references** (the
+  measured first for fresh draws; user's command + seed-4242 variant,
+  MPS, VECLIB_MAXIMUM_THREADS=1): draw A — healthy, no slab drawn
+  (`ground_slab: null`), 4/4 refs accepted, whole-bake **ACCEPT**
+  (fidelity 28.62 -> 29.30 vs max 30.62, tone 0/0, hue 0.352,
+  coverage 0.389); draw B — healthy, no slab, 4/4 refs accepted on
+  attempt 1, **ACCEPT** (22.24 -> 22.51 vs max 24.24, hue 0.526,
+  coverage 0.430, pose rescue (25,8) score 0.904). Hostile render
+  review vs the input photos: photo-true at the source pose, coherent
+  reference-painted far sides, no mini-photo stamp, no slab in
+  renders; residual cosmetic defect class: low-res patchwork on the
+  roof/glass-top region at elevated views (both draws).
+- **G2's hue watch item did NOT trigger** (fresh draws measure 0.35
+  and 0.53 vs budget 1.0); per the scoped mandate the axis is left
+  unchanged and the margins are recorded. The
+  baseline-fill-hue-confound class remains a watch item (the pinned
+  fresh-car pair sits at 0.97).
+- **Owl i23d end-to-end**: healthy, 4/4 refs accepted, whole-bake
+  ACCEPT (fidelity 17.02 -> 17.27, tone 0/0, hue 0.034, coverage
+  0.829), renders indistinguishable from the approved standard — G2's
+  rebake prediction reproduced end-to-end.
+- **CPU fleet rebakes** (persisted refs): starship ACCEPT
+  (19.77 -> 19.63), chair ACCEPT (24.65 -> 24.62), portrait ACCEPT
+  (12.60 -> 12.86 — MORE photo-faithful than the pre-G2 tree's 14.12;
+  render A/B shows reduced pale chips).
+- **G1 cutter matrix reproduced on the final tree**: car_final slab
+  removed (plate 0.9713 / lamina 0.6198 / overhang 1.302 / cut
+  38.27%), five controls bit-identical.
+- **Break attempts**: (a) slab cutter vs pedestal class — a real
+  pedestal-subject t23d draw (chess knight on a display base) ships
+  untouched with 11x margin on the plate condition (Hunyuan draws
+  bases as solid rounded discs; plate 0.026 vs 0.30); synthetic
+  probes measure the ONE collision class — a BY-DESIGN thin (<5% H
+  top skin), wide (overhang > 1.05), razor-flat display disc is
+  geometrically indistinguishable from the defect signature and WOULD
+  be amputated (KB entry; metadata `ground_slab` records any cut).
+  Threshold edges behave exactly as documented (lamina 4.6%/5.4% H,
+  overhang 1.02/1.08). (b) absolute sovereignty vs the historical
+  ramp on the owl pins — NO surrendered-surface class: absolute is
+  more photo-faithful (17.93 vs 18.23 forced-ramp, pre-G2 pin 18.73),
+  ledger p95 0.4142 vs pin 0.4289, informational seam improves,
+  coverage unchanged; render deltas are detail-scale (p99 <= 20/255)
+  at the relief edges where ownership switched. (c) determinism —
+  two separate-process back-angle generations on the fresh draw-A
+  bundle: payload md5 a5443e62… twice, every gate metric identical,
+  processed PNG md5 80696660… twice.
+
+### Fixed (texture bake — photo sovereignty through the full composition chain; the fresh-draw refusal)
+
+The last blocker for references shipping on hard subjects: on a
+LOW-COVERAGE subject at an ESTIMATED pose, adding hue- and
+material-correct generated references regressed photo fidelity AT THE
+TRUE SOURCE POSE versus the no-references baseline (fresh-draw car:
+32.31 -> 36.51 dE at (40, 15), +2.0 allowed — the whole-bake gate
+rightly refused and the mottled baseline shipped; the pinned v7
+candidate sat at the slack line draw-to-draw). Photo sovereignty
+doctrine says the photo's own surface must be essentially untouched by
+adding references, so the regression was a defect of the composition
+math, not of the references. Stage-decomposition harness (selective
+neutralization, per-stage fidelity at the true pose on witnessed
+texels, atlas-space ownership channels): /tmp/gfix2/report.md.
+
+Measured attribution of the +3.18 dE regression (fresh car, 1024
+diagnostics; channels on photo-witnessed atlas texels,
+|candidate - baseline| LAB dE):
+
+- SUB-FLOOR REPLACEMENT: `protect_observed_texels`' linear ramp below
+  the 0.02 floor handed the photo's weakest witnessed band — 25% of
+  its witnessed atlas on this subject (grazing facing, concavity
+  demotions) — to references at up to 30x the photo's weight: 39.1 dE
+  mean over 20.3k texels, the largest single channel (neutralizing it
+  alone recovered 2.17 of the 3.18).
+- POISSON TONE DIFFUSION: texels witnessed ONLY by the photo (every
+  generated weight zero) still moved 14.1 dE mean — the screened
+  Poisson compositor's proportional screening leaves weakly-witnessed
+  photo texels on a 20-60 texel equalization decay length, and the
+  tone step at every photo|reference ownership boundary redistributed
+  INTO the photo (skipping the solve collapsed the channel to 1.7 dE;
+  the solve itself is load-bearing elsewhere and stays).
+- TONE LANES PULLING THE WRONG WAY: the symmetric witness gate of
+  `equalize_projection_tone` VETOED a field that improved photo
+  agreement 0.208 -> 0.198 because generated-mutual agreement paid for
+  it (tone_off recovered 0.33); `delight_projections`' aggregate gate
+  let a side reference relight toward two other generated views'
+  invented lighting with zero real overlap in its gate mass
+  (delight_off recovered 0.41).
+- Registration warps (width-profile + dense flow) measured -2.89 when
+  disabled, but the probe showed them load-bearing for alignment
+  (back ref IoU 0.754 -> 0.945): their harm routed entirely through
+  the sovereignty channels above, so they stay unchanged.
+- Conflict resolution's photo-claim kills measured net-GOOD
+  (grazing-band fidelity 34.6 vs 41.4 with kills disabled): a head-on
+  reference outranking the photo's stretched rim smear under strong
+  disagreement is correct and is kept.
+
+Landed (all in `texturing.py`):
+
+- `protect_observed_texels(mode="absolute")` (bake call site):
+  generated weight is zeroed wherever ANY real view holds POSITIVE
+  weight — full single-view sovereignty, the doctrine's own wording
+  ("a real photo's stretched rim content outranks plausible
+  synthesis"); the historical ramp remains the default for direct
+  callers. Handoff smoothing falls to the blend feather and the
+  gradient-domain composite (measured: v7 ledger p95 0.398 -> 0.389,
+  no regression).
+- PHOTO-ANCHOR PIN at the compositing call site (generated-references
+  bakes only): real-witnessed texels enter the screened-Poisson solve
+  at full anchor confidence with the source boost over the photo's
+  whole witnessed set, bounding synthetic tone influence to the blend
+  feather's own handoff scale (~9 texels at 1024). Bakes with REAL
+  reference photos keep proportional screening (cross-view tone
+  equalization is the solve's purpose there).
+- WITNESS-RANKED gates in `equalize_projection_tone` and (generated
+  views only) `delight_projections`: a correction that measurably
+  worsens real-photo agreement never ships; one that measurably
+  improves it ships even when generated-mutual agreement pays for it;
+  real-absent falls back to the previous rule. Photos are evidence and
+  define tone; mutual consistency among synthesized views is
+  subordinate.
+- PHOTO AUTHORITY ON THE SUB-FLOOR BAND in stage 2 of
+  `equalize_projection_tone`: wherever a real view holds any positive
+  weight, the consensus is the real-witness reading with full
+  authority (no self-inclusion, no other generated view), and the
+  real-witnessed band enters the field's evidence even below the pair
+  fit floor — grazing photo samples are smeared in detail but valid in
+  REGIONAL tone, which is all the stage consumes.
+
+Validation (production gate `evaluate_generated_bake`, 2048 CPU
+rebakes from persisted accepted references, /tmp/gfix2):
+
+- Fresh-draw car (/tmp/fix3/car_final, pose silhouette_rescue
+  (40, 15)): fidelity 32.31 -> 36.51 BEFORE (refused, +4.20 over
+  budget; hue axis co-fired 1.46) => 32.31 -> 33.02 AFTER — inside the
+  +2.0 slack, verdict ACCEPT (tone 0.000/0.003, hue 0.97, brightness
+  improved). The references now ship on the hard subject.
+- Pinned v7 pair: stays ACCEPT; fidelity 34.06 -> 32.64 (was 33.86
+  pre-fix — the candidate is now more photo-faithful than either),
+  tone 0/0, hue 0.23, handoff ledger p50/p95 0.179/0.389 vs pinned
+  0.182/0.398 (F2's gains preserved).
+- Owl control: stays ACCEPT, equal-or-better on every axis — fidelity
+  17.02 -> 17.27 (pre-fix candidate measured 18.34), tone 0/0, hue
+  0.03, informational seam 0.0251 -> 0.0216, renders indistinguishable
+  from the shipped standard.
+- Single-photo lanes structurally untouched (every change is gated on
+  generated views being present): parity canaries P1/P2/P3 green —
+  refs-off 2048 rebake bit-identical to the pin, two 1024 rebakes
+  md5-identical (c84f2e49…), face 2048 md5 e32ba995… unchanged across
+  two rebakes.
+- New regression tests (tests/test_texturing.py): absolute-mode
+  protection semantics; witness-ranked gate ships photo-conforming
+  corrections and still fails closed against real-class worsening;
+  sub-floor witnessed band reconciled toward the photo; END-TO-END
+  synthetic sphere bake where a deliberately tone-offset generated
+  reference must contribute (essentially) zero delta on
+  photo-witnessed texels (p99 <= 2/255). Full suite green.
+
+### Fixed (Hunyuan3D shape — ground-slab removal for the documented vehicle ground-plane defect)
+
+A fresh car t23d draw (/tmp/fix3/car_final, seed 2025) shipped with a
+large flat GROUND SLAB fused under the mesh: a near-horizontal plate
+extending beyond the body footprint, the upstream Hunyuan3D-2.1 weakness
+documented in issue #48 ("Prevent ground floor from shape generation";
+the 2026-07-11 mesh audit /tmp/mesh3/report.md cites it). Incidence is
+draw-dependent (the earlier sportscar_v7 from the SAME subject hint and
+seed has no slab); the slab also corrupts texture registration
+(silhouettes stop matching the photo).
+
+Measured slab signature (car_final vs 5 controls: v7 car, owl on its
+legitimate carved base, chair legs, starship fins, face bust — full
+matrix in /tmp/gfix1/report.md). Three independent conditions, ANDed:
+
+- **plate**: bottom-anchored near-planar down-facing skin covering
+  >= 30% of the whole-mesh footprint hull (slab 0.97; owl base 0.49;
+  every other control <= 0.04);
+- **lamina**: an exposed up-facing top skin within 5% of mesh height
+  above the plate, laterally inside the plate hull — the plate is a
+  thin SHEET, not the underside of a solid base (slab 0.62 at 2.0%-H
+  thickness; owl 0.00 — its carved base top sits at 10-11% H; face
+  0.06; others 0.00);
+- **overhang**: plate hull extends beyond the convex footprint of
+  everything above it (slab 1.30; strongest control 0.65 — legitimate
+  bases/feet always sit INSIDE the subject's footprint).
+
+Landed (`hunyuan3d_runtime._hunyuan_cut_ground_slab`, called from
+`_hunyuan_postprocess_mesh` after floater removal and BEFORE decimation
+so the freed face budget returns to the subject): planar face cut just
+above the slab's top skin (clearance max(0.5% H, 25% of slab
+thickness)), orphan sweep with the existing 0.5%-of-total floater rule,
+open rim tolerated (the bake projects onto visible surface, decimation
+preserves boundaries, `topology.is_watertight` is recorded not gated).
+Fail-closed budget: if the cut would remove > 50% of the surface the
+cutter refuses, warns, and the run ships `quality_verdict=degraded`
+(the subject must remain the majority of its own mesh; the real slab
+cut removes 38.3%). Measurements are recorded in the postprocess
+`applied` list (`ground_slab_removed:120000->111327@plate=0.9713,...`)
+and in metadata `ground_slab`; a cleanly cut slab demotes nothing.
+
+Validation matrix (production cutter on persisted bundles): car_final
+slab removed (before/after renders in /tmp/gfix1/), post-cut 1 body,
+euler -131 vs -132; sportscar_v7, owl, chair, starship, face all
+bit-identical (detector returns None). Unit fixtures encode the
+signature (slab-on-wheeled-box cut; thick-base spared; leg contacts
+spared; over-budget plate refused). Suite: 310 passed.
+
+Prompt-side mitigation probe (mlx-gen flux.2-klein-4b-8bit, 8 images,
+/tmp/gfix1/probe_results.json): a trailing "subject isolated, no floor,
+no ground shadow" suffix did NOT reduce floor shadows (shadow depth
+175.9 -> 186.6 at seed 2025; the model keeps drawing contact shadows on
+grounded subjects), and a mid-prompt "floating in mid-air, no floor and
+no ground shadow" clause DID lift the car but replaced the contact
+shadow with a large detached shadow patch below the subject (shadow
+area 0.075 -> 0.136) and changed the wheel/body composition — worse
+conditioning, not better. NO prompt change landed; the mesh-side cutter
+is the fix. (Pending validator confirmation at the shape stage, where
+image-shadow -> slab causality can be tested with shape inference.)
 
 Adversarial integrator pass over the whole uncommitted program (per-view
 two-key gates + retry ladder, rebake/pipeline parity + identity-repair

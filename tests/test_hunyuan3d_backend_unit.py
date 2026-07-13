@@ -131,6 +131,132 @@ def test_postprocess_decimates_to_face_budget() -> None:
     assert any(step.startswith("quadric_decimation") for step in applied)
 
 
+def _grid_box(extents, translation, cells: int = 12) -> trimesh.Trimesh:
+    """Axis-aligned box with subdivided faces (production meshes never have
+    footprint-sized single triangles; the cutter's area statistics must be
+    exercised on realistically tessellated skins)."""
+    box = trimesh.creation.box(extents=extents)
+    for _ in range(10):
+        if len(box.faces) >= cells * cells:
+            break
+        box = box.subdivide()
+    box.apply_translation(translation)
+    return box
+
+
+def _slab_on_box_fixture() -> trimesh.Trimesh:
+    """Y-up (Hunyuan native frame): a car-proportioned body on four wheel
+    pads standing on a thin, overhanging ground plate — the measured slab
+    signature (plate covering the footprint, exposed thin lamina 2% of mesh
+    height above the bottom, hull overhanging the subject ~1.5x; the real
+    incident measured plate 0.97 / lamina 0.61 / overhang 1.30 with the cut
+    removing 38% of the surface)."""
+    body = _grid_box((1.0, 0.5, 0.6), (0.0, 0.35, 0.0))
+    wheels = [
+        _grid_box((0.16, 0.1, 0.12), (x, 0.07, z), cells=8)
+        for x in (-0.35, 0.35)
+        for z in (-0.22, 0.22)
+    ]
+    slab = _grid_box((1.25, 0.012, 0.75), (0.0, 0.014, 0.0))
+    return trimesh.util.concatenate([body, *wheels, slab])
+
+
+def test_ground_slab_cutter_removes_overhanging_thin_plate() -> None:
+    mesh = _slab_on_box_fixture()
+    cut, report = runtime._hunyuan_cut_ground_slab(mesh, up_axis=(0.0, 1.0, 0.0))
+
+    assert report is not None
+    assert report["action"] == "removed"
+    assert report["plate_footprint_frac"] >= runtime._SLAB_PLATE_FOOTPRINT_MIN
+    assert report["lamina_ratio"] >= runtime._SLAB_LAMINA_MIN
+    assert report["overhang_ratio"] >= runtime._SLAB_OVERHANG_MIN
+    # The plate (extending to +-0.625 laterally) must be gone; the subject
+    # (to +-0.5) must survive with its lateral extent intact.
+    vertices = np.asarray(cut.vertices)
+    assert vertices[:, 0].max() < 0.55
+    assert vertices[:, 0].min() > -0.55
+    assert abs(vertices[:, 0].max() - 0.5) < 0.05
+    # Only the sliver below the cut plane is lost from the subject.
+    assert vertices[:, 1].max() > 0.5
+
+
+def test_ground_slab_cutter_spares_legitimate_thick_base() -> None:
+    # Owl-proof proxy: a THICK carved base under the subject (base top at
+    # ~10% of mesh height — no exposed thin lamina) that does not overhang
+    # the subject's footprint. Measured control: owl base plate covers 49%
+    # of the footprint yet lamina and overhang both refuse.
+    subject = _grid_box((0.6, 1.6, 0.6), (0.0, 1.0, 0.0))
+    base = _grid_box((0.9, 0.2, 0.9), (0.0, 0.1, 0.0))
+    mesh = trimesh.util.concatenate([subject, base])
+
+    cut, report = runtime._hunyuan_cut_ground_slab(mesh, up_axis=(0.0, 1.0, 0.0))
+
+    assert report is None
+    assert len(cut.faces) == len(mesh.faces)
+
+
+def test_ground_slab_cutter_spares_thin_leg_contacts() -> None:
+    # Chair proxy: a seat on four thin legs — bottom contact area is tiny
+    # relative to the footprint hull (measured chair: 0.2%), so the plate
+    # condition never arms.
+    seat = _grid_box((1.0, 0.1, 1.0), (0.0, 1.0, 0.0))
+    legs = [
+        _grid_box((0.08, 1.0, 0.08), (x, 0.5, z), cells=4)
+        for x in (-0.45, 0.45)
+        for z in (-0.45, 0.45)
+    ]
+    mesh = trimesh.util.concatenate([seat, *legs])
+
+    cut, report = runtime._hunyuan_cut_ground_slab(mesh, up_axis=(0.0, 1.0, 0.0))
+
+    assert report is None
+    assert len(cut.faces) == len(mesh.faces)
+
+
+def test_ground_slab_cutter_refuses_when_cut_exceeds_budget() -> None:
+    # Fail-closed: a huge plate with a tiny pole on it fires the detector,
+    # but cutting would remove ~97% of the surface — the "subject" must
+    # remain the majority of its own mesh, so the cutter refuses and
+    # reports instead of amputating.
+    pole = _grid_box((0.1, 0.5, 0.1), (0.0, 0.26, 0.0), cells=4)
+    plate = _grid_box((2.0, 0.012, 2.0), (0.0, 0.006, 0.0), cells=24)
+    mesh = trimesh.util.concatenate([pole, plate])
+
+    cut, report = runtime._hunyuan_cut_ground_slab(mesh, up_axis=(0.0, 1.0, 0.0))
+
+    assert report is not None
+    assert report["action"] == "refused"
+    assert report["cut_area_frac"] > runtime._SLAB_MAX_CUT_AREA_FRAC
+    assert len(cut.faces) == len(mesh.faces)
+
+
+def test_postprocess_records_ground_slab_removal_and_keeps_report() -> None:
+    mesh = _slab_on_box_fixture()
+
+    cleaned, applied, _warnings = runtime._hunyuan_postprocess_mesh(mesh, max_facenum=0)
+
+    assert any(step.startswith("ground_slab_removed:") for step in applied)
+    report = cleaned.metadata.get("abstract3d_ground_slab")
+    assert report is not None and report["action"] == "removed"
+    assert np.asarray(cleaned.vertices)[:, 0].max() < 0.55
+
+
+def test_postprocess_flags_refused_ground_slab_as_warning() -> None:
+    # cells=10 keeps the pole above the 0.5%-of-total floater floor (the
+    # earlier cleanup step must not silently delete the subject before the
+    # slab check reads the mesh).
+    pole = _grid_box((0.1, 0.5, 0.1), (0.0, 0.26, 0.0), cells=10)
+    plate = _grid_box((2.0, 0.012, 2.0), (0.0, 0.006, 0.0), cells=24)
+    mesh = trimesh.util.concatenate([pole, plate])
+
+    cleaned, applied, warnings = runtime._hunyuan_postprocess_mesh(mesh, max_facenum=0)
+
+    assert not any(step.startswith("ground_slab_removed") for step in applied)
+    assert any("ground slab detected but not cut" in warning for warning in warnings)
+    report = cleaned.metadata.get("abstract3d_ground_slab")
+    assert report is not None and report["action"] == "refused"
+
+
 def test_canonicalize_axes_maps_yup_frontz_to_zup_frontx() -> None:
     # A marker mesh: tall along +Y (up in glTF), nose toward +Z (front).
     mesh = trimesh.creation.box(extents=(0.2, 1.0, 0.5))
