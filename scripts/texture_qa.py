@@ -35,6 +35,20 @@ exercises:
                    photo, which must pass), fill-character
                    (gradient-energy ratio fill vs observed, gate >= 0.5),
                    facet fraction of the fill region.
+  ARTIFACT BATTERY the measured artifact-class detectors of
+                   `abstract3d.artifact_gates` on the standard 8-view
+                   turnaround: foreign pale blotches (image-in-image
+                   stamps, white rim splashes), photo-background
+                   contamination, broad desaturating wash (baked
+                   speculars / clear-coat smears), translucent
+                   patch-block rectangle cells, mid-band dark patchwork,
+                   plus the stats-based fill-cap mottle-risk and
+                   registration-floor checks. STANDALONE measurements
+                   have no baseline to difference against, and their
+                   good-corpus margins (1.14-1.8x) sit below the
+                   project's zero-false-fire voting bar, so the battery
+                   WARNS and records - it never fails the run (the
+                   voting form lives in the whole-bake A/B gate).
 
 Exit code 0 = all gates pass. Evidence crops land in OUT/evidence/.
 """
@@ -912,6 +926,56 @@ def brightness_gate(renderer: ViewerTruthRenderer, bundle: Bundle,
 
 
 # ---------------------------------------------------------------------------
+# artifact battery (standalone, warn-only)
+# ---------------------------------------------------------------------------
+
+def artifact_battery_report(bundle: Bundle, *, size: int = 512) -> dict:
+    """Run the measured artifact-class battery on the bundle's own 8-view
+    turnaround (the same views and renderer the whole-bake gate uses, so
+    the good-corpus calibration transfers). Warn-only by doctrine: a
+    single bake has no baseline to difference against, and the absolute
+    good-corpus margins are below the zero-false-fire voting bar (see
+    `abstract3d.artifact_gates`)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+    import trimesh
+    from abstract3d.artifact_gates import (
+        evaluate_bundle_artifact_battery, photo_reference)
+    from abstract3d.rendering import render_mesh_views
+
+    # Reload the mesh untouched: render_mesh_views handles the export
+    # frame marker itself (the calibration path); the harness's own
+    # bundle.mesh is already counter-rotated and would double-rotate.
+    mesh = trimesh.load(bundle.directory / "scene.glb", force="mesh",
+                        process=False)
+    views: List[Tuple[str, object]] = []
+    for elevation in (10.0, 50.0):
+        renders = render_mesh_views(
+            mesh, size=size, azimuths=[0.0, 90.0, 180.0, -90.0],
+            elevation=elevation)
+        views.extend(
+            (f"az{az}_el{int(elevation)}", render)
+            for az, render in zip((0, 90, 180, -90), renders))
+
+    photo_ref = None
+    photo_path = bundle.directory / "input.png"
+    if photo_path.exists():
+        # The RAW photo, not the matte: the border-median background is
+        # what the image-in-image payload check compares against (a
+        # matted photo has its backdrop destroyed).
+        photo_ref = photo_reference(Image.open(photo_path))
+
+    # Stats live in texture_artifacts (pipeline bundles) and/or the
+    # rebake "stats" block (fill_detail / leverage); merge for the
+    # stats-based checks, which degrade gracefully when keys miss.
+    ta = bundle.metadata.get("texture_artifacts", bundle.metadata) or {}
+    stats = dict(bundle.metadata.get("stats") or {})
+    for key in ("observed_view_stats", "fill_detail", "leverage"):
+        stats.setdefault(key, ta.get(key))
+    return evaluate_bundle_artifact_battery(
+        views, photo_ref=photo_ref, stats=stats)
+
+
+# ---------------------------------------------------------------------------
 # orchestration
 # ---------------------------------------------------------------------------
 
@@ -1066,11 +1130,20 @@ def run(bundle_dir: Path, out_dir: Path, thr: Thresholds, *, size: int = 896) ->
     ta_meta = bundle.metadata.get("texture_artifacts", bundle.metadata) or {}
     leverage = ta_meta.get("leverage")
 
+    # Artifact battery (warn-only; see artifact_battery_report). A GL or
+    # load failure degrades to a recorded error, never a crash of the
+    # material/texel gates above.
+    try:
+        battery = artifact_battery_report(bundle)
+    except Exception as exc:  # pragma: no cover - environment specific
+        battery = {"error": f"battery unavailable: {exc}", "warnings": []}
+
     result = {
         "bundle": str(bundle_dir),
         "verdict": "PASS" if all(g.passed for g in gates) else "FAIL",
         "failed": [g.name for g in gates if not g.passed],
         "gates": [asdict(g) for g in gates],
+        "artifact_battery": battery,
         "projection": info,
         "leverage": leverage,
         "coverage_reconciliation": regions.reconciliation,
@@ -1136,6 +1209,17 @@ def main() -> None:
         status = "PASS" if gate["passed"] else "FAIL"
         print(f"  [{status}] {gate['name']}: {gate['measured']}"
               f"   (require {gate['requirement']})")
+    battery = result.get("artifact_battery") or {}
+    battery_warnings = battery.get("warnings") or []
+    if battery.get("error"):
+        print(f"\nartifact battery: {battery['error']}")
+    elif battery_warnings:
+        print("\nARTIFACT BATTERY WARNINGS (recorded, non-gating):")
+        for warning in battery_warnings:
+            print(f"  [WARN] {warning}")
+    else:
+        print("\nartifact battery: quiet (all detectors under their "
+              "good-corpus warn lines)")
     print(f"\ncoverage reconciliation (reconstructed vs bake metadata):")
     for row in result["coverage_reconciliation"]:
         print(f"  {row['label']} az{row['azimuth_deg']:+.1f}: "

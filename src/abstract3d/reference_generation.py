@@ -497,6 +497,73 @@ def silhouette_iou(generated_rgba: Any, clay_image: Any) -> float:
     return float((generated & clay).sum()) / float(union)
 
 
+# The bake registers every reference into the canonical conditioning frame
+# (`recenter_to_canonical_frame`: 1024 px square, border ratio 0.15), so the
+# subject's larger extent always lands at 1024 * 0.85 = 870 px there. A
+# synthesis whose subject carries fewer true pixels than that is upscaled
+# before projection — measured on the car_bo3 top reference: a 768-frame
+# generation letterboxes the subject to 637 px, a 1.37x deficit, while the
+# 2048 atlas samples the canonical frame at ~0.8 px per texel (A4 density
+# tables, 2026-07-14). These constants describe the CONSUMER (the bake) and
+# change only with it.
+CANONICAL_REFERENCE_FRAME_PX = 1024
+CANONICAL_REFERENCE_BORDER_RATIO = 0.15
+
+
+def reference_render_size(
+    clay_mask: Any,
+    *,
+    base_size: int,
+    canonical_target_px: Optional[float] = None,
+    quantum: int = 64,
+    max_size: int = 1280,
+) -> Tuple[int, float]:
+    """Per-angle synthesis size closing the letterbox deficit:
+    `(render_size, subject_fill)`.
+
+    `clay_mask` is the angle's clay silhouette at `base_size` — the exact
+    framing the generation will reproduce (the composite conditioning
+    letterboxes the clay panel, and the IoU gate registers the generation
+    onto it). `subject_fill` is the silhouette bbox's larger side as a
+    fraction of the frame; the generation's subject then carries
+    `base_size * subject_fill` true pixels along that side, while the
+    bake's canonical recenter stretches it to `canonical_target_px`
+    (= 1024 * 0.85 for the production frame). The returned size makes
+    those meet: `canonical_target_px / subject_fill`, rounded UP to
+    `quantum` (image-editor latent-grid alignment), never below
+    `base_size`, capped at `max_size` (cost/quality bound for the local
+    editors; the cap is a budget, not a claim that more never helps).
+
+    Subject-extent-aware and angle-agnostic by construction: an elevated
+    view of a long subject foreshortens it into a smaller fill fraction
+    and gets a larger frame; a side view that already fills its frame
+    keeps `base_size`. Degenerate masks (no silhouette) keep `base_size`.
+    """
+
+    import math
+
+    import numpy as np
+
+    mask = np.asarray(clay_mask, dtype=bool)
+    if mask.ndim != 2 or not mask.any():
+        return int(base_size), 0.0
+    rows = np.nonzero(mask.any(axis=1))[0]
+    cols = np.nonzero(mask.any(axis=0))[0]
+    height = int(rows[-1]) - int(rows[0]) + 1
+    width = int(cols[-1]) - int(cols[0]) + 1
+    frame = float(max(mask.shape))
+    subject_fill = float(max(height, width)) / max(frame, 1.0)
+    if subject_fill <= 0.0:
+        return int(base_size), 0.0
+    if canonical_target_px is None:
+        canonical_target_px = CANONICAL_REFERENCE_FRAME_PX * (
+            1.0 - CANONICAL_REFERENCE_BORDER_RATIO)
+    needed = float(canonical_target_px) / subject_fill
+    quantized = int(math.ceil(needed / float(quantum))) * int(quantum)
+    size = int(np.clip(quantized, int(base_size), int(max_size)))
+    return size, round(subject_fill, 4)
+
+
 def default_i2i_generator(owner: Any) -> Callable[..., bytes]:
     """The provider-neutral i2i callable, mirroring the t23d composition
     resolution (`scene3d_image_provider` / env / configured default)."""
@@ -859,7 +926,7 @@ def generate_reference_views(
     subject_hint: Optional[str] = None,
     silhouette_iou_min: float = 0.75,
     tone_match: bool = True,
-    render_size: int = 768,
+    render_size: Any = 768,
     seed: int = 11,
     max_attempts: int = 3,
     negative_prompt: Optional[str] = DEFAULT_NEGATIVE_PROMPT,
@@ -891,6 +958,14 @@ def generate_reference_views(
     see `is_person_subject` for why identity cannot currently be defended.
     Explicit opt-in callers may pass "proceed"; the report then records a
     `person_warning`.
+
+    `render_size` is an int (one frame size for every angle — the
+    historical behavior, byte-compatible) or "auto": per-angle frame
+    sizing that closes the measured letterbox deficit against the bake's
+    canonical reference frame (see `reference_render_size` — elevated
+    views of elongated subjects foreshorten into small fill fractions
+    and synthesize at 1024+, while angles that fill their frame keep the
+    768 base). The chosen size and fill fraction are recorded per angle.
     """
 
     import hashlib
@@ -1032,6 +1107,15 @@ def generate_reference_views(
     except Exception:
         color_anchor = None
     report["color_anchor"] = color_anchor
+    # Frame-size mode: an int is one size for every angle (historical
+    # behavior, byte-compatible); "auto" sizes each angle from its own clay
+    # silhouette extent (see `reference_render_size`).
+    auto_render_size = isinstance(render_size, str)
+    if auto_render_size and str(render_size).strip().lower() != "auto":
+        raise ValueError(
+            f"render_size must be an int or 'auto' (got {render_size!r})")
+    base_render_size = 768 if auto_render_size else int(render_size)
+    report["render_size_mode"] = "auto" if auto_render_size else base_render_size
     for label, azimuth, elevation in angles:
         entry: Dict[str, Any] = {
             "label": label,
@@ -1042,7 +1126,7 @@ def generate_reference_views(
         }
         started = time.perf_counter()
         clay = render_mesh_views(
-            mesh, size=int(render_size), azimuths=[float(azimuth)],
+            mesh, size=int(base_render_size), azimuths=[float(azimuth)],
             elevation=float(elevation),
         )[0].convert("RGBA")
         renderer = get_last_render_backend()
@@ -1060,6 +1144,24 @@ def generate_reference_views(
             report["angles"].append(entry)
             report["rejected"] += 1
             continue
+        view_render_size = base_render_size
+        if auto_render_size:
+            # Per-angle frame size from THIS angle's own silhouette extent:
+            # the generation reproduces the clay's framing (composite
+            # letterbox + IoU registration), so the clay silhouette is the
+            # exact measurement of how many true subject pixels the
+            # synthesis will deliver. Re-render the clay at the chosen
+            # size so guide, letterbox, registration and gating all share
+            # one frame.
+            view_render_size, subject_fill = reference_render_size(
+                clay_silhouette(clay), base_size=base_render_size)
+            entry["subject_fill"] = subject_fill
+            if view_render_size != base_render_size:
+                clay = render_mesh_views(
+                    mesh, size=int(view_render_size),
+                    azimuths=[float(azimuth)], elevation=float(elevation),
+                )[0].convert("RGBA")
+        entry["render_size"] = int(view_render_size)
         base_prompt = _view_prompt(label, subject_noun, conditioning,
                                    tinted=tinted_mesh is not None,
                                    color_anchor=color_anchor)
@@ -1073,7 +1175,7 @@ def generate_reference_views(
         # the same dark background.
         buffer = io.BytesIO()
         if conditioning == "composite":
-            panel = int(render_size)
+            panel = int(view_render_size)
 
             def letterbox(image: Any) -> Any:
                 rgb = image.convert("RGB")
@@ -1094,7 +1196,7 @@ def generate_reference_views(
             if tinted_mesh is not None:
                 try:
                     guide = render_mesh_views(
-                        tinted_mesh, size=int(render_size),
+                        tinted_mesh, size=int(view_render_size),
                         azimuths=[float(azimuth)], elevation=float(elevation),
                     )[0].convert("RGBA")
                 except Exception:

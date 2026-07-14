@@ -222,6 +222,95 @@ Every bundle records full provenance: the composed/source image, generated
 reference views (`generated_*.png` with their geometry guides), per-attempt
 gate metrics, and the acceptance verdict.
 
+### Quality presets (best-of-N shape selection)
+
+Two runs of the same request can differ more than any tuning knob: the
+shape DiT's draw luck is the dominant remaining quality factor (measured
+July 2026, same code and settings — one draw came out not watertight with
+dihedral-RMS 17.9° and baked to 28.6 ΔE photo fidelity; the other draw came
+out watertight, RMS 15.1°, and baked to 22.2 ΔE). `--quality` (or the
+explicit `--shape-candidates N`) draws the shape stage N times with spaced
+seeds, ranks the candidates against your input photo (silhouette +
+concave-detail agreement) plus topology, keeps the
+best, and records every candidate's metrics in `metadata.json`
+(`shape_candidates` array). Only the shape stage repeats — the source
+image, texture bake, and reference generation run once, at the original
+seed:
+
+```bash
+ABSTRACT3D_HUNYUAN_ACCEPT_LICENSE=1 abstract3d i23d ./car.png \
+  --output-dir ./out/car-best \
+  --backend hunyuan3d21 \
+  --device mps \
+  --quality best
+```
+
+Measured cost (Apple `mps`, default octree 512; shape stage 21–30 min per
+draw, texture stage 20–38 min once, ranking under 1 s per candidate;
+validated end-to-end 2026-07-13: a `--shape-candidates 3` car ran 3 draws
+at 24.3/22.6/29.7 min plus one 21.7-min texture stage, ranking 2.0 s
+total, 99.6 min wall clock):
+
+| Preset | Shape candidates | Shape stage | Texture stage | Typical total |
+|---|---|---|---|---|
+| `standard` (default) | 1 | ~21–30 min | ~20–38 min | ~45–65 min |
+| `high` | 2 | ~45–60 min | ~20–38 min | ~65–95 min |
+| `best` | 3 | ~65–90 min | ~20–38 min | ~85–125 min |
+
+Each extra candidate adds roughly one shape-stage time. The default is a
+single draw — with `--shape-candidates 1` (or no flag) the pipeline runs
+exactly the historical path, with no ranking renders and unchanged
+metadata. The config-key equivalent is `scene3d_hunyuan_shape_candidates`.
+
+### Multi-view geometry conditioning (single-photo flows)
+
+A single photo leaves most of the subject unobserved, and the shape model
+hallucinates what it cannot see (measured July 2026 on cars: melted
+cockpit interiors, detached wheels). `--geometry-conditioning multiview`
+attacks this at the source: before the shape stage runs, the missing
+canonical views (back and both side profiles) are synthesized from your
+photo with the local image generator, gated (subject-identity palette
+check plus two silhouette identities: the back of any object mirrors its
+front outline, and the left/right profiles mirror each other — a
+disagreeing side pair is dropped whole), and the surviving views condition
+the multi-view `tencent/Hunyuan3D-2mv` checkpoint alongside your photo:
+
+```bash
+ABSTRACT3D_HUNYUAN_ACCEPT_LICENSE=1 abstract3d i23d ./car.png \
+  --output-dir ./out/car-multiview \
+  --backend hunyuan3d21 \
+  --device mps \
+  --geometry-conditioning multiview
+```
+
+- `single` (default): the unchanged historical one-view path.
+- `multiview`: synthesize + gate + condition; requires an image composer;
+  falls back loudly to single-view (warning + `geometry_conditioning`
+  metadata block) when every synthesized view fails the gates.
+- `auto`: same as `multiview` but only fires when an explicitly configured
+  image provider exists (`ABSTRACT3D_IMAGE_PROVIDER` /
+  `scene3d_image_provider`) — it never silently routes your photo to a
+  provider you did not choose.
+
+Measured trade (July 2026, equal-seed A/B on a car and an owl): multiview
+cuts spurious topology on self-occluding subjects (car handle load
+-32..-61%), smooths panels, and conditions the rear instead of inventing
+it — but reads slightly softer on concave detail and fine carving, and
+runs the smaller multi-view checkpoint (`Hunyuan3D-2mv`, 1.1B at octree
+384) instead of the 3.3B flagship. Reach for it when topology matters
+most (parts that must not fuse or detach, clean panel work); stay on
+`single` for maximal carved detail. No quality preset enables it
+implicitly.
+
+Person subjects are refused (no gate can defend facial identity) unless
+you pass the explicit `--texture-reference-allow-person` attestation — the
+same acknowledgment the texture lane uses, because it attests the same
+act. Accepted views are persisted in the bundle
+(`geometry_view_synthesized_*.png`, rejects under
+`rejected_geometry_views/`) and are also offered to the texture bake
+through the standard reference-acceptance gates. The config-key equivalent
+is `scene3d_hunyuan_geometry_conditioning`.
+
 ### Lighter-weight variants
 
 Generate a mesh from an image with the lightweight validated backend:

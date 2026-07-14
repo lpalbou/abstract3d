@@ -81,6 +81,77 @@ _MV_SUPPORTED_SUBFOLDERS = (
 # conditions the mesh's left side when tagged "left".
 _MV_TAG_BY_AZIMUTH = {0.0: "front", 90.0: "left", 180.0: "back", -90.0: "right"}
 _MV_TAG_SNAP_TOLERANCE_DEG = 25.0
+# HARD CAP on simultaneous 2mv conditioning views, with priority order.
+# Measured (2026-07-14, /tmp/afix3/subsets): on identical conditioning
+# images, seed and regime (384/30, adaptive decoder, mps fp16), every
+# 1-3 view subset produced a healthy single-body car (raw euler -65..-174;
+# 2-3 view subsets BETTER than single view) while the full 4-view dict
+# shredded the field into film-shell debris TWICE independently (559 raw
+# bodies / euler +693 at 384/30; 822 raw bodies / +887 at 512/50). Every
+# proven upstream usage stays at <= 3 views (official snippet
+# {front, left, back}; this repo's face proof {front, left, right}), so
+# 4-view conditioning is outside the checkpoint's validated envelope and
+# is refused: the LAST tag in priority order is dropped with a warning.
+_MV_MAX_CONDITIONING_VIEWS = 3
+_MV_TAG_PRIORITY = ("front", "back", "left", "right")
+# -- multi-view geometry conditioning for single-photo flows ------------------
+#
+# Both mesh audits (2026-07: /tmp/mesh1 §8/§9, /tmp/mesh3 §6) convicted
+# conditioning starvation as the primary cause of hallucinated geometry on
+# self-occluding subjects (melted interiors, detached wheels) and ranked
+# "feed the shape stage more views" as the first fix. The 2mv dict path
+# below already works for callers who PASS reference views; single-photo
+# t23d/i23d never had any. `geometry_conditioning` closes that gap by
+# synthesizing the missing canonical views from the source photo (rotate
+# i2i, meshless — no clay render exists yet) and gating them before the
+# checkpoint sees them, because a WRONG conditioning view is worse than
+# single-view.
+_GEOMETRY_CONDITIONING_MODES = ("single", "multiview", "auto")
+# The three canonical views the 2mv checkpoint accepts beyond the front:
+# this repo's azimuth convention (side_left = +90, camera on the subject's
+# left) snaps onto the MV tags through _MV_TAG_BY_AZIMUTH.
+_GEOMETRY_VIEW_ANGLES = (
+    ("back", 180.0),
+    ("side_left", 90.0),
+    ("side_right", -90.0),
+)
+_GEOMETRY_VIEW_PHRASES = {
+    "back": "seen directly from behind",
+    "side_left": "seen from its left side profile",
+    "side_right": "seen from its right side profile",
+}
+# Two attempts per view: shape failure of the rotate i2i is stochastic
+# (same finding as the texture-lane ladder), and each attempt costs one
+# i2i generation (~15-40 s locally) against a 10-25 min shape stage.
+_GEOMETRY_VIEW_ATTEMPTS = 2
+# Seed plan: distinct from both the shape-candidate stride (base + 1000*i)
+# and the texture-lane ladder (base + 1000*attempt), so no stage ever
+# reuses another stage's draw. Reconstructible from the base seed.
+_GEOMETRY_VIEW_SEED_OFFSET = 50_000
+_GEOMETRY_VIEW_SEED_STRIDE = 1000
+# Silhouette-plausibility floors, calibrated on real draws (2026-07-14,
+# 24 mlx-klein generations across 4 spaced seeds on a frontal source (owl
+# photo) and a three-quarter source (sportscar v5); normalized-mask
+# convention of the shape ranker; full table in the A3 program report).
+# In orthographic projection the BACK silhouette of any object is exactly
+# the mirrored FRONT silhouette, and the LEFT/RIGHT silhouettes are exact
+# mirrors of each other. Measured bands:
+#   back vs mirrored source — healthy: owl 0.954-0.976, car 0.580-0.678
+#     (the source's own off-axis angle, ~25-40 deg, is what lowers the
+#     car band: the relation compares view@theta+180 with view@180);
+#     wrong-subject swaps: 0.398-0.437. Floor 0.52 splits those bands
+#     with >= 0.06 margin each way. It does NOT separate a side-view or
+#     front-echo lie on COMPACT subjects (owl lies measure 0.86-0.87,
+#     inside its healthy band) — by the same measurement, such a lie's
+#     silhouette damage is bounded (the silhouettes barely differ);
+#     content-level damage is the material gate's and the A/B's problem.
+#   side pair mutual mirror — healthy same-seed pairs: owl 0.874-0.953,
+#     car 0.764-0.788 (cross-seed independent draws: 0.729-0.939);
+#     front-echo-as-one-side on the elongated class: 0.615-0.658.
+#     Floor 0.68 keeps every measured healthy pair (margin 0.049) and
+#     rejects the measured elongated-class lies (margin 0.022).
+_GEOMETRY_BACK_MIRROR_IOU_MIN = 0.52
+_GEOMETRY_SIDE_PAIR_MIRROR_IOU_MIN = 0.68
 _LICENSE_NAME = "tencent-hunyuan-community"
 _LICENSE_SUMMARY = (
     "Tencent Hunyuan 3D 2.1 Community License: territory-restricted "
@@ -125,6 +196,15 @@ _DEFAULT_GUIDANCE_SCALE = 5.0
 # (84 extra spurious handles, euler -208 on the car). Guidance stays 5.0:
 # 7.5 fused two wheels into the body (genus 17 -> 37).
 _DEFAULT_OCTREE_RESOLUTION = 512
+# The 2mv checkpoint is a 2.0-family model with its OWN validated regime:
+# the official model-card snippet runs steps 30 / octree ~380, and this
+# repo's checked face-2mv proof ran 384/30 (healthy mesh). Running 2mv at
+# the flagship's 512/50 defaults was measured CATASTROPHIC (2026-07-14
+# A/B: the same gated conditioning views produced 822 raw bodies /
+# euler +887 / dihedral RMS 36.9 deg at 512/50 — a shredded film-shell
+# field). Explicit caller options and configured fleet defaults still win.
+_MV_DEFAULT_NUM_INFERENCE_STEPS = 30
+_MV_DEFAULT_OCTREE_RESOLUTION = 384
 _DEFAULT_NUM_CHUNKS = 8000
 _DEFAULT_MPS_NUM_CHUNKS = 32768
 # Bounded by texture quality, not geometry fidelity: marching-cubes
@@ -575,6 +655,11 @@ def _resolve_generation_defaults(owner: Any, *, device: str) -> Dict[str, Any]:
         "octree_resolution": _owner_cfg_int(owner, "scene3d_hunyuan_octree_resolution", _DEFAULT_OCTREE_RESOLUTION),
         "num_chunks": _owner_cfg_int(owner, "scene3d_hunyuan_num_chunks", num_chunks_default),
         "max_facenum": _owner_cfg_int(owner, "scene3d_hunyuan_max_facenum", _DEFAULT_MAX_FACENUM),
+        # Best-of-N shape selection; 1 = single draw, exactly the historical
+        # behavior (no ranking, no extra renders). Each extra candidate adds
+        # roughly one shape-stage time (~21-28 min measured on MPS at the
+        # default 512 octree) and seconds of ranking.
+        "shape_candidates": _owner_cfg_int(owner, "scene3d_hunyuan_shape_candidates", 1),
     }
 
 
@@ -974,6 +1059,874 @@ def _mesh_topology(mesh: Any) -> Dict[str, Any]:
     return topology
 
 
+# -- best-of-N shape candidate ranking ---------------------------------------
+#
+# Measured motivation (2026-07-13, /tmp/gfix3 car_a vs car_b: the same t23d
+# request, same code and settings, different DiT draws): draw A came out
+# euler -240 / not watertight / dihedral RMS 17.9 deg and baked to 28.6 dE
+# baseline photo-fidelity; draw B came out euler -146 / watertight / RMS
+# 15.1 and baked to 22.2 dE — visibly better everywhere downstream. Draw
+# luck of the shape DiT is the dominant remaining quality factor, ranking
+# takes seconds against ~21-28 min per draw, so drawing N shape candidates
+# and keeping the best buys quality at a known, linear cost.
+#
+# Every constant below is calibrated on the persisted corpus (calibration
+# table in CHANGELOG.md): car_a/car_b (same-subject pair with known
+# ordering), sportscar_v7 (good), the pre-cutter car_final (ground-slab
+# class), the owl/chair/starship/face fleet proofs, and adversarial probes
+# built from car_b (60-iteration laplacian melt; its convex hull — the
+# smoothest possible wrong-detail candidate).
+
+# Spec'd stride between candidate seeds: far enough apart that consecutive
+# candidates are independent draws, and reconstructible from the base seed
+# (candidate i draws at seed + 1000*i; the texture stage keeps the BASE
+# seed so reference generation is unchanged by candidate count).
+_SHAPE_CANDIDATE_SEED_STRIDE = 1000
+# Pose sweep for photo agreement. Hunyuan reconstructs the subject roughly
+# facing the conditioning photo, so the photo's true pose is near the
+# canonical front: every measured fleet pose estimate falls inside
+# |azimuth| <= 40 deg, elevation 0..20 (car_a (25.9, 15), car_b (25, 8),
+# v7 (17.5, 8), slab car rescue (40, 15), chair/owl/face at (<=10, 0),
+# starship (30, 20)). 10-deg azimuth steps cost each candidate the same
+# small quantization penalty (measured ~0.01 IoU), so comparisons stay
+# fair; a FINER sweep was measured to hurt ranking (at 2.5-deg refinement
+# the lumpy car_a refines ABOVE car_b, 0.9238 vs 0.9168 — each mesh finds
+# a flattering angle and matte noise dominates).
+_SHAPE_RANK_POSE_AZIMUTHS = tuple(float(a) for a in range(-40, 41, 10))
+_SHAPE_RANK_POSE_ELEVATIONS = (0.0, 10.0, 20.0)
+# 256 px renders / 128 px normalized masks: the corpus separations quoted
+# below are measured at exactly these sizes; the full 27-pose sweep costs
+# 1-4 s per candidate on this hardware (budget: 30 s).
+_SHAPE_RANK_RENDER_SIZE = 256
+_SHAPE_RANK_NORM_SIZE = 128
+# Clay-render background (uint8). ModernGL clears to (0.95, 0.95, 0.93)
+# -> (242, 242, 237); the matplotlib fallback paints #f3f2ee ->
+# (243, 242, 238), within 1/255 of it. The brightest clay shade is
+# 0.72 * 255 = 184 (>= 53 levels away), so one threshold classifies
+# subject vs background under either renderer.
+_SHAPE_RANK_RENDER_BG = (242, 242, 237)
+_SHAPE_RANK_BG_TOLERANCE = 12
+# Score weights. Justification (all values measured on the corpus at the
+# sizes above; full table in CHANGELOG.md):
+#   silhouette 1.0   — the reference scale. Wrong-subject candidates lose
+#                      0.35-0.50 IoU (owl-mesh-vs-car-photo 0.41, chair
+#                      0.53, car-vs-owl 0.56 against honest 0.90-0.93),
+#                      more than every other term combined (0.65), so a
+#                      wrong shape can never be bought back. The slab
+#                      class loses 0.11 (0.80 vs 0.91).
+#   concavity 0.35   — the anti-melt axis. Silhouette IoU alone CANNOT
+#                      catch a smooth wrong-detail candidate on
+#                      silhouette-convex subjects (measured: car_b's own
+#                      convex hull scores 0.9115, ABOVE the true draw's
+#                      0.9078), and dihedral smoothness actively rewards
+#                      it. Concave detail — wheel arches, under-body gap —
+#                      is what melting destroys: hull-minus-mask IoU
+#                      collapses 0.235 -> 0.027 (8.7x) for the hull and
+#                      0.057 for the slab car. 0.35 makes that collapse
+#                      cost ~0.073, 3.2x the hull's maximum smoothness
+#                      gain (0.023), with silhouette noise (+-0.005) far
+#                      below it.
+#   topology 0.20    — watertightness and single-body are the measured
+#                      draw-quality separators from the motivating pair
+#                      (car_a not watertight, car_b watertight; split
+#                      bodies were the v5 floating-wheels incident). 0.20
+#                      (0.10 per condition) decides same-subject ties
+#                      where photo terms measure within noise (a vs b
+#                      photo delta -0.004) without ever outranking a
+#                      photo-term class gap (slab: 0.24).
+#   smoothness 0.0   — dihedral RMS is RECORDED (diagnostic per candidate)
+#                      but carries NO score weight. Adversarial validation
+#                      (2026-07-13, laplacian melt ladder on the real car_b
+#                      geometry, /tmp/hfix2) measured that any positive
+#                      weight is a monotone reward for the melt direction:
+#                      melting strictly improves RMS (15.09 -> 11.93/10.34/
+#                      9.89 deg at 8/40/150 iterations) while quality
+#                      strictly degrades, and the concavity axis does NOT
+#                      collapse on realistic melts (true 0.2355 vs mild-melt
+#                      0.2696, 60-it melt 0.2693 — only the convex-hull
+#                      extreme collapses to 0.0272). At the original 0.10
+#                      the 40-it melt outscored the true draw by +0.0101 and
+#                      the 60-it calibration melt by +0.0181; at 0.0 every
+#                      melt >= 40 iterations ranks at or below the true draw
+#                      and the residual mild-melt delta (+0.0116) is
+#                      symmetric concavity noise (good-draw concavity spread
+#                      0.24-0.40), not a preference. Removing the weight
+#                      costs nothing measured on legit pairs: car_b > car_a
+#                      +0.102 -> +0.096 (decided by watertightness + photo
+#                      terms), v7 > v4 unchanged, slab and wrong-subject
+#                      margins unchanged, hull still rejected by -0.069.
+_SHAPE_RANK_WEIGHT_SILHOUETTE = 1.0
+_SHAPE_RANK_WEIGHT_CONCAVITY = 0.35
+_SHAPE_RANK_WEIGHT_TOPOLOGY = 0.20
+_SHAPE_RANK_WEIGHT_SMOOTHNESS = 0.0
+# Normalizes dihedral RMS into [0, 1): ~1.6x the largest accepted-fleet
+# value (face proof, 27.6 deg), so real meshes span (0.35, 1.0] linearly
+# and the term never saturates or goes negative on plausible draws.
+_SHAPE_RANK_SMOOTHNESS_SCALE_DEG = 45.0
+
+
+def _dihedral_rms_deg(mesh: Any) -> Optional[float]:
+    """RMS of face-adjacency dihedral angles, in degrees.
+
+    A surface-noise measure: marching-cubes lumps show up as many small
+    random bends between adjacent faces. Only comparable between meshes of
+    the same subject at the same face budget (tessellation density scales
+    the per-edge angles) — which is the candidate-ranking situation.
+    """
+    import numpy as np
+
+    try:
+        angles = np.asarray(mesh.face_adjacency_angles, dtype=np.float64)
+    except Exception:
+        return None
+    if angles.size == 0:
+        return 0.0
+    return float(np.degrees(np.sqrt(np.mean(np.square(angles)))))
+
+
+def _normalize_mask_frame(mask: Any, *, size: int = _SHAPE_RANK_NORM_SIZE) -> Optional[Any]:
+    """Crop a binary mask to its bbox, pad square, resize to a common grid.
+
+    Same convention as the bake's normalized silhouette IoU (aspect ratio
+    preserved — it is a real shape cue; scale and translation removed —
+    camera distance is fitted later, in the bake, and must not leak into
+    shape ranking). Returns None for empty masks.
+    """
+    import numpy as np
+    from PIL import Image
+
+    mask = np.asarray(mask, dtype=bool)
+    rows = np.nonzero(mask.any(axis=1))[0]
+    cols = np.nonzero(mask.any(axis=0))[0]
+    if len(rows) == 0 or len(cols) == 0:
+        return None
+    cropped = mask[rows[0] : rows[-1] + 1, cols[0] : cols[-1] + 1]
+    side = max(cropped.shape)
+    padded = np.zeros((side, side), dtype=bool)
+    top = (side - cropped.shape[0]) // 2
+    left = (side - cropped.shape[1]) // 2
+    padded[top : top + cropped.shape[0], left : left + cropped.shape[1]] = cropped
+    image = Image.fromarray((padded * 255).astype(np.uint8))
+    return np.asarray(image.resize((int(size), int(size)), Image.BILINEAR)) > 127
+
+
+def _mask_iou(mask_a: Any, mask_b: Any) -> float:
+    import numpy as np
+
+    union = float(np.logical_or(mask_a, mask_b).sum())
+    if union <= 0.0:
+        return 0.0
+    return float(np.logical_and(mask_a, mask_b).sum()) / union
+
+
+def _mask_convex_hull(mask: Any) -> Any:
+    """Filled 2D convex hull of a raster mask (Delaunay point-in-hull).
+
+    Degrades to the mask itself when the support is degenerate (<3 points
+    or collinear), which makes the negative region empty — the safe
+    reading for a mask with no measurable concavity.
+    """
+    import numpy as np
+
+    mask = np.asarray(mask, dtype=bool)
+    points = np.argwhere(mask)
+    if len(points) < 3:
+        return mask.copy()
+    try:
+        from scipy.spatial import Delaunay
+
+        triangulation = Delaunay(points)
+    except Exception:
+        return mask.copy()
+    grid = np.argwhere(np.ones_like(mask))
+    inside = triangulation.find_simplex(grid) >= 0
+    return inside.reshape(mask.shape)
+
+
+def _clay_silhouette_mask(image: Any) -> Any:
+    """Silhouette of a clay preview render via the known background color.
+
+    Candidate meshes are untextured at ranking time, so the render
+    background is a constant this module controls — no segmentation model
+    is needed (running a salient-object matte on synthetic clay is its own
+    failure mode).
+    """
+    import numpy as np
+
+    array = np.asarray(image.convert("RGB"), dtype=np.int16)
+    background = np.asarray(_SHAPE_RANK_RENDER_BG, dtype=np.int16)
+    return (np.abs(array - background[None, None, :]) > _SHAPE_RANK_BG_TOLERANCE).any(axis=2)
+
+
+def _photo_matte_mask(rgba_image: Any) -> Optional[Any]:
+    """Photo matte as a boolean mask, or None when unusable for ranking.
+
+    Unusable means: no alpha support at all, or alpha covering >95% of the
+    frame (background removal did not run / failed, so the "matte" is the
+    whole rectangle and silhouette agreement would measure nothing). The
+    caller degrades to geometry-only ranking — symmetrically for every
+    candidate — instead of ranking against a meaningless mask.
+    """
+    import numpy as np
+
+    try:
+        array = np.asarray(rgba_image.convert("RGBA"), dtype=np.uint8)
+    except Exception:
+        return None
+    alpha = array[:, :, 3]
+    support = alpha > 12
+    coverage = float(support.mean())
+    if coverage <= 0.005 or coverage >= 0.95:
+        return None
+    return support
+
+
+def evaluate_shape_candidate(
+    mesh: Any,
+    *,
+    matte_mask: Any = None,
+    azimuths: Any = _SHAPE_RANK_POSE_AZIMUTHS,
+    elevations: Any = _SHAPE_RANK_POSE_ELEVATIONS,
+    render_size: int = _SHAPE_RANK_RENDER_SIZE,
+) -> Dict[str, Any]:
+    """Measure one postprocessed candidate (canonical frame) for ranking.
+
+    Geometry terms (always): watertightness, body count, euler number,
+    dihedral RMS. Photo-agreement terms (when a usable matte is given):
+    max normalized silhouette IoU over the pose sweep, and — at that same
+    argmax pose, so the evidence stays consistent — the IoU of the
+    NEGATIVE regions (convex hull minus mask on both sides). The negative
+    region is what a melted/blob candidate destroys while keeping the
+    outer silhouette; see the weight table above for the measured margins.
+    """
+    import numpy as np
+
+    metrics: Dict[str, Any] = {}
+    topology = _mesh_topology(mesh)
+    metrics["watertight"] = bool(topology.get("is_watertight") or False)
+    metrics["body_count"] = int(topology.get("body_count") or 0)
+    metrics["euler_number"] = topology.get("euler_number")
+    metrics["dihedral_rms_deg"] = _dihedral_rms_deg(mesh)
+    rms = metrics["dihedral_rms_deg"]
+    metrics["smoothness"] = (
+        float(np.clip(1.0 - float(rms) / _SHAPE_RANK_SMOOTHNESS_SCALE_DEG, 0.0, 1.0))
+        if rms is not None
+        else 0.0
+    )
+    metrics["topology_score"] = 0.5 * float(metrics["watertight"]) + 0.5 * float(
+        metrics["body_count"] == 1
+    )
+    metrics["photo_iou"] = None
+    metrics["photo_concavity_iou"] = None
+    metrics["photo_iou_pose"] = None
+
+    if matte_mask is None:
+        return metrics
+    photo_norm = _normalize_mask_frame(matte_mask)
+    if photo_norm is None:
+        return metrics
+
+    try:
+        best_iou = -1.0
+        best_pose: Optional[tuple[float, float]] = None
+        best_render_norm: Any = None
+        for elevation in elevations:
+            views = render_mesh_views(
+                mesh,
+                size=int(render_size),
+                azimuths=tuple(float(a) for a in azimuths),
+                elevation=float(elevation),
+            )
+            for azimuth, view in zip(azimuths, views):
+                render_norm = _normalize_mask_frame(_clay_silhouette_mask(view))
+                if render_norm is None:
+                    continue
+                iou = _mask_iou(photo_norm, render_norm)
+                if iou > best_iou:
+                    best_iou = iou
+                    best_pose = (float(azimuth), float(elevation))
+                    best_render_norm = render_norm
+        if best_pose is None:
+            # No pose produced a silhouette: fail closed with zero photo
+            # agreement (an unverifiable candidate must not win on
+            # geometry terms that a blob can game).
+            metrics["photo_iou"] = 0.0
+            metrics["photo_concavity_iou"] = 0.0
+            return metrics
+        photo_negative = _mask_convex_hull(photo_norm) & ~photo_norm
+        render_negative = _mask_convex_hull(best_render_norm) & ~best_render_norm
+        metrics["photo_iou"] = round(float(best_iou), 4)
+        metrics["photo_concavity_iou"] = round(_mask_iou(photo_negative, render_negative), 4)
+        metrics["photo_iou_pose"] = {
+            "azimuth_deg": best_pose[0],
+            "elevation_deg": best_pose[1],
+        }
+    except Exception as exc:
+        # Same fail-closed contract as the empty-render branch, with the
+        # reason preserved for the metadata record.
+        metrics["photo_iou"] = 0.0
+        metrics["photo_concavity_iou"] = 0.0
+        metrics["photo_agreement_error"] = f"{type(exc).__name__}: {exc}"
+    return metrics
+
+
+def score_shape_candidate(metrics: Mapping[str, Any]) -> float:
+    """Composite ranking score; higher is better.
+
+    Photo terms are omitted (not zeroed) when the matte was unusable — the
+    caller guarantees that happens symmetrically for every candidate in a
+    run, so scores stay comparable within the run.
+    """
+    score = (
+        _SHAPE_RANK_WEIGHT_TOPOLOGY * float(metrics.get("topology_score") or 0.0)
+        + _SHAPE_RANK_WEIGHT_SMOOTHNESS * float(metrics.get("smoothness") or 0.0)
+    )
+    if metrics.get("photo_iou") is not None:
+        score += _SHAPE_RANK_WEIGHT_SILHOUETTE * float(metrics["photo_iou"])
+        score += _SHAPE_RANK_WEIGHT_CONCAVITY * float(metrics.get("photo_concavity_iou") or 0.0)
+    return float(score)
+
+
+# -- pre-shape geometry-view synthesis ----------------------------------------
+
+
+def _mv_snap_tag(azimuth_deg: float) -> Optional[tuple[str, float]]:
+    """Snap a declared camera azimuth onto the nearest 2mv view tag.
+
+    Returns `(tag, snap_delta_deg)` or None when no tag lies within the
+    snap tolerance. Tags are 90 deg apart and the tolerance is 25 deg, so
+    at most one tag can match.
+    """
+    best: Optional[tuple[str, float]] = None
+    for tag_azimuth, tag in _MV_TAG_BY_AZIMUTH.items():
+        delta = abs(((float(azimuth_deg) - tag_azimuth) + 180.0) % 360.0 - 180.0)
+        if delta <= _MV_TAG_SNAP_TOLERANCE_DEG and (best is None or delta < best[1]):
+            best = (tag, delta)
+    return best
+
+
+def _mv_cap_conditioning_views(
+    mv_image_dict: Dict[str, Any],
+    geometry_views_used: List[Dict[str, Any]],
+    warnings: List[str],
+) -> List[Dict[str, Any]]:
+    """Enforce the measured conditioning-view cap; returns dropped rows.
+
+    Priority rationale (see _MV_MAX_CONDITIONING_VIEWS for the cliff
+    measurement): the FRONT is the user's own photo — identity and
+    registration anchor; the BACK is the audit-documented failure surface
+    of single-view runs ("flat back / invented rear") and part of the
+    official 3-view snippet; one SIDE constrains the profile; the second
+    side is the most redundant view on a fleet measured ~97% bilaterally
+    symmetric — and a dropped view still reaches the texture lane through
+    the reference replay, so nothing synthesized is wasted.
+    """
+    dropped: List[Dict[str, Any]] = []
+    if len(mv_image_dict) <= _MV_MAX_CONDITIONING_VIEWS:
+        return dropped
+    keep = sorted(mv_image_dict, key=_MV_TAG_PRIORITY.index)[:_MV_MAX_CONDITIONING_VIEWS]
+    for tag in [t for t in mv_image_dict if t not in keep]:
+        del mv_image_dict[tag]
+        for row in list(geometry_views_used):
+            if row.get("tag") == tag:
+                geometry_views_used.remove(row)
+                row["conditioning_dropped"] = "view_cap"
+                dropped.append(row)
+    warnings.append(
+        "multiview conditioning capped at "
+        f"{_MV_MAX_CONDITIONING_VIEWS} views (measured: 4-view 2mv "
+        "conditioning shreds the field into film-shell debris — 559 raw "
+        "bodies on the same images that produce a healthy mesh with any "
+        "1-3 view subset); dropped: "
+        + ", ".join(str(row.get("tag")) for row in dropped)
+    )
+    return dropped
+
+
+def _geometry_view_prompt(label: str, subject_noun: Optional[str]) -> str:
+    """Rotate-style synthesis instruction for a meshless conditioning view.
+
+    Modeled on the texture lane's "rotate" conditioning variant (the only
+    variant that works without a clay render — no mesh exists yet), with
+    the material-free noun contract of `captioning.extract_subject_noun`:
+    the template has no free-text slot, so no caption or user hint can
+    inject a material claim. The whole-subject clause exists because a
+    cropped or zoomed view corrupts the canonical recentring every 2mv
+    view goes through (border_ratio framing assumes the full subject).
+    """
+    noun = (subject_noun or "").strip() or "object"
+    phrase = _GEOMETRY_VIEW_PHRASES.get(label, f"seen from the {label.replace('_', ' ')} view")
+    return (
+        f"Rotate the camera to show this exact {noun} {phrase}. Keep the "
+        "same object identity: the same proportions and shape, the same "
+        "surface relief, colors and pattern. Do not change the material "
+        "type. The whole subject stays fully visible and centered, at the "
+        "same distance as the input photo. Plain dark background, soft "
+        "diffuse even lighting."
+    )
+
+
+def _normalized_matte(rgba_image: Any) -> Optional[Any]:
+    """Normalized (bbox-cropped, square, 128 px) boolean matte of an RGBA
+    image, or None when the matte is unusable (no alpha support, or alpha
+    covering nearly the whole frame — the same sanity line the shape
+    ranker draws via `_photo_matte_mask`)."""
+    mask = _photo_matte_mask(rgba_image)
+    if mask is None:
+        return None
+    return _normalize_mask_frame(mask)
+
+
+def _geometry_person_gate(
+    source_rgba: Any,
+    *,
+    subject_hint: Optional[str],
+    allow_person: bool,
+) -> tuple[bool, Dict[str, Any]]:
+    """Person doctrine for geometry-view synthesis; `(proceed, record)`.
+
+    Identical doctrine to `reference_generation.generate_reference_views`
+    (which cannot be reused directly here because it requires a mesh): no
+    gate in the stack measures identity, so synthesizing views of a person
+    requires the explicit person acknowledgment — and an UNAVAILABLE
+    captioner is not a permission grant (fail closed). The acknowledgment
+    is the same one the texture lane uses (`texture_reference_allow_person`)
+    because it attests the same act: synthesizing unseen views of a person.
+    """
+    from ..captioning import caption_image
+    from ..reference_generation import is_person_subject
+
+    caption: Optional[str] = None
+    hint = (subject_hint or "").strip()
+    person_detected = is_person_subject(hint)
+    if not person_detected:
+        # A hint that doesn't name a person is not evidence of absence:
+        # caption the photo itself before unattended synthesis.
+        caption = caption_image(source_rgba)
+        if caption is None and not allow_person:
+            return False, {
+                "person_detected": None,
+                "caption": None,
+                "refusal": (
+                    "captioner unavailable: the person-subject check cannot "
+                    "run, so geometry-view synthesis is refused (fail closed). "
+                    "Install transformers/BLIP or pass the person "
+                    "acknowledgment (texture_reference_allow_person)."
+                ),
+            }
+        person_detected = is_person_subject(caption)
+    record: Dict[str, Any] = {
+        "person_detected": bool(person_detected),
+        "caption": caption,
+    }
+    if person_detected and not allow_person:
+        record["refusal"] = (
+            "person subject detected: no gate defends facial identity, so "
+            "synthesizing conditioning views of a person requires the "
+            "explicit person acknowledgment (texture_reference_allow_person "
+            "/ --texture-reference-allow-person)"
+        )
+        return False, record
+    if person_detected:
+        record["person_warning"] = (
+            "person subject: synthesized conditioning views may not preserve "
+            "facial identity (no identity gate exists); acknowledged "
+            "explicitly, proceeding"
+        )
+    return True, record
+
+
+def _harden_skimage_color_convert() -> None:
+    """Route skimage's 3x3 color-matrix multiply through einsum on macOS.
+
+    Documented host-class crash (KnowledgeBase: "Accelerate BLAS segfaults
+    (exit 139) under threaded float64 GEMM"): skimage's `_convert` uses a
+    float64 `@` that dispatches to Accelerate's cblas_dgemm, which
+    segfaults on this host class — measured 2/2 on this feature's
+    synthesis path (lab2rgb inside `match_tone_lab`) while the MLX image
+    model is resident, EVEN WITH `VECLIB_MAXIMUM_THREADS=1`. The einsum
+    form is the mitigation two prior audit programs shipped for harnesses;
+    it is numerically identical (verified below to 1e-12 on a probe before
+    the swap; on any mismatch the swap is refused). Called from the
+    synthesis path only, so the default single-view flow never touches
+    another library's internals.
+    """
+    if sys.platform != "darwin":
+        return
+    try:
+        import numpy as np
+        import skimage.color.colorconv as colorconv
+    except Exception:
+        return
+    current = getattr(colorconv, "_convert", None)
+    if current is None or getattr(current, "_abstract3d_einsum", False):
+        return
+
+    def _convert_einsum(matrix, arr):
+        arr = colorconv._prepare_colorarray(arr)
+        return np.einsum("...i,ji->...j", arr, matrix.astype(arr.dtype))
+
+    try:
+        probe = np.random.default_rng(1).random((5, 7, 3))
+        matrix = np.asarray(
+            [[3.24, -1.54, -0.50], [-0.97, 1.88, 0.04], [0.06, -0.20, 1.06]]
+        )
+        if float(np.abs(_convert_einsum(matrix, probe) - (probe @ matrix.T)).max()) > 1e-12:
+            return
+    except Exception:
+        return
+    _convert_einsum._abstract3d_einsum = True  # type: ignore[attr-defined]
+    colorconv._convert = _convert_einsum
+
+
+def _synthesize_geometry_views(
+    owner: Any,
+    source_rgba: Any,
+    *,
+    subject_noun: str,
+    base_seed: int,
+    labels: Any,
+    attempts: int = _GEOMETRY_VIEW_ATTEMPTS,
+    image_generator: Optional[Any] = None,
+) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Synthesize and gate canonical conditioning views from the source
+    photo (no mesh exists yet). Returns
+    `(accepted_views, view_records, rejected_images)` — rejected pixels
+    travel back for bundle persistence (persist-for-diagnosis doctrine: a
+    rejected class must be diagnosable without a rerun).
+
+    Accepted views carry the matted, tone-matched RGBA the conditioner
+    will see plus the RAW generation bytes (for the texture lane's replay
+    through the full reference-acceptance machinery) and provenance.
+
+    Gate battery, in evidence order (a wrong conditioning view is worse
+    than single-view — the 2mv checkpoint TRUSTS its tags):
+      1. matte sanity — the generation must segment to a subject that is
+         neither empty nor the whole frame (`_photo_matte_mask` bounds);
+      2. subject identity — `part_material_fidelity` floor line against
+         the source photo (includes the chroma-collapse guard): a palette
+         flip or monochrome collapse means the generator lost the subject,
+         so its geometry cannot be trusted either;
+      3. back-view plausibility — in orthographic projection the back
+         silhouette of ANY object is exactly the mirrored front
+         silhouette; normalized mirror-IoU against the source matte has a
+         calibrated floor (approximate for perspective and off-axis
+         sources, hence a floor rather than a precision gate);
+      4. side-pair consistency (applied by the caller across views) —
+         left/right orthographic silhouettes are exact mirrors of each
+         other, so a surviving pair must mirror-agree or BOTH are dropped
+         (blame between them is unattributable).
+    """
+    import hashlib
+    import io as _io
+
+    from PIL import Image
+
+    from ..image_composition import resolve_image_generation_request
+    from ..material_gates import part_material_fidelity
+    from ..reference_generation import (
+        DEFAULT_NEGATIVE_PROMPT,
+        default_i2i_generator,
+        match_tone_lab,
+    )
+    from ..segmentation import remove_background_robust
+
+    # Host hardening BEFORE any LAB round-trip on this path (measured
+    # segfault class with the MLX pool resident; see the helper).
+    _harden_skimage_color_convert()
+
+    generator = image_generator or default_i2i_generator(owner)
+    request = resolve_image_generation_request(owner)
+    request.pop("width", None)
+    request.pop("height", None)
+    request.pop("seed", None)
+    request = {key: value for key, value in request.items() if value is not None}
+
+    source_norm = _normalized_matte(source_rgba)
+
+    buffer = _io.BytesIO()
+    source_rgba.convert("RGB").save(buffer, format="PNG")
+    conditioning_bytes = buffer.getvalue()
+
+    accepted: List[Dict[str, Any]] = []
+    records: List[Dict[str, Any]] = []
+    rejected_images: List[Dict[str, Any]] = []
+
+    def _record_rejected(label: str, attempt: int, image: Any) -> None:
+        if len(rejected_images) >= 3 * len(tuple(labels)):
+            return
+        small = image.copy()
+        small.thumbnail((512, 512))
+        rejected_images.append({"label": label, "attempt": attempt, "image": small})
+
+    for label_index, (label, azimuth) in enumerate(labels):
+        record: Dict[str, Any] = {
+            "label": label,
+            "azimuth_deg": float(azimuth),
+            "attempts": [],
+            "accepted": False,
+        }
+        prompt = _geometry_view_prompt(label, subject_noun)
+        record["prompt"] = prompt
+        started = time.perf_counter()
+        for attempt in range(int(attempts)):
+            attempt_seed = (
+                int(base_seed)
+                + _GEOMETRY_VIEW_SEED_OFFSET
+                + _GEOMETRY_VIEW_SEED_STRIDE * (attempt * len(tuple(labels)) + label_index)
+            )
+            # 8/12-step alternation mirrors the texture ladder's measured
+            # finding: the distilled klein default (4 steps) is too few,
+            # and alternation decorrelates the ladder from per-steps bias.
+            call_kwargs = dict(request)
+            call_kwargs["steps"] = 8 if attempt % 2 == 0 else 12
+            call_kwargs["negative_prompt"] = DEFAULT_NEGATIVE_PROMPT
+            attempt_row: Dict[str, Any] = {
+                "seed": attempt_seed,
+                "steps": call_kwargs["steps"],
+            }
+            try:
+                payload = generator(prompt, conditioning_bytes, seed=attempt_seed, **call_kwargs)
+                data = payload if isinstance(payload, (bytes, bytearray)) else None
+                if data is None and isinstance(payload, Mapping):
+                    for key in ("data", "bytes", "content"):
+                        if isinstance(payload.get(key), (bytes, bytearray)):
+                            data = payload[key]
+                            break
+                if data is None:
+                    attempt_row["error"] = "generator returned no image bytes"
+                    record["attempts"].append(attempt_row)
+                    continue
+                raw_bytes = bytes(data)
+                generated = Image.open(_io.BytesIO(raw_bytes))
+                matted = remove_background_robust(generated)
+                # Tone match toward the source (capped LAB statistics
+                # transfer): the DINOv2 conditioner reads tone as material
+                # evidence, and the caps make it structurally unable to
+                # whitewash a legitimately different unseen side. The
+                # chroma-collapse guard below is dispersion-based, so a
+                # capped mean shift cannot hide a collapse from it.
+                try:
+                    matted, tone_stats = match_tone_lab(matted, source_rgba)
+                    attempt_row["tone_match"] = tone_stats
+                except Exception as exc:
+                    attempt_row["tone_match"] = {
+                        "applied": False,
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                view_norm = _normalized_matte(matted)
+                if view_norm is None:
+                    attempt_row["failure"] = "unusable matte (empty or whole-frame subject)"
+                    record["attempts"].append(attempt_row)
+                    _record_rejected(label, attempt, matted)
+                    continue
+                material = part_material_fidelity(matted, source_rgba)
+                attempt_row["material"] = {
+                    key: material.get(key)
+                    for key in ("passed", "floor", "worst_part_delta_e", "reason",
+                                "source_chroma_dispersion", "generated_chroma_dispersion")
+                    if material.get(key) is not None
+                }
+                if not material.get("floor", material.get("passed")):
+                    attempt_row["failure"] = (
+                        "subject identity: "
+                        + str(material.get("reason") or "part material floor exceeded")
+                    )
+                    record["attempts"].append(attempt_row)
+                    _record_rejected(label, attempt, matted)
+                    continue
+                if label == "back" and source_norm is not None:
+                    import numpy as np
+
+                    mirror_iou = _mask_iou(np.fliplr(source_norm), view_norm)
+                    attempt_row["back_mirror_iou"] = round(float(mirror_iou), 4)
+                    if mirror_iou < _GEOMETRY_BACK_MIRROR_IOU_MIN:
+                        attempt_row["failure"] = (
+                            f"back-view silhouette implausible: mirror-IoU vs source "
+                            f"{mirror_iou:.3f} < {_GEOMETRY_BACK_MIRROR_IOU_MIN}"
+                        )
+                        record["attempts"].append(attempt_row)
+                        _record_rejected(label, attempt, matted)
+                        continue
+                record["attempts"].append(attempt_row)
+                record["accepted"] = True
+                record["seed"] = attempt_seed
+                record["raw_payload_md5"] = hashlib.md5(raw_bytes).hexdigest()
+                accepted.append(
+                    {
+                        "label": label,
+                        "azimuth_deg": float(azimuth),
+                        "elevation_deg": 0.0,
+                        "rgba": matted,
+                        "raw_bytes": raw_bytes,
+                        "raw_payload_md5": record["raw_payload_md5"],
+                        "seed": attempt_seed,
+                        "norm_matte": view_norm,
+                    }
+                )
+                break
+            except Exception as exc:
+                attempt_row["error"] = f"{type(exc).__name__}: {exc}"
+                record["attempts"].append(attempt_row)
+                continue
+        record["seconds"] = round(time.perf_counter() - started, 1)
+        records.append(record)
+
+    # Side-pair consistency: left/right orthographic silhouettes of one
+    # object are exact mirror images, so a surviving pair that disagrees
+    # contains at least one lie — and nothing attributes the blame, so
+    # both are dropped (conservative by design: the fallback is the
+    # KNOWN-GOOD single-view path, not a broken run).
+    by_label = {view["label"]: view for view in accepted}
+    left = by_label.get("side_left")
+    right = by_label.get("side_right")
+    if left is not None and right is not None:
+        import numpy as np
+
+        pair_iou = _mask_iou(np.fliplr(left["norm_matte"]), right["norm_matte"])
+        for record in records:
+            if record["label"] in ("side_left", "side_right"):
+                record["side_pair_mirror_iou"] = round(float(pair_iou), 4)
+        if pair_iou < _GEOMETRY_SIDE_PAIR_MIRROR_IOU_MIN:
+            for record in records:
+                if record["label"] in ("side_left", "side_right"):
+                    record["accepted"] = False
+                    record["failure"] = (
+                        f"side-pair mirror disagreement: IoU {pair_iou:.3f} < "
+                        f"{_GEOMETRY_SIDE_PAIR_MIRROR_IOU_MIN} (both sides dropped: "
+                        "blame between them is unattributable)"
+                    )
+            for dropped in (left, right):
+                _record_rejected(dropped["label"], -1, dropped["rgba"])
+            accepted = [v for v in accepted if v["label"] not in ("side_left", "side_right")]
+    for view in accepted:
+        view.pop("norm_matte", None)
+    return accepted, records, rejected_images
+
+
+def _persist_geometry_conditioning_artifacts(
+    bundle_root: Path,
+    *,
+    accepted_views: List[Dict[str, Any]],
+    rejected_images: List[Dict[str, Any]],
+    record: Optional[Dict[str, Any]],
+) -> None:
+    """Persist the synthesized conditioning views into the bundle.
+
+    Accepted views land as full PNGs (the exact pixels the 2mv conditioner
+    saw); rejected candidates land downscaled and budget-capped under
+    `rejected_geometry_views/` — the same persist-for-diagnosis contract
+    as the texture lane's `rejected_refs/` (a rejected class must be
+    diagnosable without a rerun).
+    """
+    if record is None:
+        return
+    accepted_paths: List[str] = []
+    for view in accepted_views:
+        try:
+            path = bundle_root / f"geometry_view_synthesized_{view['label']}.png"
+            view["rgba"].save(path)
+            accepted_paths.append(str(path))
+        except Exception:
+            continue
+    if accepted_paths:
+        record["synthesized_view_paths"] = accepted_paths
+    if rejected_images:
+        rejected_dir = bundle_root / "rejected_geometry_views"
+        rejected_dir.mkdir(exist_ok=True)
+        budget = 2 * 1024 * 1024
+        for row in rejected_images:
+            if budget <= 0:
+                break
+            rejected_path = rejected_dir / f"{row['label']}_a{row['attempt']}.webp"
+            try:
+                row["image"].convert("RGB").save(rejected_path, format="WEBP", quality=80)
+                budget -= rejected_path.stat().st_size
+            except Exception:
+                break
+
+
+def _generate_references_with_replay(
+    mesh: Any,
+    source_rgba: Any,
+    *,
+    owner: Any,
+    angles: Any,
+    replay_sources: Mapping[str, bytes],
+    **refgen_kwargs: Any,
+) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Run `generate_reference_views` with a replay-first generator.
+
+    For each requested angle whose label has a pre-shape synthesized view,
+    the FIRST ladder attempt replays that view's raw bytes; every later
+    attempt (and every angle without a replay) delegates to the real i2i
+    generator. The point: the synthesized geometry views are OFFERED to
+    the texture lane through the full, unmodified acceptance machinery
+    (matting, clay-silhouette registration + IoU, texture/material/
+    specular gates, whole-bake A/B) — nothing is bypassed, and a view the
+    mesh diverged from simply fails the clay IoU gate and is regenerated
+    by the normal ladder.
+    """
+    from ..reference_generation import default_i2i_generator, generate_reference_views
+
+    delegate_cache: Dict[str, Any] = {}
+
+    def _delegate(prompt: str, image: Any, **kwargs: Any) -> Any:
+        if "generator" not in delegate_cache:
+            delegate_cache["generator"] = default_i2i_generator(owner)
+        return delegate_cache["generator"](prompt, image, **kwargs)
+
+    views: List[Dict[str, Any]] = []
+    reports: List[Dict[str, Any]] = []
+    pending: List[Any] = []
+    for angle in angles:
+        label = str(angle[0])
+        raw = replay_sources.get(label)
+        if raw is None:
+            pending.append(angle)
+            continue
+        state = {"served": False}
+
+        def _replay_first(prompt: str, image: Any, *, _raw=raw, _state=state, **kwargs: Any) -> Any:
+            if not _state["served"]:
+                _state["served"] = True
+                return _raw
+            return _delegate(prompt, image, **kwargs)
+
+        angle_views, angle_report = generate_reference_views(
+            mesh, source_rgba, owner=owner, angles=[angle],
+            image_generator=_replay_first, **refgen_kwargs,
+        )
+        views.extend(angle_views)
+        reports.append(angle_report)
+    if pending:
+        batch_views, batch_report = generate_reference_views(
+            mesh, source_rgba, owner=owner, angles=pending, **refgen_kwargs,
+        )
+        views.extend(batch_views)
+        reports.append(batch_report)
+
+    if not reports:
+        return views, {"angles": [], "accepted": 0, "rejected": 0}
+    merged = dict(reports[0])
+    merged["angles"] = [row for report in reports for row in (report.get("angles") or [])]
+    merged["accepted"] = sum(int(report.get("accepted") or 0) for report in reports)
+    merged["rejected"] = sum(int(report.get("rejected") or 0) for report in reports)
+    rejected_images = [
+        image for report in reports for image in (report.get("rejected_images") or [])
+    ]
+    if rejected_images:
+        merged["rejected_images"] = rejected_images
+    elif "rejected_images" in merged:
+        del merged["rejected_images"]
+    # Provenance: which angles started from a replayed pre-shape view (the
+    # per-angle rows record the replayed payload's md5 on acceptance).
+    merged["replayed_labels"] = sorted(
+        str(angle[0]) for angle in angles if str(angle[0]) in replay_sources
+    )
+    return views, merged
+
+
 class Hunyuan3DShapeBackend:
     """Official Hunyuan3D-2.1 shape backend (license-gated, geometry stage)."""
 
@@ -1058,6 +2011,43 @@ class Hunyuan3DShapeBackend:
                 "guidance_scale": {"type": "number"},
                 "octree_resolution": {"type": "integer"},
                 "max_facenum": {"type": "integer"},
+                "shape_candidates": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": (
+                        "Best-of-N shape selection: draw the shape stage N "
+                        "times with spaced seeds (base + 1000*i), rank the "
+                        "postprocessed candidates by photo agreement "
+                        "(silhouette + concavity IoU) plus topology, and "
+                        "keep the best (surface smoothness is recorded per "
+                        "candidate but carries no score weight). Default 1 "
+                        "(single draw, exactly the historical behavior). "
+                        "Each extra candidate adds about one shape-stage "
+                        "time (~21-28 min measured on MPS at octree 512); "
+                        "ranking itself takes seconds. The texture stage "
+                        "always uses the base seed."
+                    ),
+                },
+                "geometry_conditioning": {
+                    "type": "string",
+                    "enum": ["single", "multiview", "auto"],
+                    "description": (
+                        "Shape-stage conditioning for single-photo flows. "
+                        "'single' (default) is the historical one-view path. "
+                        "'multiview' synthesizes the missing canonical views "
+                        "(back, side_left, side_right) from the source photo "
+                        "with the local i2i generator, gates them (subject "
+                        "identity + silhouette plausibility; a wrong view is "
+                        "worse than none), and conditions the Hunyuan3D-2mv "
+                        "checkpoint on the survivors — falling back LOUDLY "
+                        "to single-view when none survive. 'auto' does the "
+                        "same only when an explicitly configured image "
+                        "provider exists. Person subjects are refused "
+                        "without texture_reference_allow_person. Views that "
+                        "pass the texture-lane gates are also offered to "
+                        "the texture bake."
+                    ),
+                },
                 "texture_mode": {"type": "string", "enum": ["baked_basecolor", "none"]},
                 "texture_resolution": {"type": "integer"},
                 "texture_completion": {"type": "string", "enum": ["none", "mirror_symmetry", "auto"]},
@@ -1299,12 +2289,101 @@ class Hunyuan3DShapeBackend:
 
         dtype = kwargs.pop("dtype", None)
         model_subfolder = kwargs.pop("model_subfolder", None)
-        pipeline = self._load_runtime(
-            model_id=model, device=device, dtype=dtype, model_subfolder=model_subfolder
-        )
-        resolved_device = self._resident_device or "cpu"
-        resolved_dtype = self._resident_dtype or "float32"
-        multiview_capable = bool(self._last_runtime_stats.get("multiview_capable"))
+
+        # Multi-view geometry conditioning mode. Validated here (cheap
+        # string checks, before any model load) so a bad value fails in
+        # milliseconds; the synthesis itself runs AFTER the strict
+        # unknown-option check for the same reason.
+        geometry_mode = str(
+            kwargs.pop("geometry_conditioning", None)
+            or _owner_cfg(self._owner, "scene3d_hunyuan_geometry_conditioning")
+            or _env("ABSTRACT3D_HUNYUAN_GEOMETRY_CONDITIONING")
+            or "single"
+        ).strip().lower()
+        if geometry_mode not in _GEOMETRY_CONDITIONING_MODES:
+            raise InvalidRequestError(
+                "geometry_conditioning must be one of: "
+                f"{', '.join(_GEOMETRY_CONDITIONING_MODES)} (got {geometry_mode!r})"
+            )
+        geometry_conditioning_record: Optional[Dict[str, Any]] = None
+        geometry_fallback_reason: Optional[str] = None
+        geometry_warnings: List[str] = []
+        multiview_active = geometry_mode in {"multiview", "auto"}
+        if multiview_active:
+            geometry_conditioning_record = {
+                "requested": geometry_mode,
+                "applied": "single_view",
+                "fallback_reason": None,
+                "synthesized_views": [],
+            }
+            # An explicit non-mv model contradicts an explicit multiview
+            # request: fail loudly rather than silently overriding either.
+            # "auto" is a preference, not a demand — it yields to the
+            # explicit model choice with a recorded reason.
+            explicit_repo: Optional[str] = None
+            if model is not None:
+                explicit_repo, _explicit_sub = _resolve_model_selection(model, model_subfolder)
+            if explicit_repo == _OFFICIAL_MODEL_ID:
+                if geometry_mode == "multiview":
+                    raise InvalidRequestError(
+                        "geometry_conditioning='multiview' requires the multi-view "
+                        f"checkpoint {_MV_MODEL_ID!r}, but the model was explicitly "
+                        f"set to {model!r}. Drop the explicit model (it is selected "
+                        "automatically) or set geometry_conditioning='single'."
+                    )
+                multiview_active = False
+                geometry_fallback_reason = (
+                    "geometry_conditioning=auto yielded to the explicitly "
+                    f"requested single-view model {model!r}"
+                )
+                geometry_warnings.append(
+                    "geometry_conditioning fell back to single-view: "
+                    + geometry_fallback_reason
+                )
+            elif geometry_mode == "multiview" and not has_image_composer(self._owner):
+                # Explicit mode: missing tooling is a hard error, exactly
+                # like texture_reference_generation="on".
+                raise DependencyUnavailableError(
+                    "geometry_conditioning='multiview' synthesizes conditioning "
+                    f"views with the image composer. {COMPOSITION_INSTALL_HINT}"
+                )
+            elif geometry_mode == "auto":
+                from ..reference_generation import auto_generation_ready
+
+                ready, readiness_reason = auto_generation_ready(self._owner)
+                if not ready:
+                    # "auto" is a default-shaped option: it must never
+                    # silently route the user's photo to a provider they
+                    # never configured.
+                    multiview_active = False
+                    geometry_fallback_reason = (
+                        f"geometry_conditioning=auto skipped: {readiness_reason}. "
+                        "Configure a local image provider "
+                        "(scene3d_image_provider / ABSTRACT3D_IMAGE_PROVIDER) "
+                        "or set geometry_conditioning=multiview."
+                    )
+                    geometry_warnings.append(
+                        "geometry_conditioning fell back to single-view: "
+                        + geometry_fallback_reason
+                    )
+
+        if multiview_active:
+            # Defer the DiT load until the conditioning views exist: the
+            # i2i synthesis and the shape DiT otherwise co-reside on the
+            # same unified-memory pool (the t23d composition stage frees
+            # MLX before the load for exactly this reason). Device and
+            # dtype resolve deterministically without loading.
+            pipeline = None
+            resolved_device = _select_device(self._owner, device)
+            resolved_dtype = _select_dtype(resolved_device, dtype)
+            multiview_capable = True
+        else:
+            pipeline = self._load_runtime(
+                model_id=model, device=device, dtype=dtype, model_subfolder=model_subfolder
+            )
+            resolved_device = self._resident_device or "cpu"
+            resolved_dtype = self._resident_dtype or "float32"
+            multiview_capable = bool(self._last_runtime_stats.get("multiview_capable"))
 
         # The official preprocessing recenters on a white background using the
         # alpha channel. When the caller did not provide alpha, segment the
@@ -1370,28 +2449,36 @@ class Hunyuan3DShapeBackend:
         # Multi-view geometry conditioning: map references whose azimuths
         # snap to the four canonical 2mv tags. The checkpoint was trained on
         # exactly these viewpoints; off-tag references still contribute
-        # through the texture bake.
+        # through the texture bake. Caller-provided references take the
+        # tags first (real photos outrank derived synthesis); the
+        # synthesized views (multiview mode, after the strict option
+        # check) fill only the tags that remain open.
         geometry_condition: Any = source_image
         geometry_views_used: List[Dict[str, Any]] = [{"tag": "front", "label": "source"}]
+        mv_image_dict: Dict[str, Any] = {"front": source_image}
         if multiview_capable and loaded_references:
-            image_dict: Dict[str, Any] = {"front": source_image}
             for reference in loaded_references:
                 azimuth = float(reference["azimuth_deg"])
-                for tag_azimuth, tag in _MV_TAG_BY_AZIMUTH.items():
-                    delta = abs(((azimuth - tag_azimuth) + 180.0) % 360.0 - 180.0)
-                    if delta <= _MV_TAG_SNAP_TOLERANCE_DEG and tag not in image_dict:
-                        image_dict[tag] = reference["rgba"]
-                        geometry_views_used.append(
-                            {
-                                "tag": tag,
-                                "label": reference["label"],
-                                "declared_azimuth_deg": azimuth,
-                                "snap_delta_deg": round(delta, 2),
-                            }
-                        )
-                        break
-            if len(image_dict) > 1:
-                geometry_condition = image_dict
+                snapped = _mv_snap_tag(azimuth)
+                if snapped is None or snapped[0] in mv_image_dict:
+                    continue
+                tag, delta = snapped
+                mv_image_dict[tag] = reference["rgba"]
+                geometry_views_used.append(
+                    {
+                        "tag": tag,
+                        "label": reference["label"],
+                        "declared_azimuth_deg": azimuth,
+                        "snap_delta_deg": round(delta, 2),
+                    }
+                )
+            mv_dropped_views = _mv_cap_conditioning_views(
+                mv_image_dict, geometry_views_used, geometry_warnings
+            )
+            if mv_dropped_views and geometry_conditioning_record is not None:
+                geometry_conditioning_record["dropped_views"] = mv_dropped_views
+            if len(mv_image_dict) > 1:
+                geometry_condition = mv_image_dict
         preprocess_s = round(time.perf_counter() - preprocess_started, 4)
 
         defaults = _resolve_generation_defaults(self._owner, device=resolved_device)
@@ -1402,6 +2489,14 @@ class Hunyuan3DShapeBackend:
             value = kwargs.pop(key, None)
             return cast(default) if value is None else cast(value)
 
+        # Model-family defaults: the built-in 512/50 regime is calibrated
+        # for the 2.1 flagship; the 2mv family gets its own (see the
+        # _MV_DEFAULT_* rationale). Explicit caller options and configured
+        # owner defaults always win, so record explicitness BEFORE popping.
+        steps_explicitly_set = (
+            kwargs.get("num_inference_steps") is not None
+            or _owner_cfg(self._owner, "scene3d_hunyuan_num_inference_steps") is not None
+        )
         num_inference_steps = max(1, _pop_number("num_inference_steps", defaults["num_inference_steps"], int))
         guidance_scale = _pop_number("guidance_scale", defaults["guidance_scale"], float)
         # The generic CLI exposes --mc-resolution; for this backend the grid
@@ -1411,7 +2506,21 @@ class Hunyuan3DShapeBackend:
         mc_resolution_alias = kwargs.pop("mc_resolution", None)
         if kwargs.get("octree_resolution") is None and mc_resolution_alias is not None:
             kwargs["octree_resolution"] = mc_resolution_alias
+        octree_explicitly_set = (
+            kwargs.get("octree_resolution") is not None
+            or _owner_cfg(self._owner, "scene3d_hunyuan_octree_resolution") is not None
+        )
         octree_resolution = max(32, _pop_number("octree_resolution", defaults["octree_resolution"], int))
+        if multiview_capable and not multiview_active:
+            # An explicitly selected 2mv checkpoint (caller-reference path):
+            # run the family's validated regime unless overridden. The
+            # flagship regime was measured catastrophic on 2mv (822 raw
+            # bodies at 512/50 vs a healthy mesh at 384/30 on the same
+            # conditioning).
+            if not steps_explicitly_set:
+                num_inference_steps = _MV_DEFAULT_NUM_INFERENCE_STEPS
+            if not octree_explicitly_set:
+                octree_resolution = _MV_DEFAULT_OCTREE_RESOLUTION
         num_chunks = max(1024, _pop_number("num_chunks", defaults["num_chunks"], int))
         max_facenum = _pop_number("max_facenum", defaults["max_facenum"], int)
         seed_value = kwargs.pop("seed", None)
@@ -1420,6 +2529,20 @@ class Hunyuan3DShapeBackend:
         else:
             kwargs.pop("image_seed", None)
         seed = _DEFAULT_SEED if seed_value is None else int(seed_value)
+        # Best-of-N shape selection. Validated on the RESOLVED value so a
+        # nonsensical config default fails as loudly as a bad option (0
+        # draws is a request for nothing; the strict-contract doctrine
+        # forbids silently clamping intent).
+        try:
+            shape_candidates = _pop_number("shape_candidates", defaults["shape_candidates"], int)
+        except (TypeError, ValueError) as exc:
+            raise InvalidRequestError(
+                f"shape_candidates must be an integer >= 1 (got {exc})"
+            ) from exc
+        if shape_candidates < 1:
+            raise InvalidRequestError(
+                f"shape_candidates must be an integer >= 1 (got {shape_candidates})"
+            )
         volume_decoder_mode = str(
             kwargs.pop("volume_decoder", None)
             or _owner_cfg(self._owner, "scene3d_hunyuan_volume_decoder")
@@ -1482,8 +2605,181 @@ class Hunyuan3DShapeBackend:
 
         reject_unknown_options(self.backend_id, kwargs)
 
+        # -- pre-shape geometry-view synthesis (multiview conditioning) ------
+        # Runs AFTER the strict unknown-option check (a typo must fail in
+        # milliseconds, not after minutes of synthesis) and BEFORE the DiT
+        # load (deferred above), so the i2i pool and the DiT never co-reside.
+        geometry_synthesis_s: Optional[float] = None
+        synthesized_geometry_views: List[Dict[str, Any]] = []
+        geometry_rejected_images: List[Dict[str, Any]] = []
+        if multiview_active:
+            synthesis_started = time.perf_counter()
+            geometry_subject_hint = str(prompt or "").strip() or None
+            # Tags still open after caller-provided references claimed
+            # theirs; only these are synthesized — and only when the view
+            # cap leaves conditioning room (a view that cannot condition
+            # is synthesized later by the texture lane itself if needed).
+            # When room exists, ALL open canonical tags are synthesized
+            # even if the cap will drop one at merge: the side-pair gate
+            # needs both sides to cross-check, and dropped views still
+            # reach the texture bake through the replay.
+            missing_views = []
+            if len(mv_image_dict) < _MV_MAX_CONDITIONING_VIEWS:
+                for view_label, view_azimuth in _GEOMETRY_VIEW_ANGLES:
+                    snapped = _mv_snap_tag(view_azimuth)
+                    if snapped is not None and snapped[0] not in mv_image_dict:
+                        missing_views.append((view_label, view_azimuth))
+            elif geometry_conditioning_record is not None:
+                geometry_conditioning_record["synthesis_skipped"] = (
+                    "conditioning view budget already filled by caller references"
+                )
+            proceed, person_record = _geometry_person_gate(
+                source_image,
+                subject_hint=geometry_subject_hint,
+                allow_person=texture_reference_allow_person,
+            )
+            geometry_conditioning_record["person_check"] = person_record
+            if not proceed:
+                geometry_fallback_reason = str(person_record.get("refusal"))
+            elif missing_views:
+                from ..captioning import extract_subject_noun
+
+                subject_noun = extract_subject_noun(
+                    geometry_subject_hint or person_record.get("caption")
+                )
+                geometry_conditioning_record["subject_noun"] = subject_noun
+                try:
+                    (
+                        synthesized_geometry_views,
+                        synthesized_view_records,
+                        geometry_rejected_images,
+                    ) = _synthesize_geometry_views(
+                        self._owner,
+                        source_image,
+                        subject_noun=subject_noun,
+                        base_seed=seed,
+                        labels=missing_views,
+                    )
+                    geometry_conditioning_record["synthesized_views"] = (
+                        synthesized_view_records
+                    )
+                except Exception as exc:
+                    if geometry_mode == "multiview":
+                        # Explicit mode: a broken synthesis stack is the
+                        # caller's problem to see, not to discover in the
+                        # metadata after a single-view run they did not ask
+                        # for (same contract as texture_reference_generation
+                        # "on").
+                        raise
+                    geometry_fallback_reason = (
+                        "geometry view synthesis failed: "
+                        f"{type(exc).__name__}: {exc}"
+                    )
+                for view in synthesized_geometry_views:
+                    snapped = _mv_snap_tag(view["azimuth_deg"])
+                    if snapped is None or snapped[0] in mv_image_dict:
+                        continue
+                    mv_image_dict[snapped[0]] = view["rgba"]
+                    geometry_views_used.append(
+                        {
+                            "tag": snapped[0],
+                            "label": f"synthesized_{view['label']}",
+                            "declared_azimuth_deg": float(view["azimuth_deg"]),
+                            "snap_delta_deg": round(snapped[1], 2),
+                            "synthesized": True,
+                            "seed": int(view["seed"]),
+                            "raw_payload_md5": view["raw_payload_md5"],
+                        }
+                    )
+                if not synthesized_geometry_views and geometry_fallback_reason is None:
+                    geometry_fallback_reason = (
+                        "all synthesized conditioning views failed the "
+                        "acceptance gates (a wrong conditioning view is worse "
+                        "than single-view; see geometry_conditioning."
+                        "synthesized_views for per-view reasons)"
+                    )
+                dropped_rows = _mv_cap_conditioning_views(
+                    mv_image_dict, geometry_views_used, geometry_warnings
+                )
+                if dropped_rows:
+                    geometry_conditioning_record["dropped_views"] = dropped_rows
+            # Free the i2i pool before the DiT allocates on the same
+            # unified-memory budget (mirrors the t23d composition stage).
+            from .step1x_runtime import _release_mlx_generation_cache
+
+            _release_mlx_generation_cache()
+            if len(mv_image_dict) > 1:
+                geometry_condition = mv_image_dict
+                effective_model = model if model is not None else _MV_MODEL_ID
+                # The 2mv family runs its own validated regime (see the
+                # _MV_DEFAULT_* rationale; flagship 512/50 measured
+                # catastrophic on this checkpoint). Explicit caller options
+                # and configured owner defaults still win.
+                if not steps_explicitly_set:
+                    num_inference_steps = _MV_DEFAULT_NUM_INFERENCE_STEPS
+                if not octree_explicitly_set:
+                    octree_resolution = _MV_DEFAULT_OCTREE_RESOLUTION
+            else:
+                # LOUD single-view fallback: warning + machine-readable
+                # record; the shape stage runs the exact known-good
+                # single-view path (explicit model choices are respected —
+                # an explicitly chosen 2mv checkpoint keeps its family
+                # regime even single-view).
+                geometry_condition = source_image
+                effective_model = model
+                if model is not None and _resolve_model_selection(model, model_subfolder)[0] == _MV_MODEL_ID:
+                    if not steps_explicitly_set:
+                        num_inference_steps = _MV_DEFAULT_NUM_INFERENCE_STEPS
+                    if not octree_explicitly_set:
+                        octree_resolution = _MV_DEFAULT_OCTREE_RESOLUTION
+                geometry_warnings.append(
+                    "geometry_conditioning fell back to single-view: "
+                    + str(geometry_fallback_reason or "no conditioning views available")
+                )
+            pipeline = self._load_runtime(
+                model_id=effective_model,
+                device=device,
+                dtype=dtype,
+                model_subfolder=model_subfolder,
+            )
+            resolved_device = self._resident_device or "cpu"
+            resolved_dtype = self._resident_dtype or "float32"
+            multiview_capable = bool(self._last_runtime_stats.get("multiview_capable"))
+            geometry_conditioning_record["applied"] = (
+                "multiview"
+                if multiview_capable and len(geometry_views_used) > 1
+                else "single_view"
+            )
+            if geometry_conditioning_record["applied"] == "multiview":
+                # Conditioning applied (caller references and/or synthesis):
+                # any earlier refusal (e.g. the person gate skipping the
+                # SYNTHESIS while real reference photos carry the tags)
+                # stays visible in its own record, not as a fallback.
+                geometry_fallback_reason = None
+            geometry_synthesis_s = round(time.perf_counter() - synthesis_started, 4)
+
         source_dir = Path(self._last_runtime_stats["source_dir"])
-        inference_started = time.perf_counter()
+        canonicalize = _owner_cfg_bool(self._owner, "scene3d_hunyuan_canonicalize_export_axes", True)
+        # Best-of-N state. For the default N=1 nothing below the loop body
+        # changes: no matte extraction, no ranking render, no extra
+        # metadata — the single-draw path is the historical one.
+        ranking_matte: Any = None
+        shape_candidate_rows: List[Dict[str, Any]] = []
+        candidate_stream_warnings: List[str] = []
+        shape_selection_s = 0.0
+        best_candidate: Optional[Dict[str, Any]] = None
+        best_score: Optional[float] = None
+        if shape_candidates > 1:
+            ranking_matte = _photo_matte_mask(source_image)
+            if ranking_matte is None:
+                candidate_stream_warnings.append(
+                    "shape candidate ranking ran without photo agreement "
+                    "(source matte unusable: no alpha support or unsegmented "
+                    "frame); candidates ranked on topology only"
+                )
+        inference_elapsed = 0.0
+        mesh_elapsed = 0.0
+        segment_started = time.perf_counter()
         with _sys_path(source_dir / "hy3dshape"):
             volume_decoders = importlib.import_module("hy3dshape.models.autoencoders.volume_decoders")
             if volume_decoder_mode == "vanilla":
@@ -1496,50 +2792,163 @@ class Hunyuan3DShapeBackend:
                 # structures and its scatter path is unreliable on MPS.
                 volume_decoder_mode = "adaptive"
                 pipeline.vae.volume_decoder = _AdaptiveVolumeDecoder()
-            generator = torch.Generator(device="cpu").manual_seed(seed)
-            with torch.inference_mode():
-                meshes = pipeline(
-                    image=geometry_condition,
-                    num_inference_steps=num_inference_steps,
-                    guidance_scale=guidance_scale,
-                    octree_resolution=octree_resolution,
-                    num_chunks=num_chunks,
-                    mc_algo="mc",
-                    generator=generator,
-                    output_type="trimesh",
-                    enable_pbar=False,
-                )
-        inference_s = round(time.perf_counter() - inference_started, 4)
-        raw_mesh = meshes[0] if isinstance(meshes, list) else meshes
-        if raw_mesh is None:
-            raise Abstract3DError(
-                "Hunyuan3D-2.1 produced no surface at the requested settings. "
-                "Try more inference steps or a different seed."
-            )
+            inference_elapsed += time.perf_counter() - segment_started
+            # Candidates run SEQUENTIALLY by design: on MPS the DiT + VAE
+            # already fill most of the unified-memory pool, and one raw
+            # marching-cubes mesh peaks at hundreds of MB — only the
+            # current draw and the best-so-far survivor are held at once.
+            for candidate_index in range(shape_candidates):
+                candidate_seed = seed + _SHAPE_CANDIDATE_SEED_STRIDE * candidate_index
+                draw_started = time.perf_counter()
+                generator = torch.Generator(device="cpu").manual_seed(candidate_seed)
+                with torch.inference_mode():
+                    meshes = pipeline(
+                        image=geometry_condition,
+                        num_inference_steps=num_inference_steps,
+                        guidance_scale=guidance_scale,
+                        octree_resolution=octree_resolution,
+                        num_chunks=num_chunks,
+                        mc_algo="mc",
+                        generator=generator,
+                        output_type="trimesh",
+                        enable_pbar=False,
+                    )
+                candidate_inference_s = time.perf_counter() - draw_started
+                inference_elapsed += candidate_inference_s
+                raw_mesh = meshes[0] if isinstance(meshes, list) else meshes
+                del meshes
+                if raw_mesh is None:
+                    if shape_candidates == 1:
+                        raise Abstract3DError(
+                            "Hunyuan3D-2.1 produced no surface at the requested settings. "
+                            "Try more inference steps or a different seed."
+                        )
+                    # A failed draw is evidence, not an abort: record it in
+                    # the candidates array (an unranked discard would be the
+                    # same evidence destruction this project already made
+                    # once with rejected reference views).
+                    shape_candidate_rows.append(
+                        {
+                            "seed": candidate_seed,
+                            "selected": False,
+                            "status": "no_surface",
+                            "score": None,
+                            "inference_s": round(candidate_inference_s, 4),
+                        }
+                    )
+                    candidate_stream_warnings.append(
+                        f"shape candidate {candidate_index + 1}/{shape_candidates} "
+                        f"(seed {candidate_seed}) produced no surface and was discarded"
+                    )
+                    continue
 
-        mesh_started = time.perf_counter()
-        mesh, postprocess_applied, postprocess_warnings = _hunyuan_postprocess_mesh(
-            raw_mesh,
-            max_facenum=max_facenum,
-        )
-        # Raw (pre-cleanup) topology: without it a surfacing regression is
-        # invisible — the shipped numbers conflate decoder output with
-        # floater removal and decimation (measured: raw euler -110 ->
-        # post -124 on a car, fully explained by junk removal).
-        topology_raw = _mesh_topology(raw_mesh)
-        canonicalize = _owner_cfg_bool(self._owner, "scene3d_hunyuan_canonicalize_export_axes", True)
-        axis_applied: List[str] = []
-        if canonicalize:
-            mesh, axis_applied = _hunyuan_canonicalize_axes(mesh)
-        mesh_s = round(time.perf_counter() - mesh_started, 4)
-        # Ground-slab measurements travel on the trimesh metadata dict; pop
-        # them here so no export path serializes a private field into glTF
-        # extras, then surface them in the run metadata below.
-        ground_slab_report: Optional[Dict[str, Any]] = None
-        try:
-            ground_slab_report = mesh.metadata.pop("abstract3d_ground_slab", None)
-        except Exception:
-            ground_slab_report = None
+                candidate_mesh_started = time.perf_counter()
+                candidate_mesh, candidate_applied, candidate_warnings = _hunyuan_postprocess_mesh(
+                    raw_mesh,
+                    max_facenum=max_facenum,
+                )
+                # Raw (pre-cleanup) topology: without it a surfacing
+                # regression is invisible — the shipped numbers conflate
+                # decoder output with floater removal and decimation
+                # (measured: raw euler -110 -> post -124 on a car, fully
+                # explained by junk removal).
+                candidate_topology_raw = _mesh_topology(raw_mesh)
+                del raw_mesh
+                candidate_axis_applied: List[str] = []
+                if canonicalize:
+                    candidate_mesh, candidate_axis_applied = _hunyuan_canonicalize_axes(candidate_mesh)
+                mesh_elapsed += time.perf_counter() - candidate_mesh_started
+                # Ground-slab measurements travel on the trimesh metadata
+                # dict; pop them here so no export path serializes a private
+                # field into glTF extras, then surface them in the run
+                # metadata below.
+                try:
+                    candidate_slab_report = candidate_mesh.metadata.pop("abstract3d_ground_slab", None)
+                except Exception:
+                    candidate_slab_report = None
+                candidate_state: Dict[str, Any] = {
+                    "mesh": candidate_mesh,
+                    "applied": candidate_applied,
+                    "warnings": candidate_warnings,
+                    "topology_raw": candidate_topology_raw,
+                    "axis_applied": candidate_axis_applied,
+                    "ground_slab": candidate_slab_report,
+                    "seed": candidate_seed,
+                }
+                if shape_candidates == 1:
+                    best_candidate = candidate_state
+                    continue
+
+                ranking_started = time.perf_counter()
+                # Ranking always measures the render-convention frame; when
+                # export canonicalization is disabled the candidate stays in
+                # the Hunyuan native frame and a rotated copy is ranked.
+                ranking_mesh = candidate_mesh
+                if not canonicalize:
+                    ranking_mesh, _ = _hunyuan_canonicalize_axes(candidate_mesh)
+                metrics = evaluate_shape_candidate(ranking_mesh, matte_mask=ranking_matte)
+                candidate_score = score_shape_candidate(metrics)
+                candidate_ranking_s = time.perf_counter() - ranking_started
+                shape_selection_s += candidate_ranking_s
+                row: Dict[str, Any] = {
+                    "seed": candidate_seed,
+                    "selected": False,
+                    "status": "ranked",
+                    "score": round(candidate_score, 4),
+                    "inference_s": round(candidate_inference_s, 4),
+                    "ranking_s": round(candidate_ranking_s, 4),
+                    "face_count": int(len(candidate_mesh.faces)),
+                    "vertex_count": int(len(candidate_mesh.vertices)),
+                    "topology_raw": candidate_topology_raw,
+                    "postprocess_cleanup": list(candidate_applied),
+                    "postprocess_warnings": list(candidate_warnings),
+                    "ground_slab": candidate_slab_report,
+                }
+                row.update(metrics)
+                shape_candidate_rows.append(row)
+                candidate_state["row"] = row
+                # Strictly-greater comparison: on an exact tie the EARLIER
+                # candidate (closest to the base seed) wins, so adding
+                # candidates never changes a result it cannot improve.
+                if best_score is None or candidate_score > best_score:
+                    if best_candidate is not None:
+                        best_candidate["mesh"] = None
+                    best_score = candidate_score
+                    best_candidate = candidate_state
+                else:
+                    candidate_state["mesh"] = None
+                candidate_mesh = None
+                ranking_mesh = None
+                if resolved_device == "mps":
+                    # Transient DiT/VAE buffers accumulate across draws on
+                    # the unified-memory pool; the weights stay resident.
+                    try:
+                        import gc
+
+                        gc.collect()
+                        torch.mps.empty_cache()
+                    except Exception:
+                        pass
+
+        if best_candidate is None:
+            raise Abstract3DError(
+                f"Hunyuan3D-2.1 produced no surface in any of {shape_candidates} "
+                "candidate draws at the requested settings. Try more inference "
+                "steps or a different base seed."
+            )
+        mesh = best_candidate["mesh"]
+        postprocess_applied = best_candidate["applied"]
+        postprocess_warnings = best_candidate["warnings"]
+        topology_raw = best_candidate["topology_raw"]
+        axis_applied = best_candidate["axis_applied"]
+        ground_slab_report: Optional[Dict[str, Any]] = best_candidate["ground_slab"]
+        selected_shape_seed = int(best_candidate["seed"])
+        selected_row = best_candidate.get("row")
+        if selected_row is not None:
+            selected_row["selected"] = True
+        postprocess_warnings.extend(candidate_stream_warnings)
+        inference_s = round(inference_elapsed, 4)
+        mesh_s = round(mesh_elapsed, 4)
 
         keep_resident = _owner_cfg_bool(self._owner, "scene3d_hunyuan_keep_resident", False)
         if not keep_resident and resolved_device == "mps":
@@ -1553,6 +2962,7 @@ class Hunyuan3DShapeBackend:
         export_mesh = mesh
         quality_verdict: Dict[str, Any] = {"verdict": "healthy", "reasons": []}
         postprocess_warnings.extend(reference_warnings)
+        postprocess_warnings.extend(geometry_warnings)
         if texture_requested:
             from ..texturing import bake_projection_texture
 
@@ -1612,11 +3022,8 @@ class Hunyuan3DShapeBackend:
                     try:
                         from ..reference_generation import DEFAULT_ANGLES
 
-                        generated_views, reference_generation_report = generate_reference_views(
-                            mesh,
-                            source_image.convert("RGBA"),
-                            owner=self._owner,
-                            angles=texture_reference_generation_angles or DEFAULT_ANGLES,
+                        refgen_angles = texture_reference_generation_angles or DEFAULT_ANGLES
+                        refgen_kwargs = dict(
                             subject_hint=subject_hint,
                             seed=seed,
                             image_request=resolve_image_generation_request(self._owner),
@@ -1630,6 +3037,37 @@ class Hunyuan3DShapeBackend:
                                 else "skip"
                             ),
                         )
+                        # Pre-shape synthesized geometry views are OFFERED
+                        # to the texture lane as the first ladder attempt
+                        # of their angle — through the full acceptance
+                        # machinery (clay IoU, material gates, whole-bake
+                        # A/B), never around it. A view the mesh diverged
+                        # from fails the clay gate and the ladder
+                        # regenerates normally.
+                        replay_sources = {
+                            str(view["label"]): view["raw_bytes"]
+                            for view in synthesized_geometry_views
+                            if view.get("raw_bytes")
+                        }
+                        if replay_sources:
+                            generated_views, reference_generation_report = (
+                                _generate_references_with_replay(
+                                    mesh,
+                                    source_image.convert("RGBA"),
+                                    owner=self._owner,
+                                    angles=refgen_angles,
+                                    replay_sources=replay_sources,
+                                    **refgen_kwargs,
+                                )
+                            )
+                        else:
+                            generated_views, reference_generation_report = generate_reference_views(
+                                mesh,
+                                source_image.convert("RGBA"),
+                                owner=self._owner,
+                                angles=refgen_angles,
+                                **refgen_kwargs,
+                            )
                         observed_views.extend(generated_views)
                         if not generated_views:
                             skip_reason = (
@@ -1828,7 +3266,13 @@ class Hunyuan3DShapeBackend:
         if primary_format == "zip":
             content_type = "application/zip"
         total_s = round(
-            (image_generation_s or 0.0) + preprocess_s + inference_s + mesh_s + (texture_s or 0.0),
+            (image_generation_s or 0.0)
+            + preprocess_s
+            + (geometry_synthesis_s or 0.0)
+            + inference_s
+            + mesh_s
+            + shape_selection_s
+            + (texture_s or 0.0),
             4,
         )
         process = psutil.Process(os.getpid())
@@ -1895,6 +3339,25 @@ class Hunyuan3DShapeBackend:
                 _LICENSE_SUMMARY,
             ],
         }
+        if shape_candidate_rows:
+            # Best-of-N evidence (N > 1 only — the default single-draw
+            # metadata is unchanged): every candidate's seed, ranking
+            # metrics, and postprocess record, selected flag included.
+            # "seed" above stays the BASE seed (the texture stage and
+            # reference generation keep using it); "shape_seed" is the
+            # seed that actually drew the selected shape.
+            runtime_meta["shape_candidates"] = shape_candidate_rows
+            runtime_meta["shape_seed"] = selected_shape_seed
+            runtime_meta["timings_s"]["shape_selection"] = round(shape_selection_s, 4)
+        if geometry_conditioning_record is not None:
+            # Multiview evidence (mode != "single" only — the default
+            # metadata is unchanged): requested vs applied mode, the
+            # person check, per-view synthesis attempts with gate
+            # metrics, and the fallback reason when conditioning did not
+            # apply.
+            geometry_conditioning_record["fallback_reason"] = geometry_fallback_reason
+            runtime_meta["geometry_conditioning"] = geometry_conditioning_record
+            runtime_meta["timings_s"]["geometry_view_synthesis"] = geometry_synthesis_s
         if texture_requested and texture_stats:
             runtime_meta["texture_artifacts"] = {
                 "texture_padding": texture_stats.get("texture_padding"),
@@ -1938,6 +3401,12 @@ class Hunyuan3DShapeBackend:
                 prompt=prompt,
                 metadata=runtime_meta,
                 view_images=views,
+            )
+            _persist_geometry_conditioning_artifacts(
+                bundle_root,
+                accepted_views=synthesized_geometry_views,
+                rejected_images=geometry_rejected_images,
+                record=geometry_conditioning_record,
             )
             if texture_requested and texture_stats:
                 geometry_glb_path = bundle_root / "geometry.glb"
@@ -2011,6 +3480,12 @@ class Hunyuan3DShapeBackend:
                     prompt=prompt,
                     metadata=runtime_meta,
                     view_images=views,
+                )
+                _persist_geometry_conditioning_artifacts(
+                    bundle_root,
+                    accepted_views=synthesized_geometry_views,
+                    rejected_images=geometry_rejected_images,
+                    record=geometry_conditioning_record,
                 )
                 if texture_requested and texture_stats:
                     (bundle_root / "geometry.glb").write_bytes(_mesh_export_bytes(mesh, file_type="glb", viewer_frame=False))

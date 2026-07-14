@@ -1755,6 +1755,156 @@ def test_equalize_projection_tone_source_starved_keeps_common_mode() -> None:
     assert abs(common_after - common_before) < 0.02
 
 
+def test_voxel_field_mean_c0_is_continuous_and_center_exact() -> None:
+    """The C0 voxel statistic: equals the box mean at cell centers, is
+    continuous across cell boundaries (no lattice steps), and keeps the
+    NaN contract where no occupied cell is in reach."""
+    cell = 0.25
+    # dense line of points along x at y=z=0.375 (mid-cell), values = x
+    xs = np.linspace(0.001, 0.999, 4001)
+    points = np.stack([xs, np.full_like(xs, 0.375),
+                       np.full_like(xs, 0.375)], axis=1)
+    values = xs.copy()
+
+    out = texturing._voxel_field_mean_c0(points, values, cell)
+
+    # continuity: adjacent query points 0.00025 apart may not step — the
+    # box-mean variant steps by ~cell (0.25) at every cell boundary
+    steps = np.abs(np.diff(out))
+    assert float(steps.max()) < 0.01, (
+        "C0 statistic must not step at voxel-lattice boundaries "
+        f"(max step {steps.max():.4f})")
+    box = texturing._voxel_neighborhood_mean(points, values, cell)
+    box_steps = np.abs(np.diff(box))
+    assert float(box_steps.max()) > 0.1, (
+        "fixture must actually straddle lattice boundaries")
+    # center-exactness: at a cell's center the interpolation reproduces
+    # the 3x3x3 box mean (grid origin = the point cloud's min corner;
+    # tolerance covers the 2.5e-4 sample-grid offset from the true center)
+    center_x = float(xs.min()) + 1.5 * cell
+    center_index = int(np.argmin(np.abs(xs - center_x)))
+    assert abs(out[center_index] - box[center_index]) < 1e-3
+    # NaN contract under `select`: with no contributor anywhere near, the
+    # query reads NaN exactly like the box variant
+    select = xs > 0.9
+    sparse = texturing._voxel_field_mean_c0(points, values, cell,
+                                            select=select)
+    assert np.isnan(sparse[0]) and np.isfinite(sparse[-1])
+
+
+def test_equalize_projection_tone_field_prints_no_lattice_blocks() -> None:
+    """THE ROOF-BLOCK CLASS (car_bo3 live incident, second stamp-class
+    defect): a generated view fed DISPLACED content builds a violent
+    consensus-deviation field; the smoothed field used to be
+    piecewise-constant over the voxel lattice and printed rectangular
+    exposure blocks ("image inside an image") on flat surfaces. The
+    applied multiplicative correction must now be C0: no adjacent-texel
+    log step above the content-driven gradient scale (measured on this
+    fixture: 0.372 with the box statistic, 0.069 with the C0 one), and
+    every applied row must name its write footprint (provenance).
+    """
+    shape = (128, 128)
+    rng = np.random.default_rng(7)
+    base = 0.45 + 0.05 * rng.standard_normal((*shape, 3)).astype(np.float32)
+    yy, xx = np.meshgrid(np.arange(shape[0]), np.arange(shape[1]),
+                         indexing="ij")
+    base[((yy - 40) ** 2 + (xx - 34) ** 2) < 14 ** 2] *= 1.9
+    base = np.clip(base, 0.0, 1.0)
+    positions = np.zeros((*shape, 4), dtype=np.float32)
+    xs, ys = np.meshgrid(np.linspace(-1, 1, shape[1]),
+                         np.linspace(-1, 1, shape[0]))
+    positions[:, :, 0] = xs
+    positions[:, :, 1] = ys
+    positions[:, :, 3] = 1.0
+
+    def view(rgb, cols, label, generated):
+        rgba = np.concatenate(
+            [np.clip(rgb, 0, 1), np.ones((*shape, 1), np.float32)], axis=2)
+        weight = np.zeros(shape, np.float32)
+        weight[:, cols[0]:cols[1]] = 0.5
+        return {"rgba": rgba, "weight": weight, "label": label,
+                "generated": generated}
+
+    src = view(base, (0, 80), "front", generated=False)
+    displaced = np.roll(np.roll(base, 22, axis=0), 18, axis=1)
+    gen = view(displaced, (0, 128), "gen_top", generated=True)
+    projections = [src, gen]
+    gen_before = np.asarray(projections[1]["rgba"], np.float32)[:, :, :3].copy()
+
+    stats = texturing.equalize_projection_tone(
+        projections, positions_texture=positions, source_index=0)
+
+    gen_after = np.asarray(projections[1]["rgba"], np.float32)[:, :, :3]
+    changed = np.abs(gen_after - gen_before).max(axis=2) > 1e-6
+    applied_rows = [row for row in stats["views"] if row.get("applied")]
+    if changed.any():
+        # honest provenance: every writer names its footprint
+        assert applied_rows, "texels changed but no stats row claims a write"
+        assert all(row.get("written_texels", 0) > 0 for row in applied_rows)
+        # C0 contract: the applied multiplicative field may not step
+        # between adjacent texels of the same flat surface beyond the
+        # content-driven gradient scale (the block class printed 0.372)
+        log_ratio = (np.log(np.clip(gen_after.mean(axis=2), 1e-3, None))
+                     - np.log(np.clip(gen_before.mean(axis=2), 1e-3, None)))
+        worst = 0.0
+        for axis in (0, 1):
+            a = np.take(log_ratio, range(0, shape[axis] - 1), axis=axis)
+            b = np.take(log_ratio, range(1, shape[axis]), axis=axis)
+            ca = np.take(changed, range(0, shape[axis] - 1), axis=axis)
+            cb = np.take(changed, range(1, shape[axis]), axis=axis)
+            both = ca & cb
+            if both.any():
+                worst = max(worst, float(np.abs(a - b)[both].max()))
+        assert worst < 0.15, (
+            f"lattice-block class: adjacent-texel field step {worst:.3f}")
+    else:
+        # refusal must be a true no-op: bit-identical, no write claimed
+        assert not applied_rows
+        assert np.array_equal(gen_before, gen_after)
+
+
+def test_equalize_projection_tone_refusal_is_bit_identical_no_op() -> None:
+    """Fail-closed honesty: when every gate refuses (content confound —
+    the displaced-content case whose correction cannot measurably help
+    any witness class), the projection must be BIT-IDENTICAL and no row
+    may claim a write footprint. (The first stamp incident's lesson
+    generalized: a lane that cannot verify its evidence must decline to
+    write at all, and the stats must say so.)"""
+    shape = (96, 96)
+    rng = np.random.default_rng(3)
+    base = 0.45 + 0.05 * rng.standard_normal((*shape, 3)).astype(np.float32)
+    positions = np.zeros((*shape, 4), dtype=np.float32)
+    xs, ys = np.meshgrid(np.linspace(-1, 1, shape[1]),
+                         np.linspace(-1, 1, shape[0]))
+    positions[:, :, 0] = xs
+    positions[:, :, 1] = ys
+    positions[:, :, 3] = 1.0
+
+    def view(rgb, cols, label, generated):
+        rgba = np.concatenate(
+            [np.clip(rgb, 0, 1), np.ones((*shape, 1), np.float32)], axis=2)
+        weight = np.zeros(shape, np.float32)
+        weight[:, cols[0]:cols[1]] = 0.5
+        return {"rgba": rgba, "weight": weight, "label": label,
+                "generated": generated}
+
+    src = view(base, (0, 40), "front", generated=False)
+    noisy = np.clip(
+        base + rng.uniform(-0.3, 0.3, base.shape).astype(np.float32), 0, 1)
+    gen = view(noisy, (30, 70), "gen", generated=True)
+    projections = [src, gen]
+    gen_before = np.array(projections[1]["rgba"], copy=True)
+
+    stats = texturing.equalize_projection_tone(
+        projections, positions_texture=positions, source_index=0)
+
+    refused_rows = [row for row in stats["views"] if not row.get("applied")]
+    for row in refused_rows:
+        assert "written_texels" not in row
+    if not any(row.get("applied") for row in stats["views"]):
+        assert np.array_equal(gen_before, np.asarray(projections[1]["rgba"]))
+
+
 def test_blend_projections_handoff_ledger_attributes_pairs() -> None:
     """The handoff ledger names the owner pairs, separates luminance from
     chroma steps, and reports co-witnessing."""

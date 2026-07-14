@@ -268,3 +268,168 @@ def test_i23d_passes_texture_completion(monkeypatch, tmp_path, capsys) -> None:
     assert calls["texture_completion"] == "mirror_symmetry"
     summary = json.loads(capsys.readouterr().out)
     assert summary["ok"] is True
+
+
+class _CaptureManager:
+    """Records the kwargs the CLI forwards (shared by the quality-option
+    tests below; the strict option contract is about exactly which keys
+    reach the backend)."""
+
+    calls: dict = {}
+
+    def __init__(self, backend_id=None) -> None:
+        _CaptureManager.calls = {"backend_id": backend_id}
+
+    def i23d(self, image, **kwargs):
+        _CaptureManager.calls["image"] = image
+        _CaptureManager.calls.update(kwargs)
+        return {"metadata": {"ok": True}}
+
+    def t23d(self, prompt, **kwargs):
+        _CaptureManager.calls["prompt"] = prompt
+        _CaptureManager.calls.update(kwargs)
+        return {"metadata": {"ok": True}}
+
+
+def test_i23d_passes_shape_candidates(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(cli, "Scene3DManager", _CaptureManager)
+
+    exit_code = cli.main(
+        [
+            "i23d",
+            "car.png",
+            "--output-dir",
+            str(tmp_path),
+            "--backend",
+            "hunyuan3d21",
+            "--shape-candidates",
+            "3",
+        ]
+    )
+
+    assert exit_code == 0
+    assert _CaptureManager.calls["shape_candidates"] == 3
+
+
+def test_t23d_quality_preset_maps_to_shape_candidates(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(cli, "Scene3DManager", _CaptureManager)
+
+    for preset, expected in (("standard", 1), ("high", 2), ("best", 3)):
+        exit_code = cli.main(
+            [
+                "t23d",
+                "a sports car",
+                "--output-dir",
+                str(tmp_path),
+                "--backend",
+                "hunyuan3d21",
+                "--quality",
+                preset,
+            ]
+        )
+        assert exit_code == 0
+        assert _CaptureManager.calls["shape_candidates"] == expected
+
+
+def test_quality_presets_do_not_route_geometry_conditioning(monkeypatch, tmp_path) -> None:
+    # Multi-view geometry conditioning is an explicit opt-in, not a preset
+    # rider: the equal-seed A/B measured it as a topology-vs-concavity
+    # TRADE, so no preset forwards it (strict option contract: absent,
+    # not None).
+    monkeypatch.setattr(cli, "Scene3DManager", _CaptureManager)
+
+    for preset in ("standard", "high", "best"):
+        exit_code = cli.main(
+            [
+                "i23d",
+                "car.png",
+                "--output-dir",
+                str(tmp_path),
+                "--backend",
+                "hunyuan3d21",
+                "--quality",
+                preset,
+            ]
+        )
+        assert exit_code == 0
+        assert "geometry_conditioning" not in _CaptureManager.calls
+
+
+def test_i23d_passes_geometry_conditioning(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(cli, "Scene3DManager", _CaptureManager)
+
+    exit_code = cli.main(
+        [
+            "i23d",
+            "car.png",
+            "--output-dir",
+            str(tmp_path),
+            "--backend",
+            "hunyuan3d21",
+            "--geometry-conditioning",
+            "multiview",
+        ]
+    )
+
+    assert exit_code == 0
+    assert _CaptureManager.calls["geometry_conditioning"] == "multiview"
+
+
+def test_geometry_conditioning_combines_with_quality_preset(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(cli, "Scene3DManager", _CaptureManager)
+
+    exit_code = cli.main(
+        [
+            "i23d",
+            "car.png",
+            "--output-dir",
+            str(tmp_path),
+            "--backend",
+            "hunyuan3d21",
+            "--quality",
+            "best",
+            "--geometry-conditioning",
+            "multiview",
+        ]
+    )
+
+    assert exit_code == 0
+    assert _CaptureManager.calls["geometry_conditioning"] == "multiview"
+    assert _CaptureManager.calls["shape_candidates"] == 3
+
+
+def test_explicit_shape_candidates_overrides_quality_preset(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(cli, "Scene3DManager", _CaptureManager)
+
+    exit_code = cli.main(
+        [
+            "i23d",
+            "car.png",
+            "--output-dir",
+            str(tmp_path),
+            "--backend",
+            "hunyuan3d21",
+            "--quality",
+            "standard",
+            "--shape-candidates",
+            "5",
+        ]
+    )
+
+    assert exit_code == 0
+    assert _CaptureManager.calls["shape_candidates"] == 5
+
+
+def test_no_quality_flags_forward_no_shape_candidates(monkeypatch, tmp_path) -> None:
+    # Strict option contract: unset flags must be ABSENT, not None — a
+    # backend without the option (e.g. triposr) must never see it.
+    monkeypatch.setattr(cli, "Scene3DManager", _CaptureManager)
+
+    exit_code = cli.main(
+        ["i23d", "car.png", "--output-dir", str(tmp_path), "--backend", "triposr"]
+    )
+
+    assert exit_code == 0
+    assert "shape_candidates" not in _CaptureManager.calls
+    assert "quality" not in _CaptureManager.calls
+    assert "geometry_conditioning" not in _CaptureManager.calls

@@ -10,6 +10,23 @@ from pathlib import Path
 from .model_catalog import catalog_rows
 from .scene3d_manager import Scene3DManager
 
+# Quality presets (hunyuan3d21). Each extra shape candidate re-runs the
+# shape stage once (~21-28 min measured on MPS at the default 512 octree)
+# and adds seconds of ranking; the texture stage runs once regardless.
+# Multi-view geometry conditioning is deliberately NOT routed by any
+# preset: the 2026-07-14 equal-seed A/B measured it better on topology
+# (car spurious handles -32..-61%) and panel smoothness but consistently
+# WORSE on concave sharpness (-0.05 car / -0.10 owl concavity IoU) and
+# fine carved detail — a trade, not an upgrade, so it stays an explicit
+# opt-in (--geometry-conditioning) for topology-critical subjects (see
+# CHANGELOG for the per-draw table). Explicit flags win over the preset
+# because they are the more specific request.
+_QUALITY_PRESETS = {
+    "standard": {"shape_candidates": 1},
+    "high": {"shape_candidates": 2},
+    "best": {"shape_candidates": 3},
+}
+
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="abstract3d", description="Abstract3D local-first 3D generation")
@@ -53,6 +70,26 @@ def _parser() -> argparse.ArgumentParser:
                              "and reasons are still printed to stderr and recorded in metadata).")
     common.add_argument("--num-inference-steps", type=int, default=None)
     common.add_argument("--guidance-scale", type=float, default=None)
+    common.add_argument("--shape-candidates", type=int, default=None,
+                        help="Best-of-N shape selection (hunyuan3d21): draw the shape stage N "
+                             "times with spaced seeds, rank by photo agreement (silhouette + "
+                             "concave detail) + topology, keep the best. Each extra candidate "
+                             "adds about one shape-stage time (~21-28 min measured on MPS at "
+                             "octree 512). Default 1 (single draw, unchanged behavior).")
+    common.add_argument("--quality", default=None, choices=sorted(_QUALITY_PRESETS),
+                        help="Quality preset (hunyuan3d21) mapping to shape candidates: "
+                             "standard=1, high=2, best=3. An explicit --shape-candidates "
+                             "overrides the preset.")
+    common.add_argument("--geometry-conditioning", default=None,
+                        choices=["single", "multiview", "auto"],
+                        help="Shape-stage conditioning for single-photo flows (hunyuan3d21). "
+                             "'multiview' synthesizes the missing canonical views (back, both "
+                             "sides) from the source photo, gates them, and conditions the "
+                             "Hunyuan3D-2mv checkpoint on the survivors — falling back loudly "
+                             "to single-view when none survive. 'auto' does the same only when "
+                             "an explicitly configured image provider exists. Person subjects "
+                             "are refused without --texture-reference-allow-person. Default: "
+                             "single (unchanged historical path).")
     common.add_argument("--octree-resolution", type=int, default=None,
                         help="Shape-VAE octree resolution (hunyuan3d21/step1x): higher = denser mesh.")
     common.add_argument("--max-facenum", type=int, default=None,
@@ -134,6 +171,19 @@ def main(argv: list[str] | None = None) -> int:
             "texture_completion": args.texture_completion,
             "num_inference_steps": args.num_inference_steps,
             "guidance_scale": args.guidance_scale,
+            # Explicit flags win over the preset; both unset means the key
+            # is dropped below (strict option contract: only explicitly-set
+            # options reach the backend).
+            "shape_candidates": (
+                args.shape_candidates
+                if args.shape_candidates is not None
+                else _QUALITY_PRESETS.get(args.quality, {}).get("shape_candidates")
+            ),
+            "geometry_conditioning": (
+                args.geometry_conditioning
+                if args.geometry_conditioning is not None
+                else _QUALITY_PRESETS.get(args.quality, {}).get("geometry_conditioning")
+            ),
             "octree_resolution": args.octree_resolution,
             "max_facenum": args.max_facenum,
             "chunk_size": args.chunk_size,

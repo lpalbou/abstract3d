@@ -139,11 +139,15 @@ Main options:
 - `--texture-reference-remove-background`
 - `--num-inference-steps`
 - `--guidance-scale`
+- `--shape-candidates` (hunyuan3d21: best-of-N shape selection; see below)
+- `--quality standard|high|best` (hunyuan3d21: preset for `--shape-candidates` — 1/2/3; the explicit flag overrides the preset)
 - `--chunk-size`
 - `--model`
 - `--remove-background`
 
 Hunyuan3D-2.1 notes: the backend requires `ABSTRACT3D_HUNYUAN_ACCEPT_LICENSE=1` (or `scene3d_hunyuan_license_accepted=true`), `--mc-resolution` maps to its octree resolution, and `--texture-mode` accepts `baked_basecolor` (default, shared projection bake) or `none` for geometry-only exports.
+
+Best-of-N shape selection (hunyuan3d21): with `--shape-candidates N` (option `shape_candidates`, config key `scene3d_hunyuan_shape_candidates`, default 1) the shape stage runs N times sequentially with spaced seeds (candidate *i* draws at `seed + 1000*i`), each candidate is postprocessed and ranked, the best ships, and the texture stage keeps the original base seed so reference generation is unchanged. Ranking is measured against the input photo: normalized silhouette IoU over a coarse pose sweep plus concave-detail (convex-hull-minus-mask) IoU at the matching pose, combined with watertightness/single-body; dihedral-RMS smoothness is recorded per candidate as a diagnostic but carries no score weight (a weighted smoothness term was measured to reward melted candidates) — weights are calibrated on the persisted corpus (see `CHANGELOG.md`). Every candidate's seed, metrics, and postprocess record land in metadata under `shape_candidates` (with `selected` flags and top-level `shape_seed`); a discarded draw is never silent. Cost: each extra candidate adds about one shape-stage time (~21–28 min measured on Apple `mps` at octree 512); ranking adds seconds. With `N=1` the pipeline is exactly the historical single-draw path (no ranking renders, unchanged metadata).
 
 Multi-view geometry (same backend, same license gate): pass `--model tencent/Hunyuan3D-2mv` and repeat `--texture-reference-image` / `--texture-reference-angle`. References whose angles snap to the trained `front`/`left`/`back`/`right` slots (within 25°) condition the shape reconstruction as well as the texture bake; the result metadata records `multiview_conditioning` and `geometry_views`.
 

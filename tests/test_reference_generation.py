@@ -604,3 +604,125 @@ def test_is_person_subject_tokenization_and_recall() -> None:
     assert refgen.is_person_subject("portrait of a human figure")
     assert not refgen.is_person_subject("a wooden owl figurine")
     assert not refgen.is_person_subject(None)
+
+
+def test_reference_render_size_closes_letterbox_deficit() -> None:
+    """Per-angle sizing (A4): the frame grows exactly enough that the
+    subject's true pixels meet the canonical reference frame's demand
+    (1024 * 0.85 = 870.4 px on the larger side), quantized up to 64."""
+
+    # A subject filling 83% of its frame (the car_bo3 top-view measurement:
+    # 637 px of 768) needs 870.4 / 0.8294 = 1049 -> 1088.
+    mask = np.zeros((768, 768), dtype=bool)
+    mask[65:702, 200:561] = True  # 637 x 361 bbox
+    size, fill = refgen.reference_render_size(mask, base_size=768)
+    assert fill == round(637 / 768, 4)
+    assert size == 1088
+
+    # A frame-filling subject (source-photo class) keeps the base size:
+    # 870.4 / 0.9987 = 872 -> 896 exceeds base only when the cap allows;
+    # with fill ~1.13x target the computed need quantizes to 896.
+    full = np.zeros((768, 768), dtype=bool)
+    full[1:767, 1:767] = True
+    size_full, fill_full = refgen.reference_render_size(full, base_size=768)
+    assert size_full == 896  # 870.4 / 0.9974 = 872.7 -> ceil to 896
+
+    # The max cap bounds elongated subjects (tiny fill fractions).
+    sliver = np.zeros((768, 768), dtype=bool)
+    sliver[380:388, 200:500] = True
+    size_sliver, _ = refgen.reference_render_size(sliver, base_size=768)
+    assert size_sliver == 1280
+
+    # Degenerate mask: base size, zero fill.
+    empty = np.zeros((768, 768), dtype=bool)
+    assert refgen.reference_render_size(empty, base_size=768) == (768, 0.0)
+
+
+def test_generate_reference_views_auto_render_size_measures_each_angle(monkeypatch) -> None:
+    """"auto" measures each angle's own clay silhouette and feeds the
+    computed frame size through clay, guide and conditioning; an int keeps
+    the historical single-size behavior byte-for-byte.
+
+    With the CURRENT clay renderer the measured fill is ~0.85 for every
+    angle — `render_mesh_views` frames adaptively per view (half extent =
+    max camera-plane extent * 1.18) — so "auto" closes the same ~1.37x
+    canonical-frame deficit at every angle (768 base -> 1088). The
+    per-angle differentiation is the MECHANISM's contract (it measures,
+    not assumes); if the renderer's framing ever changes, the sizes follow
+    the measurement. Direct extent-variation coverage lives in
+    `test_reference_render_size_closes_letterbox_deficit`.
+    """
+
+    mesh = sphere_mesh()
+    mesh.apply_scale([1.0, 0.25, 0.25])  # prolate, car-like proportions
+    monkeypatch.setattr(
+        "abstract3d.segmentation.remove_background_robust",
+        lambda img: img.convert("RGBA"))
+
+    sizes_requested: list[int] = []
+    from abstract3d import rendering as rendering_module
+
+    real_render = rendering_module.render_mesh_views
+
+    def spy_render(mesh_arg, *, size, **kwargs):
+        sizes_requested.append(int(size))
+        return real_render(mesh_arg, size=size, **kwargs)
+
+    monkeypatch.setattr(
+        "abstract3d.rendering.render_mesh_views", spy_render)
+
+    def echo_generator(prompt, image, **kwargs):
+        # echo the conditioning canvas: wider-than-tall composites are
+        # cropped to the right panel, which matches the clay silhouette
+        canvas = Image.open(io.BytesIO(image))
+        buffer = io.BytesIO()
+        canvas.save(buffer, format="PNG")
+        return buffer.getvalue()
+
+    views, report = refgen.generate_reference_views(
+        mesh,
+        solid_rgba((120, 90, 60)),
+        image_generator=echo_generator,
+        angles=[("side_left", 90.0, 0.0), ("top", 0.0, 55.0)],
+        max_attempts=1,
+        render_size="auto",
+        silhouette_iou_min=0.0,
+        tone_match=False,
+    )
+    assert report["render_size_mode"] == "auto"
+    for entry in report["angles"]:
+        # adaptive clay framing: ~0.85 max-side fill at every angle
+        assert 0.78 <= entry["subject_fill"] <= 0.92
+        # deficit closure: 870.4 / 0.85 ~ 1024-1088, quantized to 64
+        assert entry["render_size"] > 768
+        assert entry["render_size"] % 64 == 0
+        assert entry["render_size"] <= 1280
+        # the per-angle clay re-render (and conditioning panel) used it
+        assert entry["render_size"] in sizes_requested
+
+    # int mode: unchanged single-size behavior, no auto fields
+    views_int, report_int = refgen.generate_reference_views(
+        mesh,
+        solid_rgba((120, 90, 60)),
+        image_generator=echo_generator,
+        angles=[("side_left", 90.0, 0.0)],
+        max_attempts=1,
+        render_size=96,
+        silhouette_iou_min=0.0,
+        tone_match=False,
+    )
+    assert report_int["render_size_mode"] == 96
+    assert report_int["angles"][0]["render_size"] == 96
+    assert "subject_fill" not in report_int["angles"][0]
+
+
+def test_generate_reference_views_rejects_unknown_render_size_mode() -> None:
+    mesh = sphere_mesh()
+    with pytest.raises(ValueError, match="render_size"):
+        refgen.generate_reference_views(
+            mesh,
+            solid_rgba((120, 90, 60)),
+            image_generator=lambda *a, **k: b"",
+            angles=[("back", 180.0, 0.0)],
+            render_size="huge",
+        )

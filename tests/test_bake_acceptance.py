@@ -17,7 +17,10 @@ on synthetic textured meshes:
   gradient-domain compositing hides from any step detector),
 - scattered high-contrast detail never refuses (mottle/grain immunity),
 - the fidelity pose comes from the bake stats when the caller passes
-  them (the measured (0,0)-pose bug class).
+  them (the measured (0,0)-pose bug class),
+- the artifact battery refuses a candidate that ADDS a foreign pale
+  blotch (the image-in-image stamp payload / white rim-splash class)
+  and never punishes inherited or removed artifacts (A/B direction).
 """
 
 from __future__ import annotations
@@ -96,9 +99,13 @@ def test_non_regressing_candidate_is_accepted(baseline) -> None:
         base_mesh, back_banded(1, noise_texture(2)), source_rgba=photo)
     assert verdict["accepted"] is True
     assert verdict["reasons"] == []
+    assert verdict["warnings"] == []
     assert {"photo_fidelity_delta_e", "front_brightness_l",
             "composition_tone_damage", "seam_ratio",
-            "source_pose"} <= set(verdict["metrics"])
+            "source_pose", "artifact_battery"} <= set(verdict["metrics"])
+    battery = verdict["metrics"]["artifact_battery"]
+    assert battery["added_pale_blotch"]["votes"] is True
+    assert battery["added_pale_wash"]["votes"] is False
 
 
 def test_crisp_content_with_bounded_tone_change_is_accepted(baseline) -> None:
@@ -202,7 +209,10 @@ def hue_rotate_array(rgb: np.ndarray, degrees: float) -> np.ndarray:
 def test_constant_l_hue_rotation_is_rejected() -> None:
     """The measured L-axis hole (integrator program): a back region
     hue-rotated 30 deg at constant L passes fidelity/brightness/tone —
-    only the chroma axis can refuse it."""
+    only the chroma axis can refuse it. The source-evidence veto must
+    NOT silence it: rotated hue sits off the photo's own hue band, so
+    the charge stands (this is the trap co-observed masking would have
+    reopened — rotated references also land on baseline-fill surface)."""
 
     base_mesh = textured_sphere(red_noise_texture(11))
     try:
@@ -222,6 +232,77 @@ def test_constant_l_hue_rotation_is_rejected() -> None:
     assert any("hue damage" in reason for reason in verdict["reasons"])
     # the hole this closes: no OTHER axis may be carrying the refusal
     assert all("hue damage" in reason for reason in verdict["reasons"])
+    # and the veto must have left the charge standing (off-evidence)
+    damage = verdict["metrics"]["composition_hue_damage"]
+    assert damage["worst"] > damage["max_allowed"]
+    assert damage["source_band"] is not None
+
+
+def test_fill_hue_confound_matching_source_hue_is_accepted() -> None:
+    """The measured false-refusal incident (hue program, /tmp/hue1): on
+    never-witnessed surface the BASELINE carries propagated fill whose
+    low-band hue drifts off the subject's, and the old single-population
+    axis charged a CORRECT candidate for disagreeing with that fill
+    (live pair: 1.869 vs budget 1.0). Fixture: the baseline's back band
+    is hue-drifted 'fill mottle'; the candidate's back is fresh content
+    matching the source photo's own hue. The drift charge is real
+    (worst_raw over budget) but the source-evidence veto must clear it."""
+
+    base = np.asarray(red_noise_texture(11), np.uint8).copy()
+    drifted = hue_rotate_array(base, 20.0)
+    base[:, :26] = drifted[:, :26]
+    base[:, -26:] = drifted[:, -26:]
+    base_mesh = textured_sphere(Image.fromarray(base, "RGB"))
+    try:
+        photo = source_photo_of(base_mesh)
+    except Exception as exc:  # pragma: no cover - environment specific
+        pytest.skip(f"offscreen renderer unavailable: {exc}")
+
+    # candidate: same front, back replaced by NEW content in the
+    # photo's own hue family (what a correct reference does to fill)
+    revised = np.asarray(red_noise_texture(11), np.uint8).copy()
+    fresh = np.asarray(red_noise_texture(12), np.uint8)
+    revised[:, :26] = fresh[:, :26]
+    revised[:, -26:] = fresh[:, -26:]
+    candidate = textured_sphere(Image.fromarray(revised, "RGB"))
+
+    verdict = evaluate_generated_bake(base_mesh, candidate, source_rgba=photo)
+    damage = verdict["metrics"]["composition_hue_damage"]
+    # the confound is present: the legacy charge alone would refuse
+    assert damage["worst_raw"] > damage["max_allowed"]
+    # ... but candidate hue matches the subject's evidence: no damage
+    assert damage["worst"] <= damage["max_allowed"]
+    assert not any("hue damage" in reason for reason in verdict["reasons"])
+    assert verdict["accepted"] is True
+
+
+def test_colorless_photo_keeps_legacy_hue_charge() -> None:
+    """Fail-closed: a photo with no saturated hue mass yields no
+    evidence band, and the axis must keep the legacy single-population
+    charge (the veto may only fire on positive evidence — otherwise a
+    colorless-photo bake would ship any palette rotation)."""
+
+    base_mesh = textured_sphere(red_noise_texture(11))
+    try:
+        photo = source_photo_of(base_mesh)
+    except Exception as exc:  # pragma: no cover - environment specific
+        pytest.skip(f"offscreen renderer unavailable: {exc}")
+    gray = np.asarray(photo.convert("RGBA")).copy()
+    gray[:, :, :3] = 128
+    gray_photo = Image.fromarray(gray, "RGBA")
+
+    base = np.asarray(red_noise_texture(11), np.uint8).copy()
+    rotated = hue_rotate_array(base, 30.0)
+    base[:, :26] = rotated[:, :26]
+    base[:, -26:] = rotated[:, -26:]
+    candidate = textured_sphere(Image.fromarray(base, "RGB"))
+
+    verdict = evaluate_generated_bake(
+        base_mesh, candidate, source_rgba=gray_photo)
+    damage = verdict["metrics"]["composition_hue_damage"]
+    assert damage["source_band"] is None
+    assert damage["worst"] == damage["worst_raw"]
+    assert any("hue damage" in reason for reason in verdict["reasons"])
 
 
 def test_scattered_hue_detail_is_not_rejected() -> None:
@@ -244,6 +325,74 @@ def test_scattered_hue_detail_is_not_rejected() -> None:
 
     verdict = evaluate_generated_bake(base_mesh, candidate, source_rgba=photo)
     assert not any("hue damage" in reason for reason in verdict["reasons"])
+
+
+def blob_stamped(base_texture: np.ndarray) -> trimesh.Trimesh:
+    """Candidate whose back band carries a compact pale desaturated blob
+    - the render-space payload of the image-in-image stamp incident and
+    of the white rim-blotch class (foreign matter on a saturated
+    subject). Small enough that the tone axis's low-band integral stays
+    inside its budgets; only the battery may refuse it."""
+
+    stamped = base_texture.copy()
+    stamped[118:158, :16] = (232, 229, 226)
+    stamped[118:158, -4:] = (232, 229, 226)
+    return textured_sphere(Image.fromarray(stamped, "RGB"))
+
+
+def test_added_foreign_blotch_is_rejected_by_battery() -> None:
+    """The stamp/rim-blotch class: fidelity only sees it when it lands
+    on photo-witnessed surface at the gate pose, so a back-side stamp
+    needs its own detector. The battery's added-blotch axis must carry
+    the refusal alone."""
+
+    base_mesh = textured_sphere(red_noise_texture(11))
+    try:
+        photo = source_photo_of(base_mesh)
+    except Exception as exc:  # pragma: no cover - environment specific
+        pytest.skip(f"offscreen renderer unavailable: {exc}")
+    candidate = blob_stamped(np.asarray(red_noise_texture(11), np.uint8))
+
+    verdict = evaluate_generated_bake(base_mesh, candidate, source_rgba=photo)
+    assert verdict["accepted"] is False
+    assert any("artifact battery (pale blotch)" in reason
+               for reason in verdict["reasons"])
+    # the hole this closes: no other axis may carry the refusal
+    assert all("artifact battery" in reason for reason in verdict["reasons"])
+    battery = verdict["metrics"]["artifact_battery"]
+    assert (battery["added_pale_blotch"]["worst"]
+            > battery["added_pale_blotch"]["max_allowed"])
+
+
+def test_inherited_blotch_is_not_punished() -> None:
+    """A/B direction: the same blob in the BASELINE (candidate merely
+    inherits or even removes it) must never refuse - the battery
+    punishes only ADDED artifact mass, mirroring the tone axes."""
+
+    blob_mesh = blob_stamped(np.asarray(red_noise_texture(11), np.uint8))
+    try:
+        photo = source_photo_of(blob_mesh)
+    except Exception as exc:  # pragma: no cover - environment specific
+        pytest.skip(f"offscreen renderer unavailable: {exc}")
+
+    # candidate inherits the baseline's blob untouched: nothing added,
+    # nothing else changed - the whole gate must accept
+    inherited = blob_stamped(np.asarray(red_noise_texture(11), np.uint8))
+    verdict = evaluate_generated_bake(blob_mesh, inherited, source_rgba=photo)
+    assert verdict["accepted"] is True
+    assert not any("artifact battery" in reason
+                   for reason in verdict["reasons"])
+
+    # candidate REMOVES the blob: the battery must measure zero added
+    # mass (the tone axis may still judge the large low-band change on
+    # its own calibrated terms - that is its verdict to make, not the
+    # battery's)
+    clean = textured_sphere(red_noise_texture(11))
+    verdict = evaluate_generated_bake(blob_mesh, clean, source_rgba=photo)
+    assert not any("artifact battery" in reason
+                   for reason in verdict["reasons"])
+    assert verdict["metrics"]["artifact_battery"][
+        "added_pale_blotch"]["worst"] == 0.0
 
 
 def test_gate_pose_resolves_from_bake_stats(baseline) -> None:

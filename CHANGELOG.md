@@ -2,6 +2,660 @@
 
 ## Unreleased
 
+### Validated (five-agent artifact program — integration matrix on the merged tree; end-to-end proof pack)
+
+Integrator-validator pass (2026-07-14, /tmp/afix5) over the four
+concurrent landings: A1 roof-block C0 tone fields (`texturing.py`), A2
+artifact-detector battery (`artifact_gates.py` + gate/QA wiring), A3
+multi-view geometry conditioning (`hunyuan3d_runtime.py`), A4 reference
+resolution/sampling lanes (`reference_generation.py`,
+`triposr_runtime.py`). No neutralizations were needed: no fleet case
+regressed on the merged tree.
+
+- **Suite**: 335 passed at entry -> **375 passed, 3 skipped, 3 xfailed**
+  on the final merged tree (+40 tests from the four programs; zero
+  failures at every intermediate landing). Parity canaries **3/3** with
+  the historical pins (P1 identical_frac 1.000, pose (17.5, 8.0); P2
+  c84f2e49…; P3 face e32ba995… twice) — the single-photo lane is
+  bit-untouched by the whole program.
+- **Pinned fixtures** (gate-only, persisted GLBs): all 16 rows hold
+  under the battery-active gate — 12 fix1 verdicts, 3 chroma rotation
+  REFUSEs (1.312/1.978/6.508 vs budget 1.0), hue15 probe 0.623 ACCEPT.
+- **Pairs rebuilt from scratch on the merged tree** (2048, production
+  kwargs): car_bo3 ACCEPT (fidelity 32.09 -> 32.06/34.09; hue raw 1.852
+  vetoed to 0.011 — hue1's headline reproduces), car_final ACCEPT
+  (32.31 -> 33.35/34.31), owl ACCEPT (17.02 -> 17.24/19.02), v7 ACCEPT
+  (34.06 -> 32.66 — candidate more photo-faithful than baseline).
+  Battery quiet on all four (added blotch <= 0.0024 vs budget 0.009);
+  the v7_candidate stamp pair refuses on BOTH fidelity (41.73) and the
+  battery axis (0.0245) on the merged tree. A1's roof-block kill
+  verified on the rebuilt live pair: el-55 canopy clean, no lattice.
+- **End-to-end proof matrix (MPS, sequential)**:
+  - **Car t23d `--quality best`** (best-of-3; A3's measured
+    recommendation keeps geometry conditioning OUT of presets): exit 0
+    healthy, seed 3025 selected (score 1.0761 vs 1.0713/1.063), no
+    slab, 1 body; 4/4 references accepted; whole-bake **ACCEPT**
+    (fidelity 33.75 -> 33.72/35.75, battery blotch 0.00095/0.009, zero
+    warnings). Hostile turnaround + top + crops: NO mini-photo stamp,
+    NO roof blocks, NO white rim blotches, NO mottle patchwork, NO
+    visible seams, NO slab, wheels attached, cabin intact.
+  - **Owl i23d** (references on): healthy, geometry md5 c5d2409b… ==
+    the approved standard (fourth byte-identical shape reproduction);
+    4/4 refs accepted, whole-bake ACCEPT 17.02 -> 17.24/19.02 (A1's
+    CPU prediction to the digit), battery quiet, texture_qa PASS.
+  - **Starship rebake** (persisted refs, merged tree): ACCEPT 19.77 ->
+    19.51/21.77, tone 0/0.03, battery 0.0, seam informational
+    0.0089 -> 0.0088.
+  - **Fresh chair t23d** (default path): healthy, watertight single
+    body, no slab; per-view gates honestly rejected 3/4 reference
+    draws, accepted top; whole-bake ACCEPT with fidelity IMPROVING
+    26.54 -> 24.87/28.54; battery quiet. Residuals recorded (below).
+- **A4 validation spec executed** (the generation runs it specced):
+  per-angle `render_size="auto"` PASSES its decision rule on the car
+  (4/4 accepts within attempts, sharpness 1.51x back / 1.99x top at a
+  common scale, rebake ACCEPT with fidelity 31.03 better than the
+  768-ref candidate's 32.06, cost 2.46x <= 3x) but FAILS on the owl:
+  0/12 accepts at 1024-1216 — silhouette healthy (0.90-0.97), the
+  fixed-pixel relief/flat texture bands refuse every draw. **Default
+  stays 768** per the rule; the recorded fix path is gate-band
+  rescaling by frame ratio (KnowledgeBase insight), not size retreat.
+- **Honest residuals** (tracked, none in the 8 historical artifact
+  classes): (a) refs-on car bakes carry 10-13 sub-visible dark
+  micro-fragments in never-witnessed underbody concavities — measured
+  pre-existing (gfix3 car_b: 10 on the pre-program tree), invisible in
+  all product views, next step in KnowledgeBase; (b) the fresh chair
+  draw's bake reads darker than its hi-key photo (viewer brightness
+  0.26 vs the 0.72 QA floor; coverage 0.047 on the thin-spindle
+  subject) — a pre-existing chair-class weakness, not a regression:
+  the APPROVED legacy chair proof measures 0.388 on the same gate
+  (with 9 legacy-era gate failures inc. baseColorFactor 0.4); the A/B
+  acceptance gate is structurally blind to a defect both arms share,
+  and the standalone QA catches it loudly. Candidate ship-time lever:
+  a viewer-brightness floor in the single-view sanity battery, run on
+  BOTH branches; (c) away-from-photo surfaces remain softer than
+  photo-witnessed ones (A4's density table names the mechanism;
+  quality-weighted sovereignty specced as the successor program).
+
+### Added (artifact-detector battery — measured detectors for every shipped artifact class; one voting axis, the rest recorded loudly)
+
+Adversarial fix program 2026-07-14 (/tmp/afix2): the user's demand is
+"no more artifacts like all those we have seen so far", so every
+artifact class this project has shipped got a detector, calibrated on
+the preserved corpus (bad exemplars: the sportscar_v7_candidate
+mini-photo stamp, the car_bo3 roof patch-blocks, the diagsub white rim
+blotches, the v5/v6/maxvis fill mottle and clear-coat smears, the v4
+coverage-0.05 ghost; good corpus with ZERO false fires required: owl
+standards, face proof, starship, chair, portrait, sportscar_v7, gfix3
+car_a/car_b, car_bo3 minus its known-bad roof). New module
+`src/abstract3d/artifact_gates.py`; wiring in
+`bake_acceptance.evaluate_generated_bake` (A/B battery on the existing
+turnaround renders — a candidate must not ADD artifact mass, same
+directional doctrine as the tone axes) and `scripts/texture_qa.py`
+(standalone battery per bundle, warn-only).
+
+- **Voting axis — added foreign pale blotch** (classes: image-in-image
+  stamp payload + white/foreign rim blotches): compact bright
+  desaturated components vs the local surface context (context sigma
+  6% of the subject diagonal, dL > 18, dC > 18, area >= 0.15%,
+  elongation <= 6 — the measured strip/blob boundary: legit tail-light
+  bands and sills measure 8-18, every bad-class component 1.0-5.6).
+  Worst-view ADDED max-component budget 0.009: labeled-accept pairs
+  measure <= 0.0036 (9 of 12 fix1 pairs exactly 0.0000; pinned-accept
+  car_bo3 0.0026), the rebuilt stamp incident measures 0.0244 — budget
+  2.5x above the accepts, 2.7x under the incident. The stamp pair is
+  ALSO refused independently by photo fidelity (41.73 vs 34.06+2.0 at
+  the true pose), so the battery is defense-in-depth there; it is the
+  only axis that catches the same payload landing on never-witnessed
+  surface (synthetic back-side stamp fixture in the tests).
+- **Recorded + loud warnings (measured to be non-votable)**:
+  - added pale WASH (baked specular / clear-coat smear class), warn
+    at +0.010: fix1 accepts measure <= 0.0018, but the pinned-ACCEPT
+    car_bo3 pair adds 0.0133 (its roof blocks read as wash — the
+    warning names the exact live defect the fringe-repair line is
+    fixing), so a vote would flip a pinned verdict.
+  - added RECT-HAZE CELLS (patch-block grids), warn at +2: integer
+    count with a measured +/-1 noise floor on the accept corpus.
+  - added dark patchwork: recorded only — legitimate references add
+    up to +0.063 of mid-band structure (real glass frames over blank
+    fill), far above any damage exemplar.
+- **Why template matching does NOT carry class 1a** (honest dead end,
+  measured): five variants (raw/gradient full-frame NCC, 3x3 part-tile
+  consistency voting, own-scale-excluded search, texture- and
+  render-space) all fail — the legitimate bake IS a photo copy at its
+  own scale, texture space carries the atlas packing pitch (~53 px
+  periodicity in EVERY texture) and coherent reference content, and
+  the incident stamp is warped (its registration was degenerate by
+  construction), which caps rigid-template NCC below the legitimate
+  matches. The stamp's invariant payload is its baked-in background
+  ring — which the blotch axis measures directly.
+- **texture_qa standalone battery** (any bundle, single-photo bakes
+  included): 8-view turnaround battery + two stats-based checks —
+  fill-cap mottle risk (fill-detail scale pegged at its 3.0 cap on a
+  >= 50%-fill subject: the measured 1024-mottle CAUSE; maxvis fires at
+  3.0/0.839, v7@2048 measures 1.109) and registration floors (source
+  coverage < 0.10 AND capture efficiency < 0.25: the v4 ghost fires at
+  0.0498/0.166; weakest good bundle v7 at 0.1088/0.294). All
+  standalone render detectors WARN only: their absolute good-corpus
+  margins (1.14-1.8x) sit below the project's zero-false-fire voting
+  bar — the A/B form in the gate is where they can vote. Measured
+  standalone: owl PASS with battery quiet; v7_candidate warns blotch
+  0.0340 + background-contamination 0.0306 + registration floors;
+  maxvis warns wash 0.0703 + fill-cap; exit codes of the existing
+  good-corpus gates unchanged.
+- **Known misses, stated**: absolute wash cannot catch v6 (0.0379)
+  or the bo3 roof (0.0376) under the good-corpus max (0.0450 — v7's
+  own baked photo speculars are the same physics); diagsub_top_rear /
+  side_right (0.0120/0.0086) sit under the blotch warn line; the
+  dark-patchwork render statistic does not separate maxvis (0.0952)
+  from the labeled-good v7 (0.0925) at all — that class is warned on
+  its recorded CAUSE instead.
+- **Pinned verdicts proven unchanged** with the battery voting: all 12
+  fix1 fixture pairs, the fix3 chroma-rotation pairs, hue1's live
+  car_bo3 (ACCEPT) / car_final pairs — reruns of the fix programs'
+  own harnesses; margins in /tmp/afix2/report.md.
+- **Tests**: `tests/test_artifact_gates.py` (9 synthetic fixtures: per
+  class fire/quiet, strip-vs-blob elongation, A/B direction — added
+  fires, inherited/removed never; stats-check incident values) plus 2
+  end-to-end gate tests (a back-side stamp is refused by the battery
+  ALONE; inherited blotches ship). `evaluate_generated_bake` reports
+  gain a `warnings` list (recorded verbatim into bundle metadata by
+  the existing call sites).
+
+### Added (multi-view geometry conditioning for single-photo flows — `geometry_conditioning`)
+
+Fix program 2026-07-14 (/tmp/afix3). Both mesh audits (2026-07) convicted
+CONDITIONING STARVATION as the primary cause of hallucinated geometry on
+self-occluding subjects (melted cockpit interiors, detached wheels, deck
+blobs on cars) and ranked "feed the shape stage more views" as the first
+fix: the `Hunyuan3D-2mv` dict path was already integrated and proven (face
+proof), but it only fired when the CALLER passed reference views — which
+single-photo `t23d`/`i23d` never do. The new `geometry_conditioning`
+option (`single` default / `multiview` / `auto`; config
+`scene3d_hunyuan_geometry_conditioning`, env
+`ABSTRACT3D_HUNYUAN_GEOMETRY_CONDITIONING`, CLI `--geometry-conditioning`)
+closes the gap at the source:
+
+- **Pre-shape view synthesis (meshless)**: before any mesh exists, the
+  missing canonical views (`back`, `side_left`, `side_right` per the 2mv
+  tag map; caller-provided references keep their tags first) are
+  synthesized from the matted source photo with the LOCAL i2i generator
+  (rotate-style prompt, material-free subject noun from the caption/hint,
+  shared negative prompt; seeds `base + 50000 + 1000*i`, 8/12-step
+  ladder, 2 attempts per view).
+- **Gated before trusted** (a wrong conditioning view is worse than
+  single-view — the checkpoint TRUSTS its tags): matte sanity, subject
+  identity via `part_material_fidelity`'s floor line (chroma-collapse
+  guard included), and two orthographic silhouette identities — the BACK
+  silhouette of any object is its mirrored FRONT silhouette (floor 0.52),
+  and LEFT/RIGHT silhouettes are exact mirrors of each other, so a
+  surviving side pair that disagrees (mirror-IoU < 0.68) is dropped WHOLE
+  (blame between the two is unattributable). Floors calibrated on 24 real
+  draws across 4 spaced seeds on a frontal (owl) and a three-quarter
+  (car) source: healthy backs 0.954-0.976 (frontal) / 0.580-0.678 (3/4 —
+  the source's own off-axis angle is the relation's noise floor);
+  wrong-subject swaps 0.398-0.437; healthy pairs 0.729-0.953;
+  front-echo-as-side lies on the elongated class 0.615-0.658.
+- **Loud fallback**: person subjects are refused under the same doctrine
+  as texture reference generation (caption + `is_person_subject`,
+  fail-closed when the captioner is unavailable,
+  `texture_reference_allow_person` is the person-specific attestation for
+  BOTH lanes — it attests the same act); zero surviving views falls back
+  to the exact single-view flagship path with a warning plus a
+  machine-readable `geometry_conditioning` metadata block (requested vs
+  applied, per-view gate metrics, fallback reason). `auto` additionally
+  requires an explicitly configured image provider (never silently
+  remote) and yields to an explicitly requested single-view model;
+  explicit `multiview` + an explicit `Hunyuan3D-2.1` model is an
+  `InvalidRequestError` (contradictory explicit requests are not silently
+  resolved).
+- **Model selection**: with conditioning views in hand the shape stage
+  loads `tencent/Hunyuan3D-2mv` (auto-selected only when no explicit
+  model was given); the DiT load is DEFERRED until after synthesis so the
+  i2i pool and the DiT never co-reside on the unified-memory pool.
+- **Texture lane**: accepted synthesized views are OFFERED to the texture
+  bake as the FIRST ladder attempt of their angle through the full,
+  unmodified reference-acceptance machinery (matting, clay-silhouette
+  registration + IoU, texture/material/specular gates, whole-bake A/B) —
+  nothing is bypassed; a view the mesh diverged from fails the clay gate
+  and the ladder regenerates normally (`replayed_labels` recorded).
+- **Persist-for-diagnosis**: accepted views land in the bundle as
+  `geometry_view_synthesized_*.png`, rejected candidates downscaled under
+  `rejected_geometry_views/` (budget-capped), all gate metrics in
+  metadata.
+- **Host hardening**: 2/2 synthesis probes died SIGSEGV (exit 139) in
+  skimage `lab2rgb` (float64 GEMM -> Accelerate `cblas_dgemm`) with the
+  MLX pool resident, even under `VECLIB_MAXIMUM_THREADS=1` (KB: "Host:
+  Accelerate BLAS segfaults"); `_harden_skimage_color_convert()` swaps
+  skimage's 3x3 color matmul for an einsum (verified identical to 1e-12
+  before the swap; darwin-only; applied only on the multiview path).
+  After the swap: 24/24 probe generations completed.
+- **2mv family regime + hard view cap (both measured)**: the 2mv
+  checkpoint now runs its OWN validated regime (30 steps / octree 384 —
+  the model-card snippet and the checked face proof) instead of
+  inheriting the flagship's 512/50, on every 2mv route (synthesized or
+  caller references; explicit options and configured owner defaults still
+  win). And conditioning is HARD-CAPPED at 3 simultaneous views with
+  priority front > back > side_left > side_right: on identical
+  conditioning images, seed, and settings, the 4-view dict shredded the
+  field into film-shell debris TWICE independently (559 raw bodies /
+  euler +693 at 384/30; 822 raw bodies / +887 at 512/50) while every 1-3
+  view subset produced a healthy single-body car — and 2-3 views beat
+  single view (raw euler: front-only -174, front+back -141,
+  front+left+back -117, front+sides -65). Every proven upstream usage
+  stays at <= 3 views; the cap drops the lowest-priority tag loudly
+  (warning + `dropped_views` in metadata) and a dropped view still
+  reaches the texture lane through the replay.
+- **Quality presets**: deliberately NOT routed through multiview (see the
+  A/B below — it is a measured trade, not an upgrade); presets keep their
+  shape-candidate counts and `geometry_conditioning` stays an explicit
+  opt-in.
+- **Default path untouched**: `geometry_conditioning` unset/`single` is
+  the historical byte-identical flow (no person gate, no synthesis, no
+  new metadata keys — pinned by test), and the caller-supplied-reference
+  2mv path is unchanged apart from an equivalent nearest-tag refactor
+  (`_mv_snap_tag`, pinned by test) and the two measured protections
+  above.
+
+A/B (2026-07-14, MPS, sequential, geometry-only, same base seed per pair,
+each arm at its shipping regime — flagship 512/50 single-view vs 2mv
+384/30 with the capped 3 views; H-program ranking metrics vs the source
+matte; per-draw table + clay sheets in the A3 program report): multiview
+cut the car's spurious-handle load 32-61% (euler -130 vs -192 at seed
+2025, -74 vs -132 at 3025; raw -117 vs -179, -48 vs -124), smoothed
+panels (dihedral RMS -2.2/-2.4 deg), conditioned the rear instead of
+inventing it, and kept the owl standard's perfect topology (euler +2 both
+arms) at photo-IoU parity (max delta 0.013) and wall-time parity. It
+consistently LOST concave sharpness (photo concavity IoU -0.05 on cars,
+-0.10 on the owl) and fine carved detail, putting the calibrated
+composite score 0.018-0.040 behind single-view on every pair; a control
+at octree 512 with the capped 3 views recovered only 0.013 of the car's
+0.051 concavity gap while adding a detached body — the loss is mostly
+the 1.1B 2.0-family checkpoint, not the family grid. Verdict: a real
+topology/panel win and a real detail cost, so it ships as an explicit
+opt-in for topology-critical subjects, not as a preset default.
+
+### Added (reference resolution budget: measured density tables, per-angle synthesis sizing, footprint-aware projection sampling)
+
+Resolution/sampling lane of the roof-patchwork program (A4, 2026-07-14,
+/tmp/afix4): measured the texels-per-reference-pixel budget end-to-end
+on the shipped car_bo3 bundle and the owl control, then fixed the two
+in-scope constraints the measurements convicted. Density method: project
+the atlas texel grid into each registered reference frame (the
+projector's own sample maps), take the per-texel Jacobian's singular
+values (photo px per texel step), and histogram density = 1/sigma over
+each view's OWNED roof texels. Findings of record (2048 atlas,
+production kwargs):
+
+- The car roof splits ~47% / 41% between the FRONT PHOTO (grazing,
+  worst-direction density p50 2.24 / p90 3.16 texels per photo px — a
+  2-3x anisotropic smear) and the TOP reference (p50 1.43 / p90 2.06);
+  the healthy owl comparator's top reference owns 62% of its crown at
+  p50 1.22. Ownership of half the roof by the most-starved witness is
+  the sovereignty doctrine (`protect_observed_texels` absolute), not a
+  sampling bug — recorded for the doctrine's owner.
+- EVERY 768-frame generated reference under-delivers the canonical
+  conditioning frame (1024 x 0.85 border = 870 px subject side) by
+  ~1.36x: the adaptive clay framing letterboxes the subject to ~0.83 of
+  any frame at any angle, so synthesis carries ~637 true px into an
+  870-px slot before the atlas ever samples it.
+- The distinctive BLOCK mosaic on the dark canopy was NOT sampling:
+  the projector's bilinear output is smooth; the blocks entered at
+  `equalize_projection_tone` stage 2 (voxel-lattice field — root-caused
+  and fixed by the parallel afix1 program; independently confirmed here
+  by stage bisection, and the pre/post A/B crop ships in
+  /tmp/afix4/tone_blocks_pre_vs_post_afix1.png).
+
+Changes:
+
+- `reference_generation.generate_reference_views` accepts
+  `render_size="auto"`: per-angle frame sizing that closes the measured
+  letterbox deficit — each angle's clay silhouette extent (the exact
+  framing the generation reproduces) sets the frame so the subject's
+  true pixels meet the canonical 870-px demand
+  (`reference_render_size`: ceil to 64, never below the 768 base,
+  capped at 1280). Int values keep the historical single-size behavior
+  byte-for-byte; the chosen size and fill fraction are recorded per
+  angle. Default remains 768 pending A5's MPS validation of gate
+  pass-rates at 1024+ synthesis (spec in /tmp/afix4/validation_spec.md).
+- `_tripo_project_observed_texture` gains `sample_filter="footprint"`
+  (`_tripo_footprint_filtered_colors`): anisotropic area-average for
+  MINIFIED texels — mip level by sigma_min (the well-sampled direction
+  stays sharp), Gaussian probes along the major footprint axis,
+  alpha-premultiplied so matte background never bleeds into rims;
+  magnified texels and every alpha/visibility decision keep the exact
+  bilinear values. OFF by default (default path structurally unchanged;
+  parity canaries 3/3 with pinned md5s, face P3 bit-identical).
+  Measured basis: 1024 fleet bakes sample references at sigma_max ~1.9
+  on roof regions (past texel Nyquist — a checkerboard reference at
+  grazing aliases into stable false blocks, now pinned by a synthetic
+  regression test), while 2048 bakes sit at sigma ~0.8-1.05 where the
+  filter is inert by design. Refs-on A/B under production kwargs
+  (persisted car_bo3 refs, 1024): texture delta mean 1.6/255, p99 14 —
+  the aliasing band; renders neutral-or-cleaner (crops in /tmp/afix4/).
+  Call-site wiring (generated views only) is specced for the validator,
+  not landed — texturing.py belongs to a parallel lane this cycle.
+- Tests: checkerboard-at-grazing de-aliasing + resolvable-detail
+  preservation + magnification bit-identity for the footprint filter;
+  per-angle size computation (letterbox deficit closure, quantization,
+  cap, degenerate masks) and end-to-end "auto" plumbing with a mock
+  generator; unknown render_size modes are rejected.
+
+### Fixed (roof-block "image inside an image" — the tone-consensus field printed its voxel lattice)
+
+Fix program 2026-07-14 (/tmp/afix1), second stamp-class incident,
+user-reported on the shipped best-of-3 car (/tmp/hue1/car_bo3_refs):
+rectangular blocks of foreign-looking image content across the
+roof/glass at elevated views. Provenance forensics (per-stage write
+masks over an instrumented rebake that reproduces the shipped texture
+md5-identically): the blocks enter BETWEEN projection and blending —
+`equalize_projection_tone` stage 2 (the local consensus field) wrote
+293k texels of the top reference's projection with a multiplicative
+exposure field SATURATED at its +-0.5 log cap, and the field was
+piecewise-CONSTANT over the voxel lattice of `_voxel_neighborhood_mean`
+(cell 0.03 x diagonal ~ 0.069 world units): a flat car roof intersects
+that lattice in axis-aligned world-space rectangles, so adjacent cells
+stepped by up to e^1.0 in luminance and rendered as exposure BLOCKS
+(measured: within-cell field std 0.47x total — most of the "field" was
+the lattice; the registered top photo's canopy is smooth). The blocks
+survive the gradient-domain composite (it equalizes across ownership
+boundaries, not inside one view's witnessed interior) and ship. The
+first stamp incident (miniature photo on the hood) was a COPY lane
+with a degenerate correspondence; this one is an EXPOSURE lane whose
+correction field itself carried fabricated spatial structure.
+
+- **Fix (`texturing._voxel_field_mean_c0` + the three field builders)**:
+  statistics that become multiplicative correction fields must be C0.
+  New trilinearly-interpolated variant of the voxel box mean (same
+  binning, same 3x3x3 zero-padded box sums, same NaN contract;
+  evaluation interpolates the cell-centered means with unoccupied
+  corners at zero weight — box-mean-exact at cell centers, continuous
+  everywhere by construction). Used by: `equalize_projection_tone`
+  stage 2 (deviation numerator, evidence density, fade density — plus a
+  new SUPPORT-EDGE fade `clip(density / fade_density_full)` closing the
+  residual hard step where the ratio field meets its evidence-support
+  boundary), stage 1's overlap-proximity fade, and
+  `delight_projections`' fade. The box-mean variant remains for every
+  gate/decision consumer (fill floor, film band, rescue detection —
+  calibrated statistics pinned by the single-photo canaries).
+- **Also removed**: the `fade[fit_overlap] = 1.0` hard overrides in
+  delight/tone stage 1 — forcing full field strength on scattered
+  overlap texels steps against their faded neighbors (same artifact
+  class at texel scale); dense overlap bands reach fade 1.0 through
+  their own density (full fade at 12% ball occupancy), sparse slivers
+  now honestly keep partial correction.
+- **Provenance (stats name every writer)**: delight/tone accept
+  branches now record `written_texels` (the write-mask footprint) in
+  their per-view stats rows; a refused row records nothing and the
+  projection is bit-identical (pinned by test).
+- **Measured on the live pair**: candidate rebake under the shipped
+  recipe — roof blocks GONE (before/after el-55 renders + close crops
+  in /tmp/afix1/report.md); tone stage 2 still applies (it is the
+  measured-good lane that reconciles synthesized regional shading; its
+  field is now smooth), witness-ranked accept gates unchanged.
+  Single-photo canaries structurally untouched (delight/tone are
+  multi-view-only): parity canaries 3/3 with pinned md5s; face
+  P3 md5 bit-identical. First-incident regression (sportscar_v7
+  candidate rebake): no hood mini-photo, fringe-repair fail-closed veto
+  unchanged.
+- **Residual, out of this fix's scope (recorded honestly)**: the
+  shipped car_bo3 scene.glb was baked by a harness that OMITTED the
+  production kwargs (perspective projection at the declared az0 pose
+  instead of orthographic + estimated az35/el15), which displaced
+  front-photo content onto the roof glass under `protect_observed_
+  texels`' absolute sovereignty (the photo's 0.007-weight displaced
+  claims beat the top reference's 0.59 head-on claims by doctrine).
+  Under production kwargs that class does not exist; ship-path harnesses
+  must use the bundle rebake kwargs. Same-class watch items for their
+  owners: `film_band.retone_film_band` gathers COLOR targets with the
+  box statistic (commit-band-scoped, dominance-scaled — no block
+  sighting on the fleet; flagged), `enforce_fill_luminance_floor` lifts
+  toward box-mean floors (fill-only, minority-gated, canary-pinned).
+- **Tests**: +3 (`test_voxel_field_mean_c0_is_continuous_and_center_
+  exact` — continuity across cell boundaries, center-exactness vs the
+  box mean, NaN contract; `test_equalize_projection_tone_field_prints_
+  no_lattice_blocks` — the displaced-content block class: applied field
+  max adjacent-texel log step 0.069 vs 0.372 pre-fix on the same
+  fixture, provenance rows mandatory;
+  `test_equalize_projection_tone_refusal_is_bit_identical_no_op` —
+  fail-closed honesty: refused rows claim no write and the projection
+  is bit-identical).
+
+### Fixed (whole-bake hue axis false refusal on never-witnessed surface: two-population source-evidence veto)
+
+Fix program 2026-07-13 (/tmp/hue1), first live sighting of the gfix3
+watch item: the composition hue axis REFUSED a correct 4-reference car
+candidate (best-of-3 run, /tmp/hfix2/car_bo3) at 1.869 deg-mass vs the
+1.0 budget (worst view az180_el10, p95 rotation 19.1 deg) and shipped
+the fill-mottled baseline — while all four references were verified
+hue-faithful to the input photo. Mechanism (measured on the rebuilt
+pair, which reproduces the live 1.869 to the third digit): at az180 the
+source photo witnesses nothing, so the axis compared candidate
+REFERENCE content hue against baseline FILL-mottle hue and charged the
+improvement as damage — the same baseline-side confound class that
+retired the seam axis's vote.
+
+- **Fix (`bake_acceptance.py`, two-population hue judgment)**: the
+  drift charge `max(angle - 10, 0)` now stands only where the
+  candidate's own smoothed hue ALSO sits off the source photo's hue
+  evidence (`_source_hue_band`: circular [q2, q98] of the photo's
+  saturation-gated a/b fields, smoothed at the axis sigma rescaled to
+  the photo's foreground extent) by more than `hue_evidence_margin_deg`
+  (3). Pixels ON the subject's own hue evidence are the added-content
+  population — never damage, whatever the baseline carries there;
+  off-evidence pixels keep the full baseline-drift charge. A colorless
+  photo yields no band and the legacy single-population charge applies
+  unchanged (fail-closed; measured: the starship photo has no
+  saturated mass and its verdict is bit-unchanged).
+- **Why not co-observed masking** (the obvious fix): a hue-ROTATED
+  reference also lands on baseline-fill surface, so restricting the
+  comparison to co-observed pixels would let the pinned rotation
+  fixtures ship — reopening the exact hole the axis exists to close.
+  The evidence veto cannot: rotated content sits off the photo band by
+  construction (geometric texture-space observedness masks were also
+  measured NOT exposed by bake stats, and a gate-side projector
+  replica would drift from bake truth on every per-texel gate).
+- **Calibration** (all pairs rebuilt CPU-only at production kwargs;
+  margins vs the unchanged 1.0 budget): live car_bo3 pair 1.870 raw ->
+  **0.008 ACCEPT** (125x under); fix3 fresh-draw car_final hue axis
+  0.973 raw -> 0.000 (its refusal now carried by the honest
+  fidelity/brightness/tone axes alone, unchanged); pinned rotations
+  REFUSE with 20-deg back **1.312** (1.3x over), 30-deg back 1.978,
+  30-deg sides 6.508; new 15-deg probe 0.623 ACCEPT — 4x above the
+  worst labeled accept (car 0.157), so the refusal boundary lands
+  between 1.5x and 2x the sanctioned 10-deg drift. Margin sweep: at
+  margin 2 the live pair keeps 0.265 of band-edge noise; at margin 4
+  the 20-deg refusal thins to 1.11x; 3 is the measured saddle. All 12
+  fix1 fixture verdicts unchanged (accepts' vetoed masses only drop:
+  worst 0.460 -> 0.157; the four tone refusals refuse identically).
+- **Observability**: `composition_hue_damage` now records `worst_raw`
+  (pre-veto mass), `worst_raw_view`, `evidence_margin_deg`, and the
+  `source_band` actually used — a large raw/vetoed gap is the
+  fill-confound signature, visible in every verdict.
+- **Tests**: +2 (`test_fill_hue_confound_matching_source_hue_is_accepted`
+  — the false-refusal population as a synthetic fixture, raw charge
+  over budget, vetoed verdict ACCEPT;
+  `test_colorless_photo_keeps_legacy_hue_charge` — no evidence, no
+  veto). `test_constant_l_hue_rotation_is_rejected` additionally pins
+  that the veto leaves the rotation charge standing (the trap case).
+  Suite 335 passed / 3 skipped / 3 xfailed; parity canaries 3/3.
+- Note for reproduction: the 30-deg-back pair measures 2.114 on a quiet
+  host vs the 2.310 recorded under concurrent load (render-environment
+  sensitivity of the offscreen GL pass, both far over budget); the
+  20-deg and 30-deg-sides fixtures reproduce their pinned digits
+  exactly.
+
+### Validated (adversarial pass over the best-of-N shape-candidate landing; one ranking-weight defect found and fixed)
+
+Independent adversary-validator program (2026-07-13, /tmp/hfix2): the
+ranking problem was calibrated BEFORE reading the implementation (spec
+with measured inequalities in /tmp/hfix2/ranking_spec.md; trap fixtures
+built from the persisted fleet — laplacian melt-severity ladder of the
+real car_b draw at 8/40/150/400 iterations, synthetic watertight slab,
+the real pre-cutter slab car and its production-cutter repair), then the
+landed ranker was attacked, then the feature was run end-to-end on MPS.
+
+- **Defect found and fixed (ranking weights)**: the original
+  `0.10 * smoothness` term was a monotone reward for the melt direction.
+  Measured on the real-geometry melt ladder: melting strictly improves
+  dihedral RMS (15.09° -> 11.93/10.34/9.89° at 8/40/150 iterations) while
+  quality strictly degrades, and the anti-melt concavity axis does NOT
+  collapse on realistic melts (true 0.2355 vs 0.2696/0.2398/0.2693 —
+  only the convex-hull extreme collapses to 0.0272), so at +0.10 the
+  40-iteration melt outscored the true draw by +0.0101 and the builder's
+  own 60-iteration calibration melt by +0.0181. Fix:
+  `_SHAPE_RANK_WEIGHT_SMOOTHNESS` 0.10 -> 0.0 (dihedral RMS stays
+  recorded per candidate as a diagnostic). Measured cost on legitimate
+  orderings: none (car_b > car_a +0.102 -> +0.096, now decided by
+  watertightness; v7 > v4, slab, hull, wrong-subject margins unchanged
+  or wider — the hull is still rejected at -0.069). New regression test
+  `test_shape_ranking_never_rewards_smoothing` (a laplacian melt of a
+  lumpy sphere — smoother by >0.5 — must not outrank the true surface,
+  and the score must be invariant to the smoothness value). Residual
+  documented honestly: an 8-iteration melt still ties +0.0116 ABOVE the
+  true draw via concavity-axis noise (good-draw concavity spread 0.24-
+  0.40 is 5x that delta); no measured 2D signal separates that class
+  (IoU at 256/512 px, contour distance, complexity matching, interior
+  gradient NCC vs its own ±0.1 pose jitter all fail), so the achievable
+  guarantee is non-preference, which the zero weight provides.
+- **Ranker verdict vs the adversarial spec** (fixed tree, binding run):
+  slab dominance PASS (+0.35 synthetic / +0.13 real pre-vs-post-cut);
+  melt non-preference PASS at 40/150/400 iterations (+0.0004/+0.0207/
+  +0.1159 to the true draw); genus-neutrality PASS (v7 euler -210
+  outranks v4 -106; the approved face proof at -418 is not punished);
+  watertightness bounded PASS (a watertight slab cannot outrank a
+  non-watertight honest draw); determinism PASS (bit-identical scores
+  on re-evaluation).
+- **Best-of-3 car end-to-end** (t23d, MPS, `--shape-candidates 3`, exit
+  0, healthy, 99.6 min): 3 candidates recorded with full metrics, seeds
+  2025/3025/4025; selected = argmax (1.2203 vs 1.2078/1.2146); score
+  arithmetic re-verified from recorded metrics; the ranking function
+  re-run on the shipped geometry reproduces the selected row bit-exactly
+  twice. The three candidates were REDRAWN standalone from their
+  recorded seeds: the selected draw's vertices/faces are float-exact
+  equal to the shipped geometry (the candidate loop is RNG-hygienic; an
+  explicit per-candidate generator isolates draws), the two siblings'
+  recorded metrics reproduce exactly, and an independent finer-sweep
+  instrument agrees with the selection (0.9338 vs 0.9321/0.9195 —
+  the selected draw is also the best car IoU measured across the whole
+  persisted fleet, above v7's 0.9243). Cost claim verified: inference
+  4597.2 s = exactly the sum of the three draws (22.6-29.7 min each),
+  ONE texture stage (21.7 min), ranking 2.0 s total. Texture lane note
+  (outside this feature): the whole-bake gate refused the generated
+  references on hue (1.869 vs budget 1.0 at az180_el10, coverage 0.20)
+  and shipped the baseline loudly — the gfix3 hue-only watch item's
+  first live sighting; refused refs persisted and visually plausible.
+- **Default-path neutrality PROVEN at the byte level** (owl i23d, no
+  flag, exit 0, healthy, 64.8 min): geometry.glb, texture.png, AND
+  scene.glb md5-identical to the approved standard (third independent
+  byte-identical shape reproduction of the owl across tree states);
+  metadata carries no candidate keys and the historical timings keys
+  exactly; 4/4 references accepted, whole-bake ACCEPT, fidelity
+  17.02 -> 17.27 — the gfix3-recorded numbers to the digit.
+- **Host note**: one attempt of the car run died SIGSEGV (exit 139) in
+  Accelerate `cblas_dgemm` DURING the texture stage, after all three
+  candidate draws completed — the documented pre-existing host class
+  (KnowledgeBase), unrelated to this feature; the retry completed.
+- **Suite**: 333 passed, 3 skipped, 3 xfailed at exit (entry: 332/3/3);
+  parity canaries 3/3 PASS on the fixed tree (P1 pose (17.5, 8.0) exact,
+  identical_frac 1.000; P2/P3 md5-stable). No pins re-pinned.
+
+### Added (hunyuan3d21 — best-of-N shape candidate selection with a `--quality` option)
+
+Measured motivation (2026-07-13, /tmp/gfix3 car_a vs car_b — same code,
+same settings, different DiT draws): draw A euler -240 / not watertight /
+dihedral RMS 17.9° baked to 28.6 ΔE baseline photo-fidelity; draw B euler
+-146 / watertight / RMS 15.1° baked to 22.2 ΔE — visibly better everywhere
+downstream. Draw luck of the shape DiT is the dominant remaining quality
+factor; ranking N draws costs seconds against ~21-28 min per draw.
+
+- **Option surface**: backend option `shape_candidates` (int >= 1, default
+  1), config key `scene3d_hunyuan_shape_candidates`, CLI `--shape-candidates`
+  plus a `--quality standard|high|best` preset (1/2/3 candidates; the
+  explicit flag overrides the preset). Wired through the `list_operations`
+  parameter schema under the strict unknown-option contract; other
+  backends reject the option loudly. Each extra candidate adds about one
+  shape-stage time (~21-28 min measured on MPS at octree 512); the source
+  image is drawn ONCE and the texture stage runs ONCE at the ORIGINAL base
+  seed (reference generation unchanged). Candidate i draws at
+  `seed + 1000*i`, sequentially (MPS unified-memory discipline: one raw
+  draw plus the best-so-far survivor in memory; transient buffers freed
+  between draws).
+- **Ranking metric** (score = `1.0*silhouette_iou + 0.35*concavity_iou +
+  0.20*topology`; dihedral-RMS smoothness is recorded per candidate but
+  carries no score weight — see the adversarial-validation entry below for
+  the measured reason the original 0.10 weight was removed): normalized
+  silhouette IoU between the
+  candidate's clay silhouette (256 px renders, constant-background
+  threshold — no segmentation model on synthetic clay) and the source
+  matte, max over a coarse pose grid (azimuth -40°..+40° step 10°,
+  elevation {0°, 10°, 20°} — brackets every measured fleet pose; a FINER
+  sweep measurably hurts: at 2.5° refinement the lumpy car_a refines above
+  car_b, 0.9238 vs 0.9168); concave-detail IoU (convex-hull-minus-mask on
+  both sides, at the SAME argmax pose) — the anti-melt axis; topology
+  (0.5*watertight + 0.5*single-body). Smoothness (`1 - dihedral_rms/45°`,
+  clamped) is computed and recorded per candidate as a diagnostic only.
+  Photo terms drop out symmetrically when the matte is unusable
+  (recorded as a warning). Ties keep the earlier candidate (closest to the
+  base seed).
+- **Calibration table** (shipped implementation on the persisted corpus;
+  every candidate scored against its own photo matte except the probes,
+  which attack car_b's matte):
+
+  | mesh | watertight | body | RMS° | smooth | sil IoU | conc IoU | score |
+  |---|---|---|---|---|---|---|---|
+  | car_b (good draw) | yes | 1 | 15.09 | 0.665 | 0.9078 | 0.2355 | **1.2567** |
+  | car_a (lumpy draw) | no | 1 | 17.90 | 0.602 | 0.8987 | 0.2730 | 1.1545 |
+  | sportscar_v7 (good) | yes | 1 | 17.60 | 0.609 | 0.9294 | 0.3995 | **1.3301** |
+  | car_final (slab class) | no | 1 | 15.10 | 0.664 | 0.8009 | 0.0573 | 0.9874 |
+  | owl proof | yes | 1 | 7.88 | 0.825 | 0.9605 | 0.7548 | 1.5072 |
+  | chair proof | yes | 1 | 8.60 | 0.809 | 0.7267 | 0.4326 | 1.1590 |
+  | starship proof | yes | 1 | 12.45 | 0.723 | 0.7141 | 0.1339 | 1.0333 |
+  | face proof | yes | 1 | 27.57 | 0.387 | 0.8628 | 0.5934 | 1.3092 |
+  | ADVERSARY melt60(car_b) | yes | 1 | 10.07 | 0.776 | 0.9029 | 0.2693 | 1.2748 |
+  | ADVERSARY hull(car_b) | yes | 1 | 4.57 | 0.898 | 0.9115 | 0.0272 | 1.2109 |
+  | wrong subject owl→car matte | yes | 1 | 7.88 | 0.825 | 0.4114 | 0.0511 | 0.7118 |
+  | wrong subject chair→car matte | yes | 1 | 8.60 | 0.809 | 0.5315 | 0.0115 | 0.8164 |
+
+  (Score column = the original calibration run, which still carried a
+  0.10 smoothness term; shipped scores are the same minus 0.10*smooth —
+  orderings quoted below are re-verified at the shipped weights.)
+  Orderings all correct: car_b > car_a (+0.096, decided by watertightness
+  where photo terms measure within noise), v7 > slab (+0.343),
+  car_b > convex hull (+0.069 — the hull WINS silhouette IoU 0.9115 vs
+  0.9078 and smoothness 0.898 vs 0.665; only the concavity collapse
+  0.2355 -> 0.0272 rejects it), every honest draw > wrong-subject probes
+  (>= 0.34 margin). Weight inequalities derived from these measurements:
+  smoothness carries zero weight so smoothing buys nothing by
+  construction; topology (0.20) decides same-subject ties
+  without ever outranking a photo-term class gap (slab: 0.24).
+- **Measured honesty bound** (documented in `docs/KnowledgeBase.md`): a
+  soft Laplacian melt of the SAME draw (melt60 row) is NOT separable from
+  the true draw by single-matte evidence — it keeps the witnessed
+  silhouette (0.9029) and its concavity survives (wheels shrink, gaps
+  widen: 0.2693). Real bad DiT draws are wrong-silhouette blobs (the
+  unit-test adversary), which lose 0.1-0.5 on the photo terms. With the
+  smoothness weight at zero, smoothing buys nothing at all — melting is
+  never a winning strategy, it is merely not always a losing one (a soft
+  melt can still TIE within concavity noise; see the validation entry).
+- **Metadata evidence contract**: N > 1 records a `shape_candidates` array
+  (per candidate: seed, all ranking metrics, `photo_iou_pose`, raw/post
+  topology, postprocess record, per-candidate ground-slab report,
+  inference and ranking seconds, `selected` flag; failed draws recorded as
+  `status: no_surface` — an unranked discard would repeat the
+  rejected-references evidence-destruction mistake), plus top-level
+  `shape_seed` and `timings_s.shape_selection`. `seed` stays the BASE
+  seed. With N=1 (the fleet default) the path is exactly the historical
+  one: no matte extraction, no ranking render, no new metadata keys
+  (guarded by tests).
+- **Tests**: 14 new backend tests (ranking trap: the blob wins every
+  internal metric and must lose on photo agreement; non-watertight
+  penalty; seed spacing base/+1000/+2000; candidate metadata; no-surface
+  rows; all-fail raise; N=1 untouched with ranking helpers monkeypatched
+  to raise; option validation 0/-2/"abc" fail before any draw; config-key
+  default) + 4 CLI tests (forwarding, preset mapping, explicit-overrides-
+  preset, absence when unset). Full suite green: 332 passed, 3 skipped,
+  3 xfailed.
+
 ### Validated (integrator pass over the combined ground-slab + photo-sovereignty tree; two fresh car draws ship with references)
 
 Adversarial integrator-validator pass over tonight's two landings

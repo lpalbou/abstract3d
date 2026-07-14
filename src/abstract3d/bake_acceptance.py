@@ -32,7 +32,12 @@ comparative, render-space axes:
   — coherent low-band hue rotation on mutually saturated surface. The
   tone axis is L-based and measurably blind to constant-L chroma damage
   (a 30-deg hue-rotated back reference passed every other axis with
-  fidelity IMPROVING; integrator program 2026-07, /tmp/fix3).
+  fidelity IMPROVING; integrator program 2026-07, /tmp/fix3). The drift
+  charge is judged as TWO populations via a source-evidence veto:
+  candidate hue on the photo's own saturated hue band is subject
+  evidence, never damage (the axis was measured false-refusing a
+  correct reference by comparing it against baseline FILL hue on
+  never-witnessed surface; hue program 2026-07, /tmp/hue1).
 
 HISTORY — why the long-edge seam ratio no longer refuses (2026-07 fix
 program, fixtures in /tmp/fix1): the original third axis counted
@@ -62,6 +67,19 @@ a +12 L back — inside the pipeline's own tone-match clamp — and the car
 at 2048 and 1024; refusals: +/-25 L mis-toned chair backs, the +25 L
 one under both compositors, and an 8%-content-shifted back) — margins
 in CHANGELOG and /tmp/fix1/report.md.
+
+ARTIFACT BATTERY (2026-07-14 program, /tmp/afix2): the same turnaround
+render set additionally feeds the measured artifact-class detectors of
+`artifact_gates` under the same directional A/B doctrine — a candidate
+must not ADD artifact mass the baseline does not carry. One axis votes
+(added foreign pale-blotch component: the image-in-image stamp payload
+and the white rim-blotch class, budget 3.5x above the worst legitimate
+pair and 3.2x under the rebuilt stamp incident); the wash / patch-block
+/ mottle detectors are recorded with loud warnings because the corpus
+denies them zero-false-fire margins (full reasoning in
+`artifact_gates`'s module docstring). The battery is proven
+non-interfering on all pinned fixture pairs (fix1's 12, hue1's live
+pairs, fix3's chroma rotations — verdicts unchanged).
 """
 
 from __future__ import annotations
@@ -308,18 +326,79 @@ def _tone_field_damage(candidate_render: Any, baseline_render: Any, *,
     }
 
 
+def _source_hue_band(source_rgba: Any, *, sat_floor: float,
+                     smoothing_sigma: float) -> Optional[Dict[str, float]]:
+    """The source photo's own saturated hue evidence, measured the way
+    the chroma axis measures the renders: normalized-convolution
+    smoothing of the LAB a/b fields over the photo foreground, interior
+    erosion, saturation floor, then circular [q2, q98] quantiles around
+    the circular mean hue.
+
+    Why SMOOTHED photo fields and not raw pixels (measured, /tmp/hue1):
+    the axis compares low-band render fields, so the license must be the
+    photo's low-band hue spread. Raw pixel quantiles are inflated by
+    speckle/highlight noise (v7 car raw band 23 deg wide vs smoothed
+    8.8) and let a 20-deg rotated reference collapse under the pinned
+    refusal budget (vetoed mass 0.129 at margin 2 vs 1.312 smoothed).
+    `smoothing_sigma` is the axis's render sigma (at 512 px); it is
+    rescaled by the photo's own foreground extent so the photo low-band
+    matches the render low-band regardless of photo resolution.
+
+    Returns None when the photo carries no usable saturated mass
+    (< 256 smoothed interior pixels, e.g. the gray starship): callers
+    then keep the legacy single-population behavior — fail-closed, the
+    chroma hole stays shut for colorless subjects.
+    """
+
+    import numpy as np
+    from scipy import ndimage
+
+    rgba = np.asarray(source_rgba.convert("RGBA"), dtype=np.uint8)
+    foreground = rgba[:, :, 3] > 128
+    if int(foreground.sum()) < 500:
+        return None
+    rows, cols = np.nonzero(foreground)
+    extent = float(max(int(rows.max() - rows.min()),
+                       int(cols.max() - cols.min()), 1))
+    # The gate's turnaround subject spans ~85% of its 512 frame; scale
+    # the photo sigma so both sides measure the same low band.
+    sigma = float(smoothing_sigma) * extent / (0.85 * 512.0)
+    lab = _lab(source_rgba)
+    a = _masked_smooth(lab[:, :, 1], foreground, sigma)
+    b = _masked_smooth(lab[:, :, 2], foreground, sigma)
+    interior = ndimage.binary_erosion(foreground, iterations=4)
+    saturated = interior & (np.hypot(a, b) >= float(sat_floor))
+    if int(saturated.sum()) < 256:
+        return None
+    hue = np.degrees(np.arctan2(b[saturated], a[saturated]))
+    rad = np.radians(hue)
+    mu = float(np.degrees(np.arctan2(np.sin(rad).mean(), np.cos(rad).mean())))
+    centered = (hue - mu + 180.0) % 360.0 - 180.0
+    lo, hi = np.percentile(centered, [2.0, 98.0])
+    return {"mu_deg": round(mu, 2), "lo_deg": round(float(lo), 2),
+            "hi_deg": round(float(hi), 2),
+            "saturated_px": int(saturated.sum())}
+
+
 def _chroma_field_damage(candidate_render: Any, baseline_render: Any, *,
                          hue_floor_deg: float, sat_floor: float,
-                         smoothing_sigma: float) -> Optional[Dict[str, float]]:
+                         smoothing_sigma: float,
+                         source_band: Optional[Dict[str, float]] = None,
+                         evidence_margin_deg: float = 3.0,
+                         ) -> Optional[Dict[str, float]]:
     """Low-band coherent HUE-ROTATION damage of one view (the chroma
-    analog of `_tone_field_damage`, same directional-budget doctrine).
+    analog of `_tone_field_damage`, same directional-budget doctrine),
+    judged as TWO populations via a source-evidence veto.
 
     Statistic: smooth each side's LAB a/b fields over its own foreground
     (same normalized convolution and sigma as the tone axis), and on the
     co-foreground interior where BOTH sides stay saturated (smoothed
     chroma >= `sat_floor`), integrate the ab-vector ANGLE beyond
-    `hue_floor_deg`, weighted by the saturated-area fraction:
-    `mean(max(angle - floor, 0)) * sat_frac`.
+    `hue_floor_deg`, weighted by the saturated-area fraction — but a
+    pixel's excess only counts when the candidate's own hue sits OFF the
+    source photo's hue evidence (`source_band`, see `_source_hue_band`)
+    by more than `evidence_margin_deg`:
+    `mean(max(angle - floor, 0) * off_evidence) * sat_frac`.
 
     Why the ANGLE and not ab displacement (measured, integrator program
     /tmp/fix3): legitimate reference work REPLACES content — dark fill
@@ -332,6 +411,25 @@ def _chroma_field_damage(candidate_render: Any, baseline_render: Any, *,
     back reference measures 2.31, a 20-deg one 1.53, and 30-deg rotated
     sides 6.61.
 
+    Why the SOURCE-EVIDENCE VETO (two-population principle; measured
+    incident + calibration in /tmp/hue1): the drift angle is only
+    meaningful where the BASELINE side carries subject content. On
+    never-witnessed surface the baseline is propagated fill mottle, and
+    the axis was measured charging a CORRECT red-car reference 1.869
+    deg-mass (over the 1.0 budget) purely for disagreeing with baseline
+    fill hue at az180 — a false refusal of the exact rescue this gate
+    exists to permit. Geometric observed-vs-fill classification is not
+    available to the gate (bake stats carry no texture-space masks), and
+    a projector replica would drift from bake truth; instead each pixel
+    is classified by EVIDENCE CONSISTENCY: candidate hue within the
+    photo's own saturated hue band (+ margin) is the subject's evidence
+    and can never be damage, whatever the baseline shows there; hue off
+    the evidence keeps the full drift charge. A hue-rotated reference
+    sits off-band by construction, so the veto cannot reopen the
+    original chroma hole — measured: correct-refs pairs collapse 1.870
+    -> 0.008 and 0.973 -> 0.000 while the pinned rotations hold at
+    1.31 (20 deg), 1.98 (30-deg back), 6.51 (30-deg sides).
+
     Constants:
     - `hue_floor_deg` 10: the sanctioned hue-drift amplitude — the
       generation tone-match clamps ab shifts at 10 (`match_tone_lab
@@ -341,16 +439,30 @@ def _chroma_field_damage(candidate_render: Any, baseline_render: Any, *,
       meaningless (gray subjects: starship measures sat_frac 0.00,
       portrait 0.14 — the sat_frac weight makes the axis structurally
       quiet on low-chroma subjects instead of noisy).
-    - budget 1.0 (caller kwarg): 2.2x above the worst labeled accept
-      (chair_clean 0.460; rebuild noise measured <= 0.05 on the car
-      recheck pair), 1.5x under the mildest synthesized damage (20 deg,
-      2x the sanctioned drift), 2.3x under the 30-deg incident class.
+    - `evidence_margin_deg` 3 (caller kwarg): the measured saddle.
+      Accept-population vetoed masses at margin 3: live car pair 0.008,
+      fresh-draw pair 0.000, fleet accepts <= 0.157 (6.4x under budget);
+      refusal population: 20-deg rotation 1.312 (1.3x over budget),
+      30-deg 1.98-6.51. At margin 2 the live pair keeps 0.265 charged
+      (photo-band edge noise); at margin 4 the 20-deg refusal thins to
+      1.11x. A 15-deg rotation measures 0.623 — under budget but 4x
+      above every accept: the refusal boundary sits between 1.5x and
+      2x the sanctioned drift, exactly the class doctrine.
+    - budget 1.0 (caller kwarg): with the veto, 6.4x above the worst
+      labeled accept (car 0.157; rebuild noise measured <= 0.05 on the
+      car recheck pair), 1.3x under the mildest synthesized damage
+      (20 deg, 2x the sanctioned drift), 2x under the 30-deg incident
+      class.
 
-    KNOWN LIMIT (tracked, mirror of the tone axis's dark-back limit): a
-    subject whose true unseen side is a DIFFERENT hue family than its
-    front (two-tone vehicles) would read as hue damage and ship the
-    baseline — safe direction, missed rescue. No fixture of that class
-    exists yet.
+    KNOWN LIMITS (tracked): (a) mirror of the tone axis's dark-back
+    limit — a subject whose true unseen side is a DIFFERENT hue family
+    than its front reads as off-evidence hue damage and ships the
+    baseline (safe direction, missed rescue; no fixture yet); (b) a
+    rotation that lands INSIDE a broad multi-hue photo band is licensed
+    by the veto — on such subjects the per-view two-key lane remains the
+    defense (the 30-deg back measures consensus 31.1 > 16 there); (c) a
+    colorless photo yields no band, so the legacy single-population
+    charge applies unchanged (fail-closed).
 
     Production role: generated references pass the per-view two-key
     gates (which refuse whole-view palette rotation: the 30-deg back
@@ -382,13 +494,26 @@ def _chroma_field_damage(candidate_render: Any, baseline_render: Any, *,
         & (np.hypot(base_a, base_b) >= float(sat_floor))
     sat_frac = float(saturated.mean())
     if not saturated.any():
-        return {"hue_damage": 0.0, "hue_p95_deg": 0.0, "sat_frac": 0.0}
+        return {"hue_damage": 0.0, "hue_damage_raw": 0.0,
+                "hue_p95_deg": 0.0, "sat_frac": 0.0}
     dot = (cand_a * base_a + cand_b * base_b)[saturated]
     det = (base_a * cand_b - base_b * cand_a)[saturated]
     angle = np.degrees(np.abs(np.arctan2(det, dot)))
+    excess = np.maximum(angle - float(hue_floor_deg), 0.0)
+    raw_damage = float(excess.mean() * sat_frac)
+    damage = raw_damage
+    if source_band is not None:
+        cand_hue = np.degrees(np.arctan2(cand_b, cand_a))[saturated]
+        centered = (cand_hue - float(source_band["mu_deg"])
+                    + 180.0) % 360.0 - 180.0
+        band_dist = np.maximum(
+            np.maximum(centered - float(source_band["hi_deg"]),
+                       float(source_band["lo_deg"]) - centered), 0.0)
+        off_evidence = band_dist > float(evidence_margin_deg)
+        damage = float((excess * off_evidence).mean() * sat_frac)
     return {
-        "hue_damage": float(
-            np.maximum(angle - float(hue_floor_deg), 0.0).mean() * sat_frac),
+        "hue_damage": damage,
+        "hue_damage_raw": raw_damage,
         "hue_p95_deg": float(np.percentile(angle, 95)),
         "sat_frac": sat_frac,
     }
@@ -499,6 +624,7 @@ def evaluate_generated_bake(
     hue_floor_deg: float = 10.0,
     hue_sat_floor: float = 15.0,
     hue_damage_budget: float = 1.0,
+    hue_evidence_margin_deg: float = 3.0,
     edge_delta_e: float = 18.0,
     seam_min_extent_ratio: float = 0.12,
 ) -> Dict[str, Any]:
@@ -545,6 +671,15 @@ def evaluate_generated_bake(
       every prior axis; integrator program, /tmp/fix3). See
       `_chroma_field_damage` for the measured calibration (accepts
       <= 0.46, 20-deg damage 1.53, 30-deg 2.31-6.61).
+    - `hue_evidence_margin_deg` 3: the source-evidence veto's margin —
+      the drift charge only stands where the candidate's hue also sits
+      off the source photo's own saturated hue band (two-population
+      judgment; the axis was measured false-refusing a correct
+      reference at 1.869 by comparing it against baseline FILL hue on
+      never-witnessed surface). Measured saddle (/tmp/hue1): vetoed
+      accepts <= 0.157 and the live false-refusal pair 0.008, while the
+      pinned rotations keep 1.31 (20 deg) / 1.98 / 6.51 (30 deg). See
+      `_chroma_field_damage`.
 
     Returns a report dict: `accepted` (bool), per-check `metrics`
     (baseline/candidate values), and human-readable `reasons` for every
@@ -589,11 +724,22 @@ def evaluate_generated_bake(
     baseline_renders = _turnaround_renders(baseline_mesh, render_size)
     candidate_renders = _turnaround_renders(candidate_mesh, render_size)
 
+    # The subject's own hue evidence, for the chroma axis's
+    # two-population veto. None (colorless photo) keeps the legacy
+    # single-population charge — fail-closed.
+    try:
+        source_band = _source_hue_band(
+            source_rgba, sat_floor=float(hue_sat_floor),
+            smoothing_sigma=float(tone_smoothing_px))
+    except Exception:
+        source_band = None
+
     sigma = float(tone_smoothing_px) * float(render_size) / 512.0
     worst = {"darken": (0.0, None), "brighten": (0.0, None)}
     worst_area = 0.0
     measured_views = 0
     worst_hue = (0.0, None)
+    worst_hue_raw = (0.0, None)
     worst_hue_p95 = 0.0
     hue_views = 0
     for (label, candidate_render), (_, baseline_render) in zip(
@@ -612,12 +758,16 @@ def evaluate_generated_bake(
         chroma_row = _chroma_field_damage(
             candidate_render, baseline_render,
             hue_floor_deg=float(hue_floor_deg),
-            sat_floor=float(hue_sat_floor), smoothing_sigma=sigma)
+            sat_floor=float(hue_sat_floor), smoothing_sigma=sigma,
+            source_band=source_band,
+            evidence_margin_deg=float(hue_evidence_margin_deg))
         if chroma_row is not None:
             hue_views += 1
             worst_hue_p95 = max(worst_hue_p95, chroma_row["hue_p95_deg"])
             if chroma_row["hue_damage"] > worst_hue[0]:
                 worst_hue = (chroma_row["hue_damage"], label)
+            if chroma_row["hue_damage_raw"] > worst_hue_raw[0]:
+                worst_hue_raw = (chroma_row["hue_damage_raw"], label)
     metrics["composition_tone_damage"] = {
         "darken_worst": round(worst["darken"][0], 4),
         "darken_worst_view": worst["darken"][1],
@@ -647,12 +797,20 @@ def evaluate_generated_bake(
         "floor_deg": float(hue_floor_deg),
         "sat_floor": float(hue_sat_floor),
         "worst_p95_deg": round(worst_hue_p95, 2),
-        "measured_views": hue_views}
+        "measured_views": hue_views,
+        # Two-population observability: the pre-veto (legacy) mass and
+        # the evidence band it was judged against. A large raw/vetoed
+        # gap is the incident signature (baseline-fill hue confound).
+        "worst_raw": round(worst_hue_raw[0], 4),
+        "worst_raw_view": worst_hue_raw[1],
+        "evidence_margin_deg": float(hue_evidence_margin_deg),
+        "source_band": source_band}
     if hue_views and worst_hue[0] > float(hue_damage_budget):
         reasons.append(
             f"composition hue damage: candidate low-band hue rotates "
             f"{worst_hue[0]:.3f} deg-mass beyond the sanctioned drift "
-            f"floor ({hue_floor_deg} deg) on saturated surface at "
+            f"floor ({hue_floor_deg} deg) on saturated surface off the "
+            f"source photo's own hue evidence at "
             f"{worst_hue[1]}, budget {hue_damage_budget}")
 
     # Long-edge seam ratio: OBSERVABILITY ONLY (see module docstring for
@@ -677,4 +835,20 @@ def evaluate_generated_bake(
             "candidate": (candidate_stats or {}).get("handoff_seams"),
             "votes": False}
 
-    return {"accepted": not reasons, "reasons": reasons, "metrics": metrics}
+    # ARTIFACT BATTERY (measured detectors per shipped artifact class;
+    # see artifact_gates for every constant's corpus margin). Same
+    # renders, same A/B direction: only ADDED artifact mass can refuse.
+    from .artifact_gates import evaluate_artifact_battery_ab, photo_reference
+
+    try:
+        photo_ref = photo_reference(source_rgba)
+    except Exception:
+        photo_ref = None
+    battery = evaluate_artifact_battery_ab(
+        candidate_renders, baseline_renders, photo_ref=photo_ref)
+    metrics["artifact_battery"] = battery["metrics"]
+    reasons.extend(battery["reasons"])
+    warnings = list(battery["warnings"])
+
+    return {"accepted": not reasons, "reasons": reasons,
+            "warnings": warnings, "metrics": metrics}

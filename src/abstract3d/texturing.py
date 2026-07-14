@@ -3785,6 +3785,93 @@ def _voxel_neighborhood_mean(points: Any, values: Any, cell: float,
     return mean3.reshape(-1)[flat]
 
 
+def _voxel_field_mean_c0(points: Any, values: Any, cell: float,
+                         select: Optional[Any] = None) -> Any:
+    """C0 (trilinearly interpolated) variant of `_voxel_neighborhood_mean`
+    for statistics that become MULTIPLICATIVE CORRECTION FIELDS.
+
+    `_voxel_neighborhood_mean` is piecewise-CONSTANT over its voxel
+    lattice: every point in a cell reads the same 3x3x3 box mean, so the
+    statistic steps at every cell boundary. That is invisible when the
+    statistic only GATES a decision, but a field applied multiplicatively
+    to image content prints the lattice onto the texture: measured on the
+    car_bo3 live incident, the tone-consensus field (stage 2 of
+    `equalize_projection_tone`) saturated its +-0.5 log cap with
+    cell-to-cell steps and rendered as rectangular exposure BLOCKS over
+    the roof/glass — the "image inside an image" defect class (the voxel
+    lattice intersects a flat body panel in axis-aligned world-space
+    rectangles; within-cell field variance measured 0.47x the total, i.e.
+    most of the field's spatial structure WAS the lattice).
+
+    Construction: the same integer binning and 3x3x3 zero-padded box sums
+    as `_voxel_neighborhood_mean`, then evaluation at each query point by
+    trilinear interpolation of the CELL-CENTERED means (clamp-to-edge;
+    unoccupied corner cells carry zero interpolation weight). At a cell
+    center this reproduces the box mean exactly; between centers it is
+    continuous by construction, so a field built from it cannot print
+    lattice steps at any amplitude. Deterministic, O(points), same NaN
+    contract (NaN where no occupied corner is in reach).
+
+    Deliberately NOT a replacement for `_voxel_neighborhood_mean`: the
+    gate/decision users (fill floor, film band, disc detection) are
+    calibrated on the box statistic and pinned by single-photo canaries;
+    only correction-field builders should use this variant.
+    """
+    import numpy as np
+    from scipy.ndimage import uniform_filter
+
+    pts = np.asarray(points, dtype=np.float64)
+    lo = pts.min(axis=0)
+    step = max(float(cell), 1e-12)
+    coords = (pts - lo) / step
+    dims = np.maximum(coords.astype(np.int64).max(axis=0) + 1, 1)
+    ijk = np.clip(coords.astype(np.int64), 0, dims - 1)
+    flat = (ijk[:, 0] * dims[1] + ijk[:, 1]) * dims[2] + ijk[:, 2]
+    n_cells = int(np.prod(dims))
+    if select is None:
+        contribute = flat
+        contribute_values = np.asarray(values, dtype=np.float64)
+    else:
+        chosen = np.asarray(select, dtype=bool)
+        contribute = flat[chosen]
+        contribute_values = np.asarray(values, dtype=np.float64)[chosen]
+    grid_shape = (int(dims[0]), int(dims[1]), int(dims[2]))
+    sums = np.bincount(
+        contribute, weights=contribute_values, minlength=n_cells
+    ).reshape(grid_shape)
+    counts = np.bincount(contribute, minlength=n_cells).astype(
+        np.float64).reshape(grid_shape)
+    sums3 = uniform_filter(sums, size=3, mode="constant") * 27.0
+    counts3 = uniform_filter(counts, size=3, mode="constant") * 27.0
+    occupied = counts3 > 0.5
+    mean3 = np.where(occupied, sums3 / np.maximum(counts3, 1e-9), 0.0)
+    mean3_flat = mean3.reshape(-1)
+    occupied_flat = occupied.reshape(-1).astype(np.float64)
+
+    centered = coords - 0.5
+    base = np.floor(centered).astype(np.int64)
+    frac = centered - base
+    value_acc = np.zeros(len(pts), dtype=np.float64)
+    weight_acc = np.zeros(len(pts), dtype=np.float64)
+    for dx in (0, 1):
+        wx = frac[:, 0] if dx else 1.0 - frac[:, 0]
+        cx = np.clip(base[:, 0] + dx, 0, dims[0] - 1)
+        for dy in (0, 1):
+            wy = frac[:, 1] if dy else 1.0 - frac[:, 1]
+            cy = np.clip(base[:, 1] + dy, 0, dims[1] - 1)
+            for dz in (0, 1):
+                wz = frac[:, 2] if dz else 1.0 - frac[:, 2]
+                cz = np.clip(base[:, 2] + dz, 0, dims[2] - 1)
+                corner = (cx * dims[1] + cy) * dims[2] + cz
+                weight = wx * wy * wz * occupied_flat[corner]
+                value_acc += weight * mean3_flat[corner]
+                weight_acc += weight
+    out = np.full(len(pts), np.nan, dtype=np.float64)
+    reachable = weight_acc > 1e-12
+    out[reachable] = value_acc[reachable] / weight_acc[reachable]
+    return out
+
+
 def enforce_fill_luminance_floor(
     colors_rgba: Any,
     *,
@@ -4509,8 +4596,19 @@ def delight_projections(
         field = np.clip(np.clip(field, low, high), -amplitude, amplitude)
         if surface_points is not None and surface_sel is not None and len(surface_points) > 0:
             # Overlap-proximity fade over the 3D surface (see docstring).
+            # The density is the C0 (interpolated) voxel statistic: the
+            # box-mean variant is piecewise-constant over its voxel
+            # lattice, and a fade with lattice steps multiplies the field
+            # into rectangular exposure blocks on flat surfaces (the
+            # car_bo3 roof-block incident; see `_voxel_field_mean_c0`).
+            # The former hard `fade[fit_overlap] = 1.0` override is gone
+            # for the same reason: forcing full strength on scattered
+            # overlap texels steps against their faded neighbors — dense
+            # overlap bands reach fade 1.0 through their own density
+            # (full fade at 12% ball occupancy), sparse slivers now
+            # honestly keep partial correction.
             overlap_indicator = fit_overlap[surface_sel].astype(np.float64)
-            density = _voxel_neighborhood_mean(
+            density = _voxel_field_mean_c0(
                 surface_points,
                 overlap_indicator,
                 max(float(fade_radius_frac) * diagonal, 1e-9),
@@ -4519,7 +4617,6 @@ def delight_projections(
             fade_surface = np.clip(density / max(float(fade_density_full), 1e-9), 0.0, 1.0)
             fade = np.zeros(field.shape, dtype=np.float64)
             fade[surface_sel] = fade_surface
-            fade[fit_overlap] = 1.0
             field = field * fade
         correction = np.exp(-field).astype(np.float32)
         corrected = np.clip(rgbs[view] * correction[:, :, None], 0.0, 1.0)
@@ -4605,6 +4702,9 @@ def delight_projections(
             projections[view]["rgba"] = out
             rgbs[view] = corrected
             row["applied"] = True
+            # provenance: the write mask of this color-writing lane, so
+            # a bake's stats name every writer with its footprint
+            row["written_texels"] = int(np.count_nonzero(covered))
             applied_any = True
         stats["views"].append(row)
     stats["applied"] = applied_any
@@ -4715,8 +4815,15 @@ def equalize_projection_tone(
     by its own 0.001-0.02 grazing weights let reference self-weights
     dominate the consensus and pulled references AWAY from the photo on
     exactly the surface they were about to own). The deviation is smoothed over the surface
-    with the fill lanes' voxel-ball statistics at `field_radius_frac` *
-    diagonal — a REGIONAL statistic ~20x the detail-fusion scale at 2048.
+    with the C0 voxel-ball statistic (`_voxel_field_mean_c0`) at
+    `field_radius_frac` * diagonal — a REGIONAL statistic ~20x the
+    detail-fusion scale at 2048. C0 is a hard requirement, not a nicety:
+    the box-mean voxel statistic is piecewise-constant over its lattice,
+    and this field MULTIPLIES image content — measured on the car_bo3
+    live incident, the stepped field rendered as rectangular exposure
+    blocks over the roof/glass (the "image inside an image" class), the
+    field saturated at its cap with most of its spatial variance sitting
+    BETWEEN lattice cells (within-cell std 0.47x total).
     Default 0.03 from the car-candidate radius sweep: overlap
     disagreement on the side_left|top_rear pair dropped
     -10.5/-10.6/-12.5/-14.2% at radius 0.06/0.04/0.03/0.02, but at 0.02
@@ -4949,8 +5056,13 @@ def equalize_projection_tone(
         field = np.full(weights[view].shape, gain, dtype=np.float64)
         if (surface_points is not None and surface_sel is not None
                 and len(surface_points) > 0):
+            # C0 fade (see `_voxel_field_mean_c0` and the delight lane's
+            # note): the box-mean density steps at voxel-lattice
+            # boundaries and a stepped fade prints the lattice as
+            # exposure blocks; the hard on-overlap override is removed
+            # with the same rationale.
             overlap_indicator = fit_overlap[surface_sel].astype(np.float64)
-            density = _voxel_neighborhood_mean(
+            density = _voxel_field_mean_c0(
                 surface_points,
                 overlap_indicator,
                 max(float(fade_radius_frac) * diagonal, 1e-9),
@@ -4960,7 +5072,6 @@ def equalize_projection_tone(
                 density / max(float(fade_density_full), 1e-9), 0.0, 1.0)
             fade = np.zeros(field.shape, dtype=np.float64)
             fade[surface_sel] = fade_surface
-            fade[fit_overlap] = 1.0
             field = field * fade
         correction = np.exp(-field).astype(np.float32)
         corrected = np.clip(rgbs[view] * correction[:, :, None], 0.0, 1.0)
@@ -4984,6 +5095,7 @@ def equalize_projection_tone(
             rgbs[view] = corrected
             lums[view] = luminance(corrected)
             row_stats["applied"] = True
+            row_stats["written_texels"] = int(np.count_nonzero(covered))
             applied_any = True
         stats["views"].append(row_stats)
 
@@ -5089,9 +5201,18 @@ def equalize_projection_tone(
         evidence_surface = good[surface_sel].astype(np.float64)
         deviation_surface = np.where(good, deviation, 0.0)[surface_sel]
         radius = max(float(field_radius_frac) * diagonal, 1e-9)
-        density = _voxel_neighborhood_mean(
+        # THE ROOF-BLOCK FIX (car_bo3 live incident): the smoothed field
+        # and its density MUST be C0. The box-mean voxel statistic is
+        # piecewise-constant over its lattice, and this field multiplies
+        # image content — on the car's flat roof/glass the lattice
+        # rendered as rectangular exposure blocks stepping by up to the
+        # full +-cap between adjacent cells ("image inside an image").
+        # `_voxel_field_mean_c0` keeps the same regional scale and NaN
+        # contract but interpolates between cell centers, so the applied
+        # field is continuous by construction at any amplitude.
+        density = _voxel_field_mean_c0(
             surface_points, evidence_surface, radius)
-        smoothed = _voxel_neighborhood_mean(
+        smoothed = _voxel_field_mean_c0(
             surface_points, deviation_surface, radius)
         density = np.where(np.isfinite(density), density, 0.0)
         smoothed = np.where(np.isfinite(smoothed), smoothed, 0.0)
@@ -5099,9 +5220,19 @@ def equalize_projection_tone(
             field_surface = np.where(
                 density > 1e-9, smoothed / np.maximum(density, 1e-9), 0.0)
         field_surface = np.clip(field_surface, -field_cap, field_cap)
+        # SUPPORT-EDGE FADE: the ratio smoothed/density is a local mean
+        # of the deviation and stays O(cap) arbitrarily close to the
+        # evidence support's boundary, while outside it is defined 0 —
+        # a residual hard step of up to the cap exactly at the boundary
+        # (the wider fade below does not necessarily vanish there). The
+        # same density, normalized by the fade-full constant, drives the
+        # field to zero continuously as its own evidence runs out.
+        support_fade = np.clip(
+            density / max(float(fade_density_full), 1e-9), 0.0, 1.0)
+        field_surface = field_surface * support_fade
         # Evidence-density fade at the delight lane's constants: the
         # correction dies away from the surface that justified it.
-        fade_density = _voxel_neighborhood_mean(
+        fade_density = _voxel_field_mean_c0(
             surface_points, evidence_surface,
             max(float(fade_radius_frac) * diagonal, 1e-9))
         fade_density = np.where(np.isfinite(fade_density), fade_density, 0.0)
@@ -5133,6 +5264,7 @@ def equalize_projection_tone(
             rgbs[view] = corrected
             lums[view] = luminance(corrected)
             row_stats["applied"] = True
+            row_stats["written_texels"] = int(np.count_nonzero(covered))
             applied_any = True
         stats["views"].append(row_stats)
 

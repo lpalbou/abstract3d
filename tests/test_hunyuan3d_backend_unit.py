@@ -370,3 +370,1030 @@ def test_available_providers_flags_license(monkeypatch) -> None:
     monkeypatch.setenv("ABSTRACT3D_HUNYUAN_ACCEPT_LICENSE", "1")
     accepted = backend.available_providers()
     assert accepted[0]["status"] in {"available", "install_required"}
+
+
+# -- best-of-N shape candidate ranking ----------------------------------------
+
+
+def _car_like_mesh() -> trimesh.Trimesh:
+    """Canonical-frame (Z-up, front +X) box body on four wheels.
+
+    The silhouette carries the concave detail the ranking must defend:
+    a ground gap between the wheels and wheel bumps below the body.
+    """
+    body = trimesh.creation.box(extents=(1.6, 0.7, 0.5))
+    body.apply_translation((0.0, 0.0, 0.15))
+    parts = [body]
+    for x in (-0.55, 0.55):
+        for y in (-0.3, 0.3):
+            wheel = trimesh.creation.cylinder(radius=0.16, height=0.12, sections=24)
+            wheel.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2.0, (1.0, 0.0, 0.0)))
+            wheel.apply_translation((x, y, -0.25))
+            parts.append(wheel)
+    return trimesh.util.concatenate(parts)
+
+
+def _melted_blob_for(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+    """The trap adversary: a perfectly smooth, watertight, single-body
+    ellipsoid spanning the same bounding box — every INTERNAL metric
+    (smoothness, topology) is better than the true mesh's; only photo
+    agreement can reject it."""
+    blob = trimesh.creation.icosphere(subdivisions=3, radius=1.0)
+    extents = mesh.extents
+    blob.apply_scale((extents[0] / 2.0, extents[1] / 2.0, extents[2] / 2.0))
+    blob.apply_translation(mesh.bounds.mean(axis=0))
+    return blob
+
+
+def _matte_for(mesh: trimesh.Trimesh, *, azimuth: float = 10.0, elevation: float = 10.0):
+    """Photo-matte stand-in: the mesh's own silhouette at one witnessed
+    pose (the ranking never sees which pose was used)."""
+    from abstract3d.rendering import render_mesh_views
+
+    views = render_mesh_views(mesh, size=256, azimuths=(azimuth,), elevation=elevation)
+    return runtime._clay_silhouette_mask(views[0])
+
+
+def test_dihedral_rms_separates_smooth_from_edgy() -> None:
+    smooth = trimesh.creation.icosphere(subdivisions=3)
+    edgy = _car_like_mesh()
+    assert runtime._dihedral_rms_deg(smooth) < runtime._dihedral_rms_deg(edgy)
+
+
+def test_mask_convex_hull_recovers_notch() -> None:
+    mask = np.zeros((64, 64), dtype=bool)
+    mask[16:48, 16:48] = True
+    mask[30:48, 28:36] = False  # notch open to the bottom edge of the square
+    hull = runtime._mask_convex_hull(mask)
+    negative = hull & ~mask
+    assert negative.sum() >= 0.8 * (18 * 8)
+    # A convex mask has an (essentially) empty negative region.
+    convex = np.zeros((64, 64), dtype=bool)
+    convex[16:48, 16:48] = True
+    residue = runtime._mask_convex_hull(convex) & ~convex
+    assert residue.sum() <= 8
+
+
+def test_photo_matte_mask_rejects_unsegmented_frames() -> None:
+    from PIL import Image
+
+    opaque = Image.new("RGBA", (64, 64), (200, 180, 160, 255))
+    assert runtime._photo_matte_mask(opaque) is None
+    empty = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+    assert runtime._photo_matte_mask(empty) is None
+    subject = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+    for x in range(20, 44):
+        for y in range(20, 44):
+            subject.putpixel((x, y), (200, 180, 160, 255))
+    mask = runtime._photo_matte_mask(subject)
+    assert mask is not None and bool(mask[32, 32]) and not bool(mask[2, 2])
+
+
+def test_shape_ranking_photo_agreement_beats_smoothness_trap() -> None:
+    """THE design-requirement trap: a melted blob is smoother AND
+    topologically cleaner than the true mesh; only photo agreement
+    (silhouette + concavity) may decide against it."""
+    clean = _car_like_mesh()
+    blob = _melted_blob_for(clean)
+    matte = _matte_for(clean)
+
+    clean_metrics = runtime.evaluate_shape_candidate(clean, matte_mask=matte)
+    blob_metrics = runtime.evaluate_shape_candidate(blob, matte_mask=matte)
+
+    # The trap is armed: the blob wins every internal metric.
+    assert blob_metrics["smoothness"] > clean_metrics["smoothness"]
+    assert blob_metrics["topology_score"] >= clean_metrics["topology_score"]
+    # Photo agreement catches it anyway.
+    assert clean_metrics["photo_iou"] > blob_metrics["photo_iou"]
+    assert clean_metrics["photo_concavity_iou"] > blob_metrics["photo_concavity_iou"]
+    assert runtime.score_shape_candidate(clean_metrics) > runtime.score_shape_candidate(blob_metrics)
+
+
+def test_shape_ranking_never_rewards_smoothing() -> None:
+    """Adversarial-validation trap (2026-07-13, /tmp/hfix2): a laplacian
+    melt of the TRUE mesh — not a wrong-silhouette ellipsoid — strictly
+    improves dihedral RMS while destroying real detail. Measured on the
+    persisted car_b draw, a 0.10 smoothness weight ranked the melt ABOVE
+    the true draw (+0.0101 at 40 iterations); the weight must stay 0 so
+    smoothing is never a winning direction. The fixture is a lumpy sphere
+    (marching-cubes-noise stand-in) whose melt keeps the silhouette but
+    flattens concave detail; the score must prefer the true surface and
+    a smoothness-weighted score measurably prefers the melt's smoothness
+    term (guarding against the weight quietly coming back)."""
+    rng = np.random.default_rng(7)
+    bumpy = trimesh.creation.icosphere(subdivisions=5, radius=1.0)
+    bumpy.vertices += bumpy.vertex_normals * rng.normal(0.0, 0.01, size=len(bumpy.vertices))[:, None]
+    melted = bumpy.copy()
+    trimesh.smoothing.filter_laplacian(melted, lamb=0.5, iterations=25)
+
+    matte = _matte_for(bumpy)
+    bumpy_metrics = runtime.evaluate_shape_candidate(bumpy, matte_mask=matte)
+    melted_metrics = runtime.evaluate_shape_candidate(melted, matte_mask=matte)
+
+    # The trap is armed: the melt is much smoother and topologically equal.
+    assert melted_metrics["smoothness"] > bumpy_metrics["smoothness"] + 0.5
+    assert melted_metrics["topology_score"] == bumpy_metrics["topology_score"]
+    # The score must not reward it.
+    assert runtime.score_shape_candidate(bumpy_metrics) > runtime.score_shape_candidate(melted_metrics)
+    # And the smoothness term carries no weight at all: scores are
+    # invariant to the smoothness value (rewarding it inverts the real
+    # melt ladder measured on the persisted car_b draw).
+    assert runtime._SHAPE_RANK_WEIGHT_SMOOTHNESS == 0.0
+    perturbed = dict(bumpy_metrics)
+    perturbed["smoothness"] = 0.0
+    assert runtime.score_shape_candidate(perturbed) == runtime.score_shape_candidate(bumpy_metrics)
+
+
+def test_shape_ranking_penalizes_non_watertight_variant() -> None:
+    clean = _car_like_mesh()
+    holey = clean.copy()
+    centroids = holey.triangles_center
+    holey.update_faces(~((centroids[:, 2] > 0.35) & (np.abs(centroids[:, 0]) < 0.3)))
+    assert not holey.is_watertight
+
+    matte = _matte_for(clean)
+    clean_metrics = runtime.evaluate_shape_candidate(clean, matte_mask=matte)
+    holey_metrics = runtime.evaluate_shape_candidate(holey, matte_mask=matte)
+
+    assert clean_metrics["topology_score"] > holey_metrics["topology_score"]
+    assert runtime.score_shape_candidate(clean_metrics) > runtime.score_shape_candidate(holey_metrics)
+
+
+def test_score_shape_candidate_geometry_only_when_matte_missing() -> None:
+    mesh = trimesh.creation.icosphere(subdivisions=2)
+    metrics = runtime.evaluate_shape_candidate(mesh, matte_mask=None)
+    assert metrics["photo_iou"] is None
+    assert metrics["photo_concavity_iou"] is None
+    score = runtime.score_shape_candidate(metrics)
+    expected = (
+        runtime._SHAPE_RANK_WEIGHT_TOPOLOGY * metrics["topology_score"]
+        + runtime._SHAPE_RANK_WEIGHT_SMOOTHNESS * metrics["smoothness"]
+    )
+    assert abs(score - expected) < 1e-9
+    # Photo terms strictly increase the score when present.
+    with_photo = dict(metrics)
+    with_photo["photo_iou"] = 0.9
+    with_photo["photo_concavity_iou"] = 0.3
+    assert runtime.score_shape_candidate(with_photo) > score
+
+
+def test_list_operations_schema_exposes_shape_candidates() -> None:
+    backend = runtime.Hunyuan3DShapeBackend(owner=None)
+    operations = backend.list_operations()
+    schema = operations[-1]["parameter_schema"]["properties"]
+    assert "shape_candidates" in schema
+    assert schema["shape_candidates"]["type"] == "integer"
+    assert schema["shape_candidates"]["minimum"] == 1
+
+
+# -- best-of-N generation loop (faked diffusion runtime) -----------------------
+
+
+class _FakeShapePipeline:
+    """Stands in for Hunyuan3DDiTFlowMatchingPipeline: records the seed of
+    every generator it receives and the conditioning image (single image or
+    tagged mv dict), and returns the prepared mesh for that call (None
+    entries model a draw that produced no surface)."""
+
+    def __init__(self, meshes, capture) -> None:
+        from types import SimpleNamespace
+
+        self.vae = SimpleNamespace(volume_decoder=None)
+        self._meshes = list(meshes)
+        self._capture = capture
+
+    def __call__(self, *, image, num_inference_steps, guidance_scale, octree_resolution,
+                 num_chunks, mc_algo, generator, output_type, enable_pbar):
+        call_index = len(self._capture["seeds"])
+        self._capture["seeds"].append(int(generator.initial_seed()))
+        self._capture.setdefault("images", []).append(image)
+        self._capture.setdefault("settings", []).append(
+            {"num_inference_steps": num_inference_steps,
+             "octree_resolution": octree_resolution}
+        )
+        mesh = self._meshes[min(call_index, len(self._meshes) - 1)]
+        return [mesh.copy() if mesh is not None else None]
+
+
+def _install_fake_runtime(monkeypatch, backend, tmp_path, meshes, capture):
+    """Route _run_generation through a fake pipeline and a fake pinned
+    source tree (only the volume_decoders module is imported from it).
+    The fake load honors the requested model id, so the mv checkpoint
+    selection of the multiview path is observable through the stats."""
+    import sys as _sys
+
+    monkeypatch.setenv("ABSTRACT3D_HUNYUAN_ACCEPT_LICENSE", "1")
+    source_root = tmp_path / "vendor"
+    package_dir = source_root / "hy3dshape" / "hy3dshape" / "models" / "autoencoders"
+    package_dir.mkdir(parents=True)
+    (source_root / "hy3dshape" / "hy3dshape" / "__init__.py").write_text("", encoding="utf-8")
+    (source_root / "hy3dshape" / "hy3dshape" / "models" / "__init__.py").write_text("", encoding="utf-8")
+    (package_dir / "__init__.py").write_text("", encoding="utf-8")
+    (package_dir / "volume_decoders.py").write_text(
+        "class VanillaVolumeDecoder:\n    pass\n\n\nclass HierarchicalVolumeDecoding:\n    pass\n",
+        encoding="utf-8",
+    )
+    for name in [n for n in list(_sys.modules) if n == "hy3dshape" or n.startswith("hy3dshape.")]:
+        monkeypatch.delitem(_sys.modules, name, raising=False)
+
+    pipeline = _FakeShapePipeline(meshes, capture)
+
+    def _fake_load_runtime(*, model_id=None, device=None, dtype=None, model_subfolder=None):
+        resolved_repo, resolved_subfolder = runtime._resolve_model_selection(
+            model_id, model_subfolder
+        )
+        backend._pipeline = pipeline
+        backend._resident_device = "cpu"
+        backend._resident_dtype = "float32"
+        backend._last_runtime_stats = {
+            "load_s": 0.01,
+            "model_id": resolved_repo,
+            "subfolder": resolved_subfolder,
+            "multiview_capable": resolved_repo == runtime._MV_MODEL_ID,
+            "source_dir": str(source_root),
+            "device": "cpu",
+            "dtype": "float32",
+        }
+        return pipeline
+
+    monkeypatch.setattr(backend, "_load_runtime", _fake_load_runtime)
+    return pipeline
+
+
+def _alpha_disc_image(size: int = 96):
+    """Subject-on-transparent RGBA input (skips rembg in preprocessing)."""
+    from PIL import Image
+
+    array = np.zeros((size, size, 4), dtype=np.uint8)
+    yy, xx = np.mgrid[0:size, 0:size]
+    disc = (yy - size / 2.0) ** 2 + (xx - size / 2.0) ** 2 <= (size * 0.35) ** 2
+    array[disc] = (180, 160, 140, 255)
+    return Image.fromarray(array, "RGBA")
+
+
+def test_generation_seed_spacing_and_candidate_metadata(monkeypatch, tmp_path) -> None:
+    backend = runtime.Hunyuan3DShapeBackend(owner=None)
+    capture: dict = {"seeds": []}
+    # The disc matte matches the sphere, not the elongated boxes: the
+    # middle candidate must win on photo agreement.
+    box_a = trimesh.creation.box(extents=(1.8, 0.4, 0.4))
+    sphere = trimesh.creation.icosphere(subdivisions=3, radius=0.7)
+    box_b = trimesh.creation.box(extents=(0.4, 1.8, 0.4))
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [box_a, sphere, box_b], capture)
+
+    result = backend.i23d(
+        _alpha_disc_image(), device="cpu", texture_mode="none", seed=7, shape_candidates=3,
+    )
+
+    # Spec'd seed spacing: candidate i draws at base + 1000*i.
+    assert capture["seeds"] == [7, 1007, 2007]
+    metadata = result["metadata"]
+    assert metadata["seed"] == 7  # base seed preserved for texture stages
+    assert metadata["shape_seed"] == 1007  # the sphere's draw
+    rows = metadata["shape_candidates"]
+    assert [row["seed"] for row in rows] == [7, 1007, 2007]
+    assert [row["selected"] for row in rows] == [False, True, False]
+    for row in rows:
+        assert row["status"] == "ranked"
+        assert row["score"] is not None
+        assert row["photo_iou"] is not None
+        assert row["photo_concavity_iou"] is not None
+        assert "watertight" in row and "body_count" in row
+        assert "dihedral_rms_deg" in row and "topology_raw" in row
+    assert rows[1]["photo_iou"] > rows[0]["photo_iou"]
+    assert rows[1]["photo_iou"] > rows[2]["photo_iou"]
+    assert metadata["timings_s"]["shape_selection"] >= 0.0
+    # The exported mesh IS the selected candidate (sphere-sized vertex set,
+    # not a box's 8 corners).
+    assert metadata["vertex_count"] > 100
+
+
+def test_generation_records_no_surface_candidates(monkeypatch, tmp_path) -> None:
+    backend = runtime.Hunyuan3DShapeBackend(owner=None)
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [None, sphere], capture)
+
+    result = backend.i23d(
+        _alpha_disc_image(), device="cpu", texture_mode="none", seed=11, shape_candidates=2,
+    )
+
+    rows = result["metadata"]["shape_candidates"]
+    assert rows[0]["status"] == "no_surface"
+    assert rows[0]["selected"] is False and rows[0]["score"] is None
+    assert rows[1]["selected"] is True
+    assert result["metadata"]["shape_seed"] == 1011
+    assert any("produced no surface" in w for w in result["metadata"]["postprocess_warnings"])
+
+
+def test_generation_raises_when_all_candidates_fail(monkeypatch, tmp_path) -> None:
+    from abstract3d.errors import Abstract3DError
+
+    backend = runtime.Hunyuan3DShapeBackend(owner=None)
+    capture: dict = {"seeds": []}
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [None, None], capture)
+
+    with pytest.raises(Abstract3DError, match="no surface in any of 2"):
+        backend.i23d(
+            _alpha_disc_image(), device="cpu", texture_mode="none", seed=3, shape_candidates=2,
+        )
+
+
+def test_single_candidate_path_is_untouched(monkeypatch, tmp_path) -> None:
+    """The fleet default (N=1) must be EXACTLY the historical path: one
+    draw at the base seed, no matte extraction, no ranking render, no new
+    metadata keys."""
+    backend = runtime.Hunyuan3DShapeBackend(owner=None)
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere], capture)
+
+    def _forbidden(*args, **kwargs):
+        raise AssertionError("ranking must not run on the N=1 path")
+
+    monkeypatch.setattr(runtime, "evaluate_shape_candidate", _forbidden)
+    monkeypatch.setattr(runtime, "score_shape_candidate", _forbidden)
+    monkeypatch.setattr(runtime, "_photo_matte_mask", _forbidden)
+
+    result = backend.i23d(_alpha_disc_image(), device="cpu", texture_mode="none", seed=42)
+
+    assert capture["seeds"] == [42]
+    metadata = result["metadata"]
+    assert metadata["seed"] == 42
+    assert "shape_candidates" not in metadata
+    assert "shape_seed" not in metadata
+    assert "shape_selection" not in metadata["timings_s"]
+
+
+def test_explicit_single_candidate_matches_default_path(monkeypatch, tmp_path) -> None:
+    backend = runtime.Hunyuan3DShapeBackend(owner=None)
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere], capture)
+
+    result = backend.i23d(
+        _alpha_disc_image(), device="cpu", texture_mode="none", seed=42, shape_candidates=1,
+    )
+
+    assert capture["seeds"] == [42]
+    assert "shape_candidates" not in result["metadata"]
+
+
+def test_shape_candidates_option_validation(monkeypatch, tmp_path) -> None:
+    from abstract3d.errors import InvalidRequestError
+
+    backend = runtime.Hunyuan3DShapeBackend(owner=None)
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere], capture)
+
+    for bad in (0, -2, "abc"):
+        with pytest.raises(InvalidRequestError, match="shape_candidates"):
+            backend.i23d(
+                _alpha_disc_image(), device="cpu", texture_mode="none", shape_candidates=bad,
+            )
+    # Validation failed loudly BEFORE any diffusion draw.
+    assert capture["seeds"] == []
+
+
+def test_shape_candidates_config_key_default(monkeypatch, tmp_path) -> None:
+    from types import SimpleNamespace
+
+    owner = SimpleNamespace(config={"scene3d_hunyuan_shape_candidates": "2"})
+    backend = runtime.Hunyuan3DShapeBackend(owner=owner)
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    box = trimesh.creation.box(extents=(1.8, 0.4, 0.4))
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [box, sphere], capture)
+
+    result = backend.i23d(_alpha_disc_image(), device="cpu", texture_mode="none", seed=5)
+
+    assert capture["seeds"] == [5, 1005]
+    assert len(result["metadata"]["shape_candidates"]) == 2
+
+
+# -- multi-view geometry conditioning ------------------------------------------
+
+
+def test_mv_snap_tag_snaps_within_tolerance_only() -> None:
+    assert runtime._mv_snap_tag(0.0) == ("front", 0.0)
+    assert runtime._mv_snap_tag(92.0) == ("left", 2.0)
+    assert runtime._mv_snap_tag(180.0) == ("back", 0.0)
+    assert runtime._mv_snap_tag(-171.0) == ("back", 9.0)
+    assert runtime._mv_snap_tag(-88.0) == ("right", 2.0)
+    # Exactly on the tolerance boundary still snaps (<=), beyond does not.
+    assert runtime._mv_snap_tag(-115.0) == ("right", 25.0)
+    assert runtime._mv_snap_tag(45.0) is None
+    assert runtime._mv_snap_tag(135.0) is None
+
+
+def _composer_owner():
+    """Owner with a deterministic local vision handle: has_image_composer
+    and auto_generation_ready are both True regardless of what optional
+    packages the test venv carries."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        config={},
+        vision=SimpleNamespace(
+            t2i=lambda *args, **kwargs: b"",
+            i2i=lambda *args, **kwargs: b"",
+        ),
+    )
+
+
+def _two_tone_disc_image(size: int = 96):
+    """Chromatic subject on transparent background: a red disc with a WHITE
+    quadrant. The dispersion guard of the material gate measures the std of
+    the foreground chroma MAGNITUDES, so arming it needs parts of unequal
+    chroma (red ~58 + white ~0), not merely different hues (red vs green
+    both measure ~58-60 and leave the dispersion below the arming floor)."""
+    from PIL import Image
+
+    array = np.zeros((size, size, 4), dtype=np.uint8)
+    yy, xx = np.mgrid[0:size, 0:size]
+    disc = (yy - size / 2.0) ** 2 + (xx - size / 2.0) ** 2 <= (size * 0.35) ** 2
+    array[disc] = (200, 30, 30, 255)
+    quadrant = disc & (yy < size / 2.0) & (xx < size / 2.0)
+    array[quadrant] = (240, 240, 240, 255)
+    return Image.fromarray(array, "RGBA")
+
+
+def _image_bytes(image) -> bytes:
+    import io
+
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def test_synthesize_geometry_views_gates_and_side_pair(monkeypatch) -> None:
+    """End-to-end gate battery on real images: a mirror-consistent back
+    view passes, and a side pair whose silhouettes disagree is dropped
+    WHOLE (blame between the two sides is unattributable)."""
+    from PIL import Image
+
+    from abstract3d import segmentation
+
+    monkeypatch.setattr(
+        segmentation, "remove_background_robust", lambda image: image.convert("RGBA")
+    )
+    source = _two_tone_disc_image()
+
+    # Same two-tone material as the source (so the material gate passes and
+    # the PAIR gate is what fires), but a silhouette that cannot be the
+    # mirror of the left view's disc.
+    bar = np.zeros((96, 96, 4), dtype=np.uint8)
+    bar[18:78, 38:58] = (200, 30, 30, 255)
+    bar[18:38, 38:58] = (240, 240, 240, 255)
+    bar_image = Image.fromarray(bar, "RGBA")
+
+    def _generator(prompt, image, **kwargs):
+        if "behind" in prompt:
+            return _image_bytes(source)  # mirror-consistent back
+        if "left side" in prompt:
+            return _image_bytes(source)  # disc
+        return _image_bytes(bar_image)  # right side: silhouette lie
+
+    accepted, records, rejected = runtime._synthesize_geometry_views(
+        None,
+        source,
+        subject_noun="disc toy",
+        base_seed=7,
+        labels=runtime._GEOMETRY_VIEW_ANGLES,
+        attempts=1,
+        image_generator=_generator,
+    )
+
+    assert [view["label"] for view in accepted] == ["back"]
+    by_label = {record["label"]: record for record in records}
+    assert by_label["back"]["accepted"] is True
+    assert by_label["back"]["attempts"][0]["back_mirror_iou"] > 0.9
+    assert by_label["side_left"]["accepted"] is False
+    assert by_label["side_right"]["accepted"] is False
+    assert "side-pair mirror disagreement" in by_label["side_left"]["failure"]
+    # The dropped pair is persisted for diagnosis.
+    assert {row["label"] for row in rejected} == {"side_left", "side_right"}
+    # Accepted views carry replay provenance for the texture lane.
+    assert accepted[0]["raw_bytes"] and accepted[0]["raw_payload_md5"]
+
+
+def test_synthesize_geometry_views_rejects_chroma_collapse(monkeypatch) -> None:
+    """A near-monochrome generation of a chromatic subject means the
+    generator lost the subject; its geometry cannot be trusted either."""
+    from PIL import Image
+
+    from abstract3d import segmentation
+
+    monkeypatch.setattr(
+        segmentation, "remove_background_robust", lambda image: image.convert("RGBA")
+    )
+    source = _two_tone_disc_image()
+    gray = np.zeros((96, 96, 4), dtype=np.uint8)
+    yy, xx = np.mgrid[0:96, 0:96]
+    disc = (yy - 48.0) ** 2 + (xx - 48.0) ** 2 <= (96 * 0.35) ** 2
+    gray[disc] = (128, 128, 128, 255)
+
+    accepted, records, rejected = runtime._synthesize_geometry_views(
+        None,
+        source,
+        subject_noun="disc toy",
+        base_seed=7,
+        labels=(("back", 180.0),),
+        attempts=1,
+        image_generator=lambda prompt, image, **kwargs: _image_bytes(
+            Image.fromarray(gray, "RGBA")
+        ),
+    )
+
+    assert accepted == []
+    assert records[0]["accepted"] is False
+    assert "subject identity" in records[0]["attempts"][0]["failure"]
+    assert "chroma collapse" in records[0]["attempts"][0]["failure"]
+    assert len(rejected) == 1
+
+
+def test_geometry_person_gate_fails_closed(monkeypatch) -> None:
+    from abstract3d import captioning
+
+    # Captioner unavailable + no hint evidence: refuse (an unavailable
+    # check is not a permission grant).
+    monkeypatch.setattr(captioning, "caption_image", lambda image, **kwargs: None)
+    proceed, record = runtime._geometry_person_gate(
+        _alpha_disc_image(), subject_hint=None, allow_person=False
+    )
+    assert proceed is False
+    assert "captioner unavailable" in record["refusal"]
+
+    # Person named by the caption: refuse without the acknowledgment...
+    monkeypatch.setattr(
+        captioning, "caption_image", lambda image, **kwargs: "a portrait of a man"
+    )
+    proceed, record = runtime._geometry_person_gate(
+        _alpha_disc_image(), subject_hint=None, allow_person=False
+    )
+    assert proceed is False and record["person_detected"] is True
+
+    # ...and proceed with it, warning on the record.
+    proceed, record = runtime._geometry_person_gate(
+        _alpha_disc_image(), subject_hint=None, allow_person=True
+    )
+    assert proceed is True and "person_warning" in record
+
+    # A person-naming hint refuses without ever needing the captioner.
+    proceed, record = runtime._geometry_person_gate(
+        _alpha_disc_image(), subject_hint="a woman sitting", allow_person=False
+    )
+    assert proceed is False and record["person_detected"] is True
+
+
+def test_generation_multiview_conditions_pipeline_with_tagged_views(
+    monkeypatch, tmp_path
+) -> None:
+    backend = runtime.Hunyuan3DShapeBackend(owner=_composer_owner())
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere], capture)
+
+    from abstract3d import captioning
+
+    monkeypatch.setattr(
+        captioning, "caption_image", lambda image, **kwargs: "a toy disc"
+    )
+
+    def _fake_synthesis(owner, source_rgba, *, subject_noun, base_seed, labels, **kwargs):
+        views = [
+            {
+                "label": label,
+                "azimuth_deg": azimuth,
+                "elevation_deg": 0.0,
+                "rgba": _alpha_disc_image(),
+                "raw_bytes": b"raw-view-bytes",
+                "raw_payload_md5": "0" * 32,
+                "seed": base_seed + 50_000,
+            }
+            for label, azimuth in labels
+        ]
+        records = [{"label": label, "accepted": True} for label, _ in labels]
+        return views, records, []
+
+    monkeypatch.setattr(runtime, "_synthesize_geometry_views", _fake_synthesis)
+
+    result = backend.i23d(
+        _alpha_disc_image(),
+        device="cpu",
+        texture_mode="none",
+        seed=11,
+        geometry_conditioning="multiview",
+        output_dir=str(tmp_path / "bundle"),
+    )
+
+    conditioning = capture["images"][0]
+    assert isinstance(conditioning, dict)
+    # The measured 4-view cliff caps conditioning at 3 tags: front (the
+    # photo), back, one side; the second side is dropped (priority order)
+    # but stays available to the texture lane.
+    assert set(conditioning) == {"front", "back", "left"}
+    metadata = result["metadata"]
+    assert metadata["model_id"] == "tencent/Hunyuan3D-2mv/hunyuan3d-dit-v2-mv"
+    assert metadata["multiview_conditioning"] is True
+    record = metadata["geometry_conditioning"]
+    assert record["requested"] == "multiview"
+    assert record["applied"] == "multiview"
+    assert record["fallback_reason"] is None
+    tags = {row["tag"]: row for row in metadata["geometry_views"]}
+    assert set(tags) == {"front", "back", "left"}
+    assert tags["back"]["synthesized"] is True
+    assert [row["tag"] for row in record["dropped_views"]] == ["right"]
+    assert any("capped" in warning for warning in metadata["postprocess_warnings"])
+    assert metadata["timings_s"]["geometry_view_synthesis"] is not None
+    # Synthesized conditioning views are persisted for diagnosis.
+    assert (tmp_path / "bundle" / "geometry_view_synthesized_back.png").exists()
+    assert record["synthesized_view_paths"]
+
+
+def test_generation_multiview_falls_back_loudly_when_gates_reject_all(
+    monkeypatch, tmp_path
+) -> None:
+    backend = runtime.Hunyuan3DShapeBackend(owner=_composer_owner())
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere], capture)
+
+    from abstract3d import captioning
+
+    monkeypatch.setattr(
+        captioning, "caption_image", lambda image, **kwargs: "a toy disc"
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_synthesize_geometry_views",
+        lambda *args, **kwargs: (
+            [],
+            [{"label": "back", "accepted": False, "failure": "gate"}],
+            [],
+        ),
+    )
+
+    result = backend.i23d(
+        _alpha_disc_image(),
+        device="cpu",
+        texture_mode="none",
+        seed=11,
+        geometry_conditioning="multiview",
+    )
+
+    # Single-view fallback runs the exact known-good path: single image
+    # conditioning on the 2.1 flagship.
+    from PIL import Image
+
+    assert isinstance(capture["images"][0], Image.Image)
+    metadata = result["metadata"]
+    assert metadata["model_id"] == "tencent/Hunyuan3D-2.1/hunyuan3d-dit-v2-1"
+    assert metadata["multiview_conditioning"] is False
+    record = metadata["geometry_conditioning"]
+    assert record["applied"] == "single_view"
+    assert "failed the acceptance gates" in record["fallback_reason"]
+    assert any(
+        "geometry_conditioning fell back to single-view" in warning
+        for warning in metadata["postprocess_warnings"]
+    )
+
+
+def test_generation_multiview_refuses_person_subjects(monkeypatch, tmp_path) -> None:
+    backend = runtime.Hunyuan3DShapeBackend(owner=_composer_owner())
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere], capture)
+
+    from abstract3d import captioning
+
+    monkeypatch.setattr(
+        captioning, "caption_image", lambda image, **kwargs: "a portrait of a man"
+    )
+
+    def _forbidden_synthesis(*args, **kwargs):
+        raise AssertionError("synthesis must not run for a person subject")
+
+    monkeypatch.setattr(runtime, "_synthesize_geometry_views", _forbidden_synthesis)
+
+    result = backend.i23d(
+        _alpha_disc_image(),
+        device="cpu",
+        texture_mode="none",
+        geometry_conditioning="multiview",
+    )
+
+    metadata = result["metadata"]
+    record = metadata["geometry_conditioning"]
+    assert record["applied"] == "single_view"
+    assert record["person_check"]["person_detected"] is True
+    assert "person" in record["fallback_reason"]
+    assert metadata["model_id"] == "tencent/Hunyuan3D-2.1/hunyuan3d-dit-v2-1"
+
+
+def test_generation_multiview_person_acknowledgment_proceeds(monkeypatch, tmp_path) -> None:
+    backend = runtime.Hunyuan3DShapeBackend(owner=_composer_owner())
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere], capture)
+
+    from abstract3d import captioning
+
+    monkeypatch.setattr(
+        captioning, "caption_image", lambda image, **kwargs: "a portrait of a man"
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_synthesize_geometry_views",
+        lambda owner, source_rgba, *, subject_noun, base_seed, labels, **kwargs: (
+            [
+                {
+                    "label": "back",
+                    "azimuth_deg": 180.0,
+                    "elevation_deg": 0.0,
+                    "rgba": _alpha_disc_image(),
+                    "raw_bytes": b"raw",
+                    "raw_payload_md5": "0" * 32,
+                    "seed": base_seed,
+                }
+            ],
+            [{"label": "back", "accepted": True}],
+            [],
+        ),
+    )
+
+    result = backend.i23d(
+        _alpha_disc_image(),
+        device="cpu",
+        texture_mode="none",
+        geometry_conditioning="multiview",
+        texture_reference_allow_person=True,
+    )
+
+    metadata = result["metadata"]
+    record = metadata["geometry_conditioning"]
+    assert record["applied"] == "multiview"
+    assert "person_warning" in record["person_check"]
+    assert metadata["model_id"].startswith("tencent/Hunyuan3D-2mv")
+
+
+def test_multiview_path_runs_mv_family_regime(monkeypatch, tmp_path) -> None:
+    """The 2mv checkpoint is a 2.0-family model with its own validated
+    regime (official snippet + checked face proof: 30 steps / octree 384).
+    Running it at the flagship's 512/50 was measured catastrophic
+    (2026-07-14 A/B: 822 raw bodies, euler +887 on the car), so the
+    multiview path must swap the family defaults in — while explicit
+    caller options still win."""
+    from abstract3d import captioning
+
+    def _fake_synthesis(owner, source_rgba, *, subject_noun, base_seed, labels, **kwargs):
+        views = [
+            {
+                "label": "back",
+                "azimuth_deg": 180.0,
+                "elevation_deg": 0.0,
+                "rgba": _alpha_disc_image(),
+                "raw_bytes": b"raw",
+                "raw_payload_md5": "0" * 32,
+                "seed": base_seed,
+            }
+        ]
+        return views, [{"label": "back", "accepted": True}], []
+
+    monkeypatch.setattr(
+        captioning, "caption_image", lambda image, **kwargs: "a toy disc"
+    )
+    monkeypatch.setattr(runtime, "_synthesize_geometry_views", _fake_synthesis)
+
+    backend = runtime.Hunyuan3DShapeBackend(owner=_composer_owner())
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere], capture)
+    backend.i23d(
+        _alpha_disc_image(), device="cpu", texture_mode="none",
+        geometry_conditioning="multiview",
+    )
+    assert capture["settings"][0] == {
+        "num_inference_steps": runtime._MV_DEFAULT_NUM_INFERENCE_STEPS,
+        "octree_resolution": runtime._MV_DEFAULT_OCTREE_RESOLUTION,
+    }
+
+    # Explicit options outrank the family default.
+    backend = runtime.Hunyuan3DShapeBackend(owner=_composer_owner())
+    capture = {"seeds": []}
+    _install_fake_runtime(monkeypatch, backend, tmp_path / "b", [sphere], capture)
+    backend.i23d(
+        _alpha_disc_image(), device="cpu", texture_mode="none",
+        geometry_conditioning="multiview", num_inference_steps=50,
+        octree_resolution=512,
+    )
+    assert capture["settings"][0] == {
+        "num_inference_steps": 50,
+        "octree_resolution": 512,
+    }
+
+    # The default single-view path keeps the flagship regime.
+    backend = runtime.Hunyuan3DShapeBackend(owner=None)
+    capture = {"seeds": []}
+    _install_fake_runtime(monkeypatch, backend, tmp_path / "c", [sphere], capture)
+    backend.i23d(_alpha_disc_image(), device="cpu", texture_mode="none")
+    assert capture["settings"][0] == {
+        "num_inference_steps": runtime._DEFAULT_NUM_INFERENCE_STEPS,
+        "octree_resolution": runtime._DEFAULT_OCTREE_RESOLUTION,
+    }
+
+
+def test_caller_references_also_respect_view_cap(monkeypatch, tmp_path) -> None:
+    """Four caller-tagged references hit the same measured 4-view cliff:
+    the cap drops the lowest-priority tag with a loud warning (the
+    pre-existing uncapped behavior shipped the shredding regime)."""
+    backend = runtime.Hunyuan3DShapeBackend(owner=None)
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere], capture)
+
+    result = backend.i23d(
+        _alpha_disc_image(),
+        device="cpu",
+        texture_mode="none",
+        model="tencent/Hunyuan3D-2mv",
+        texture_reference_images=[_alpha_disc_image() for _ in range(3)],
+        texture_reference_angles=["side_left", "side_right", "back"],
+    )
+
+    conditioning = capture["images"][0]
+    assert isinstance(conditioning, dict)
+    assert set(conditioning) == {"front", "back", "left"}
+    metadata = result["metadata"]
+    assert metadata["multiview_conditioning"] is True
+    tags = {row["tag"] for row in metadata["geometry_views"]}
+    assert tags == {"front", "back", "left"}
+    assert any("capped" in warning for warning in metadata["postprocess_warnings"])
+
+
+def test_explicit_mv_model_with_references_runs_mv_family_regime(
+    monkeypatch, tmp_path
+) -> None:
+    """The pre-existing caller-reference 2mv route gets the same family
+    regime (it previously inherited the flagship 512/50)."""
+    backend = runtime.Hunyuan3DShapeBackend(owner=None)
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere], capture)
+
+    result = backend.i23d(
+        _alpha_disc_image(),
+        device="cpu",
+        texture_mode="none",
+        model="tencent/Hunyuan3D-2mv",
+        texture_reference_images=[_alpha_disc_image()],
+        texture_reference_angles=["side_left"],
+    )
+
+    assert capture["settings"][0] == {
+        "num_inference_steps": runtime._MV_DEFAULT_NUM_INFERENCE_STEPS,
+        "octree_resolution": runtime._MV_DEFAULT_OCTREE_RESOLUTION,
+    }
+    assert result["metadata"]["multiview_conditioning"] is True
+
+
+def test_geometry_conditioning_option_validation(monkeypatch, tmp_path) -> None:
+    from abstract3d.errors import InvalidRequestError
+
+    backend = runtime.Hunyuan3DShapeBackend(owner=None)
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere], capture)
+
+    with pytest.raises(InvalidRequestError, match="geometry_conditioning"):
+        backend.i23d(
+            _alpha_disc_image(), device="cpu", texture_mode="none",
+            geometry_conditioning="frobnicate",
+        )
+    # Validation failed loudly BEFORE any diffusion draw.
+    assert capture["seeds"] == []
+
+
+def test_geometry_conditioning_multiview_rejects_explicit_flagship_model(
+    monkeypatch, tmp_path
+) -> None:
+    from abstract3d.errors import InvalidRequestError
+
+    backend = runtime.Hunyuan3DShapeBackend(owner=_composer_owner())
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere], capture)
+
+    with pytest.raises(InvalidRequestError, match="multi-view"):
+        backend.i23d(
+            _alpha_disc_image(), device="cpu", texture_mode="none",
+            model="tencent/Hunyuan3D-2.1", geometry_conditioning="multiview",
+        )
+    assert capture["seeds"] == []
+
+
+def test_geometry_conditioning_auto_falls_back_without_provider(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.delenv("ABSTRACT3D_IMAGE_PROVIDER", raising=False)
+    backend = runtime.Hunyuan3DShapeBackend(owner=None)
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere], capture)
+
+    def _forbidden_synthesis(*args, **kwargs):
+        raise AssertionError("auto must not synthesize without an explicit provider")
+
+    monkeypatch.setattr(runtime, "_synthesize_geometry_views", _forbidden_synthesis)
+
+    result = backend.i23d(
+        _alpha_disc_image(), device="cpu", texture_mode="none",
+        geometry_conditioning="auto",
+    )
+
+    metadata = result["metadata"]
+    record = metadata["geometry_conditioning"]
+    assert record["requested"] == "auto"
+    assert record["applied"] == "single_view"
+    assert record["fallback_reason"]
+    assert metadata["model_id"] == "tencent/Hunyuan3D-2.1/hunyuan3d-dit-v2-1"
+
+
+def test_single_mode_never_touches_synthesis(monkeypatch, tmp_path) -> None:
+    """The default path (geometry_conditioning unset) must be EXACTLY the
+    historical single-view flow: no person gate, no synthesis, no new
+    metadata keys."""
+    backend = runtime.Hunyuan3DShapeBackend(owner=None)
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere], capture)
+
+    def _forbidden(*args, **kwargs):
+        raise AssertionError("geometry conditioning must not run on the default path")
+
+    monkeypatch.setattr(runtime, "_synthesize_geometry_views", _forbidden)
+    monkeypatch.setattr(runtime, "_geometry_person_gate", _forbidden)
+
+    result = backend.i23d(_alpha_disc_image(), device="cpu", texture_mode="none", seed=42)
+
+    metadata = result["metadata"]
+    assert "geometry_conditioning" not in metadata
+    assert "geometry_view_synthesis" not in metadata["timings_s"]
+    assert metadata["multiview_conditioning"] is False
+
+
+def test_list_operations_schema_exposes_geometry_conditioning() -> None:
+    backend = runtime.Hunyuan3DShapeBackend(owner=None)
+    operations = backend.list_operations()
+    schema = operations[-1]["parameter_schema"]["properties"]
+    assert schema["geometry_conditioning"]["enum"] == ["single", "multiview", "auto"]
+
+
+def test_generate_references_with_replay_serves_synthesized_bytes_first(
+    monkeypatch,
+) -> None:
+    """The replay generator hands the pre-shape view to the texture lane's
+    FIRST ladder attempt and delegates every later attempt to the real
+    generator; reports from per-angle calls merge into one record."""
+    from abstract3d import reference_generation as refgen
+
+    served: dict = {}
+
+    def _fake_generate(mesh, source, *, owner=None, angles=(), image_generator=None, **kwargs):
+        label = str(angles[0][0])
+        if image_generator is None:
+            served[label] = ["no-generator"]
+            return (
+                [{"label": label}],
+                {"angles": [{"label": label}], "accepted": 1, "rejected": 0},
+            )
+        first = image_generator("prompt", b"conditioning", seed=1)
+        second = image_generator("prompt", b"conditioning", seed=2)
+        served[label] = [first, second]
+        return (
+            [{"label": label}],
+            {"angles": [{"label": label}], "accepted": 1, "rejected": 0},
+        )
+
+    monkeypatch.setattr(refgen, "generate_reference_views", _fake_generate)
+    monkeypatch.setattr(
+        refgen,
+        "default_i2i_generator",
+        lambda owner: (lambda prompt, image, **kwargs: b"fresh-generation"),
+    )
+
+    views, report = runtime._generate_references_with_replay(
+        object(),
+        object(),
+        owner=None,
+        angles=(("back", 180.0, 0.0), ("top", 0.0, 55.0)),
+        replay_sources={"back": b"replayed-bytes"},
+    )
+
+    assert served["back"] == [b"replayed-bytes", b"fresh-generation"]
+    assert served["top"] == ["no-generator"]
+    assert [view["label"] for view in views] == ["back", "top"]
+    assert report["accepted"] == 2
+    assert report["replayed_labels"] == ["back"]
+    assert [row["label"] for row in report["angles"]] == ["back", "top"]

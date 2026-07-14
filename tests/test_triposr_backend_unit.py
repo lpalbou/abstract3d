@@ -373,6 +373,156 @@ def test_project_observed_texture_prefers_front_facing_visible_texels() -> None:
     assert projection["rgba"][0, 0, 0] > 0.9
 
 
+def _grazing_plane_scene(
+    *,
+    atlas_texels: int = 96,
+    photo_px: int = 256,
+    tilt_deg: float = 75.0,
+    extent: float = 0.9,
+    pattern: str = "checker",
+    period_px: int = 4,
+):
+    """Synthetic projector inputs: a plane tilted `tilt_deg` from the photo
+    plane, its atlas COARSER than the photo (each texel step spans >1 photo
+    pixel along the untilted axis), textured by a binary test pattern.
+
+    Camera az 0 / el 0 (orthographic, half extent 1): sample_x tracks
+    world y, sample_y tracks world z. The plane's surface-uniform texel
+    grid runs along (u = tilted direction in the xy plane, v = z), so the
+    photo-space Jacobian per texel is diag(cos(tilt) * pitch, pitch) in
+    ortho pixels — anisotropic minification exactly like an elevated view
+    of a roof at a fleet-resolution atlas.
+
+    Patterns (`period_px` full period, 50% duty): "checker" (2D),
+    "rows" (varies along photo y — the MINIFIED axis at default numbers),
+    "cols" (varies along photo x — the well-sampled axis).
+    """
+    import math
+
+    theta = math.radians(float(tilt_deg))
+    size = int(atlas_texels)
+    us = np.linspace(-extent, extent, size, dtype=np.float32)
+    vs = np.linspace(-extent, extent, size, dtype=np.float32)
+    v_grid, u_grid = np.meshgrid(vs, us, indexing="ij")
+    positions = np.zeros((size, size, 4), dtype=np.float32)
+    positions[:, :, 0] = u_grid * math.sin(theta)
+    positions[:, :, 1] = u_grid * math.cos(theta)
+    positions[:, :, 2] = v_grid
+    positions[:, :, 3] = 1.0
+    normals = np.zeros((size, size, 4), dtype=np.float32)
+    normals[:, :, 0] = math.cos(theta)
+    normals[:, :, 1] = -math.sin(theta)
+    normals[:, :, 3] = 1.0
+
+    half = max(1, int(period_px) // 2)
+    axis = (np.arange(photo_px) // half) % 2
+    if pattern == "rows":
+        binary = np.repeat(axis[:, None], photo_px, axis=1)
+    elif pattern == "cols":
+        binary = np.repeat(axis[None, :], photo_px, axis=0)
+    else:
+        binary = axis[:, None] ^ axis[None, :]
+    binary = binary.astype(np.uint8) * 255
+    photo = np.stack([binary] * 3 + [np.full_like(binary, 255)], axis=2)
+    observed = Image.fromarray(photo, mode="RGBA")
+    kwargs = dict(
+        positions_texture=positions,
+        normals_texture=normals,
+        azimuth_deg=0.0,
+        elevation_deg=0.0,
+        camera_distance=3.0,
+        projection_model="orthographic",
+        ortho_half_extent=1.0,
+    )
+    return observed, kwargs
+
+
+def _interior_luma(projection, *, margin: int = 8):
+    covered = np.asarray(projection["weight"]) > 0.0
+    interior = np.zeros_like(covered)
+    interior[margin:-margin, margin:-margin] = covered[margin:-margin,
+                                                       margin:-margin]
+    assert int(interior.sum()) > 1000
+    return projection["rgba"][:, :, 0][interior]
+
+
+def test_footprint_filter_dealiases_checkerboard_at_grazing() -> None:
+    """Sampling-density regression (A4): reference content finer than the
+    texel Nyquist rate must AREA-AVERAGE toward its mean under the
+    footprint filter instead of aliasing into stable false blocks.
+
+    Scene numbers: 256-px photo over a 96-texel atlas span -> ~2.4 photo
+    px per texel step (sigma_max) along photo y against a 4-px grating
+    period = 1.6 samples per period, well past Nyquist; the 75-degree
+    tilt compresses the other axis to ~0.6 px per texel (the grazing
+    smear direction). Bilinear point-sampling reproduces near-full swing
+    as false low-frequency bands; the footprint filter integrates the
+    footprint and lands near the pattern mean. A full 2D checkerboard at
+    BOTH-axes minification (coarser atlas) must collapse to its mean the
+    same way — no legitimate detail exists below the texel Nyquist rate.
+    """
+    observed, kwargs = _grazing_plane_scene(pattern="rows")
+    bilinear = runtime._tripo_project_observed_texture(observed, **kwargs)
+    footprint = runtime._tripo_project_observed_texture(
+        observed, sample_filter="footprint", **kwargs)
+    luma_bilinear = _interior_luma(bilinear)
+    luma_footprint = _interior_luma(footprint)
+    # bilinear point-samples the grating: near-binary values, high spread
+    assert float(luma_bilinear.std()) > 0.25
+    # footprint mode integrates the footprint: near-uniform pattern mean
+    assert float(luma_footprint.std()) < 0.10
+    assert abs(float(luma_footprint.mean()) - 0.5) < 0.06
+    # visibility semantics are shared: identical weights, identical alpha
+    assert np.array_equal(
+        np.asarray(bilinear["weight"]), np.asarray(footprint["weight"]))
+
+    # 2D checkerboard, both axes minified (48 texels -> ~4.9 x 1.3 px
+    # footprints): every checker frequency sits above the texel Nyquist
+    # rate, so the whole pattern must land at its mean.
+    observed2, kwargs2 = _grazing_plane_scene(
+        atlas_texels=48, pattern="checker")
+    checker_bilinear = runtime._tripo_project_observed_texture(
+        observed2, **kwargs2)
+    checker_footprint = runtime._tripo_project_observed_texture(
+        observed2, sample_filter="footprint", **kwargs2)
+    luma_checker_bilinear = _interior_luma(checker_bilinear, margin=6)
+    luma_checker_footprint = _interior_luma(checker_footprint, margin=6)
+    assert float(luma_checker_bilinear.std()) > 0.25
+    assert float(luma_checker_footprint.std()) < 0.12
+    assert abs(float(luma_checker_footprint.mean()) - 0.5) < 0.08
+
+
+def test_footprint_filter_preserves_resolvable_detail() -> None:
+    """Anisotropy contract: the same grating period along the WELL-SAMPLED
+    axis (0.6 px per texel at the default scene numbers — 6+ samples per
+    period) is legitimate content and must keep most of its contrast; an
+    isotropic blur sized by the long footprint axis would erase it."""
+    observed, kwargs = _grazing_plane_scene(pattern="cols")
+    footprint = runtime._tripo_project_observed_texture(
+        observed, sample_filter="footprint", **kwargs)
+    luma = _interior_luma(footprint)
+    assert float(luma.std()) > 0.30
+
+
+def test_footprint_filter_is_bit_identical_under_magnification() -> None:
+    """Refs-off bit-identity contract: where every texel footprint stays
+    at or under one photo pixel (magnification — the certified 2048-atlas
+    regime measured at sigma ~0.8), the footprint branch must return the
+    EXACT bilinear gather, and the default filter never computes
+    footprints at all."""
+    # photo much finer than the atlas span: 256 texels over 96 photo px
+    observed, kwargs = _grazing_plane_scene(
+        atlas_texels=256, photo_px=96, tilt_deg=20.0, period_px=16)
+
+    bilinear = runtime._tripo_project_observed_texture(observed, **kwargs)
+    footprint = runtime._tripo_project_observed_texture(
+        observed, sample_filter="footprint", **kwargs)
+
+    assert np.array_equal(bilinear["rgba"], footprint["rgba"])
+    assert np.array_equal(
+        np.asarray(bilinear["weight"]), np.asarray(footprint["weight"]))
+
+
 def test_blend_observed_texture_merges_multiple_views() -> None:
     base = np.zeros((2, 2, 4), dtype=np.float32)
     base[:, :, 3] = 1.0

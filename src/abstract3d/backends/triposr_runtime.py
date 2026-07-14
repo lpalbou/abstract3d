@@ -1647,6 +1647,179 @@ def _tripo_projection_geometry_confidence(
     return factor, stats
 
 
+def _tripo_footprint_filtered_colors(
+    *,
+    image_rgba: Any,
+    sample_x: Any,
+    sample_y: Any,
+    surface_mask: Any,
+    bilinear_sampled: Any,
+    engage_sigma: float = 1.0,
+    max_taps: int = 5,
+    min_alpha_coverage: float = 0.3,
+) -> Any:
+    """Footprint-aware (anisotropic area-average) color resampling for
+    MINIFIED texels; magnified texels keep their exact bilinear values.
+
+    The projector maps texel (r, c) -> photo pixel s(r, c). Where a texel's
+    footprint in the photo spans MORE than one pixel (singular values of the
+    Jacobian J = [ds/dc, ds/dr] above 1 — grazing incidence, or an atlas
+    coarser than the photo), the bilinear gather POINT-samples one location
+    inside a multi-pixel footprint: content above the texel Nyquist rate
+    aliases into stable false blocks (a checkerboard reference at grazing
+    lands as random constant tiles — see the regression test). The fix is
+    the textbook one (mip + anisotropic probes, Feline/GPU-aniso practice):
+
+    - Jacobian per texel from atlas-space central differences of the sample
+      maps (`_tripo_atlas_gradients` — the same construction the stretch
+      confidence uses, so chart edges with no measurable Jacobian keep
+      their bilinear estimate).
+    - The isotropic level is set by sigma_MIN (the WELL-sampled direction):
+      a Gaussian-prefiltered factor-2 pyramid is sampled at the two
+      bracketing levels and linearly blended, so the sharp direction is
+      never blurred beyond its own sampling pitch.
+    - The residual anisotropy (sigma_max / sigma_min, capped at `max_taps`)
+      is integrated with Gaussian-weighted probes spaced along the MAJOR
+      footprint axis in photo space.
+    - Matte-edge safety: the pyramid is built on ALPHA-PREMULTIPLIED
+      channels and the probe average is renormalized by its own alpha
+      mass; a footprint whose alpha coverage falls under
+      `min_alpha_coverage` (mostly background) keeps the bilinear estimate
+      — averaging background into rim colors would repaint rims with
+      matte fringe. The OUTPUT alpha is untouched by construction (the
+      caller keeps bilinear alpha for validity/visibility, exactly like
+      the cubic lane).
+
+    Texels with sigma_max <= `engage_sigma` are returned BIT-IDENTICAL to
+    `bilinear_sampled`: magnification needs no area average, and the mode
+    stays a strict superset of the bilinear contract (refs-off paths that
+    never pass the flag are structurally untouched).
+    """
+    import numpy as np
+
+    sampled = np.asarray(bilinear_sampled, dtype=np.float32)
+    try:
+        from scipy.ndimage import gaussian_filter, map_coordinates
+    except Exception:
+        return sampled
+
+    surface = np.asarray(surface_mask, dtype=bool)
+    height, width = np.asarray(image_rgba).shape[:2]
+
+    # --- per-texel Jacobian (photo px per texel step) ----------------------
+    sx_col, sx_row, ok_col, ok_row = _tripo_atlas_gradients(sample_x, surface)
+    sy_col, sy_row, _, _ = _tripo_atlas_gradients(sample_y, surface)
+    e = sx_col * sx_col + sy_col * sy_col
+    f = sx_col * sx_row + sy_col * sy_row
+    g = sx_row * sx_row + sy_row * sy_row
+    trace = e + g
+    det = np.maximum(e * g - f * f, 0.0)
+    disc = np.sqrt(np.maximum(trace * trace - 4.0 * det, 0.0))
+    sigma_max = np.sqrt(np.maximum(0.5 * (trace + disc), 0.0))
+    sigma_min = np.sqrt(np.maximum(0.5 * (trace - disc), 0.0))
+
+    needs = surface & ok_col & ok_row & (sigma_max > float(engage_sigma))
+    if not needs.any():
+        return sampled
+
+    rows, cols = np.nonzero(needs)
+    px = np.asarray(sample_x, dtype=np.float32)[rows, cols]
+    py = np.asarray(sample_y, dtype=np.float32)[rows, cols]
+    s_min = sigma_min[rows, cols]
+    s_max = sigma_max[rows, cols]
+
+    # Major footprint axis in photo space: the singular direction of J
+    # attached to sigma_max. J J^T = [[e2, f2], [f2, g2]] in PHOTO coords:
+    e2 = sx_col * sx_col + sx_row * sx_row
+    f2 = sx_col * sy_col + sx_row * sy_row
+    g2 = sy_col * sy_col + sy_row * sy_row
+    ex = e2[rows, cols] - s_max**2
+    fx = f2[rows, cols]
+    # eigenvector of [[e2-l, f2],[f2, g2-l]] for l = sigma_max^2; when the
+    # cross term vanishes the matrix is diagonal and the major axis is
+    # whichever photo axis carries the larger diagonal term.
+    major_is_x = e2[rows, cols] >= g2[rows, cols]
+    axis_x = np.where(np.abs(fx) > 1e-9, -fx,
+                      np.where(major_is_x, 1.0, 0.0))
+    axis_y = np.where(np.abs(fx) > 1e-9, ex,
+                      np.where(major_is_x, 0.0, 1.0))
+    norm = np.sqrt(axis_x**2 + axis_y**2) + 1e-12
+    axis_x, axis_y = axis_x / norm, axis_y / norm
+
+    # --- premultiplied Gaussian pyramid ------------------------------------
+    image = np.asarray(image_rgba, dtype=np.float32)
+    premultiplied = np.concatenate(
+        [image[:, :, :3] * image[:, :, 3:4], image[:, :, 3:4]], axis=2)
+    max_level = int(np.clip(np.ceil(np.log2(max(float(s_min.max()), 1.0))),
+                            0, 8))
+    pyramid = [premultiplied]
+    for _level in range(max_level):
+        base = pyramid[-1]
+        blurred = np.stack(
+            [gaussian_filter(base[:, :, channel], 1.0, mode="nearest")
+             for channel in range(4)], axis=2)
+        pyramid.append(blurred[::2, ::2])
+
+    # level selected by the WELL-sampled direction
+    lam = np.log2(np.maximum(s_min, 1.0))
+    level0 = np.clip(np.floor(lam).astype(np.int32), 0, max_level)
+    level1 = np.minimum(level0 + 1, max_level)
+    level_blend = np.clip(lam - level0, 0.0, 1.0).astype(np.float32)
+
+    # --- anisotropic probes along the major axis ---------------------------
+    # Texel-Nyquist prefilter along the footprint: probes spread over the
+    # FULL footprint length (+/- sigma_max around the center) with Gaussian
+    # weights whose effective std is half the footprint — the frequency
+    # response then suppresses content above the texel sampling rate
+    # (measured on the checkerboard regression: a 2x-Nyquist checker lands
+    # within 0.06 of its mean) while content the texel grid CAN represent
+    # passes through. A boxcar over exactly one footprint was measured
+    # first and rejected: its sinc response leaks ~50% of the first
+    # aliased octave, which still renders as blocks.
+    taps = int(max(3, max_taps))
+    tap_units = np.linspace(-1.0, 1.0, taps, dtype=np.float32)
+    tap_weights = np.exp(-2.0 * tap_units**2).astype(np.float32)
+    tap_weights /= tap_weights.sum()
+
+    accumulated = np.zeros((len(rows), 4), dtype=np.float32)
+    for level_sel, level_weight in ((level0, 1.0 - level_blend),
+                                    (level1, level_blend)):
+        if not float(np.abs(level_weight).max()) > 0.0:
+            continue
+        for level in np.unique(level_sel):
+            member = level_sel == level
+            weight_member = level_weight[member]
+            if not member.any() or float(np.abs(weight_member).max()) <= 0.0:
+                continue
+            scale = float(2 ** int(level))
+            plane = pyramid[int(level)]
+            span = s_max[member]  # full +/- footprint reach, level-0 px
+            tap_accum = np.zeros((int(member.sum()), 4), dtype=np.float32)
+            for tap_unit, tap_weight in zip(tap_units, tap_weights):
+                tap_x = px[member] + axis_x[member] * span * tap_unit
+                tap_y = py[member] + axis_y[member] * span * tap_unit
+                coords = np.stack([
+                    (tap_y + 0.5) / scale - 0.5,
+                    (tap_x + 0.5) / scale - 0.5,
+                ], axis=0)
+                for channel in range(4):
+                    tap_accum[:, channel] += tap_weight * map_coordinates(
+                        plane[:, :, channel], coords, order=1,
+                        mode="nearest")
+            accumulated[member] += weight_member[:, None] * tap_accum
+
+    alpha_mass = accumulated[:, 3]
+    safe = alpha_mass > float(min_alpha_coverage)
+    filtered_rgb = np.where(
+        safe[:, None],
+        accumulated[:, :3] / np.maximum(alpha_mass, 1e-6)[:, None],
+        sampled[rows, cols, :3],
+    )
+    out = sampled.copy()
+    out[rows, cols, :3] = np.clip(filtered_rgb, 0.0, 1.0)
+    return out
+
+
 def _tripo_project_observed_texture(
     observed_rgba: Any,
     *,
@@ -1796,6 +1969,28 @@ def _tripo_project_observed_texture(
                 [np.clip(cubic, 0.0, 1.0), sampled[:, :, 3:4]], axis=2)
         except Exception:
             pass
+    elif str(sample_filter) == "footprint":
+        # Anisotropic area-average for MINIFIED texels (see
+        # `_tripo_footprint_filtered_colors`): where a texel's photo
+        # footprint exceeds one pixel (grazing incidence; atlas coarser
+        # than the photo), the bilinear gather point-samples inside a
+        # multi-pixel footprint and content above the texel Nyquist rate
+        # aliases into stable false blocks. Magnified texels keep their
+        # exact bilinear values, alpha and the validity/depth logic keep
+        # the bilinear estimate (visibility stays conservative), and the
+        # default filter remains "bilinear" — certified refs-off paths
+        # never reach this branch. Measured (A4 resolution program,
+        # 2026-07-14): a 2048 atlas samples the 1024 canonical reference
+        # frame at sigma ~0.8 (magnified — footprint inert by design),
+        # while 1024 fleet bakes reach sigma_max ~1.9 on roof/top
+        # regions, exactly the aliasing regime this filter integrates.
+        sampled = _tripo_footprint_filtered_colors(
+            image_rgba=image_rgba,
+            sample_x=sample_x,
+            sample_y=sample_y,
+            surface_mask=mask,
+            bilinear_sampled=sampled,
+        )
     alpha = sampled[:, :, 3]
 
     # Strict first-surface visibility: a photo pixel may only paint the
