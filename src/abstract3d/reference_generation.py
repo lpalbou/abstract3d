@@ -161,6 +161,78 @@ def clay_silhouette(clay_image: Any) -> Any:
     return distance > 0.04
 
 
+def _centered_unit_vertices(mesh: Any) -> Any:
+    """Mesh vertices centered on their mean and scaled to the unit ball —
+    the exact normalization the clay camera math projects."""
+
+    import numpy as np
+
+    vertices = np.asarray(mesh.vertices, dtype=np.float32)
+    centered = vertices - vertices.mean(axis=0, keepdims=True)
+    scale = float(np.max(np.linalg.norm(centered, axis=1))) or 1.0
+    return centered / scale
+
+
+def _view_projection(
+    centered: Any,
+    mesh: Any,
+    azimuth_deg: float,
+    elevation_deg: float,
+    *,
+    grid: int = 256,
+    facing_min: float = 0.15,
+) -> Tuple[Any, Any, Any, Any]:
+    """Clay-camera projection of `centered` vertices for one view:
+    `(cam_x, cam_y, visible, facing)`.
+
+    `visible` combines a coarse-grid z-buffer (part-level occlusion, not
+    texel accuracy) with a vertex-normal facing floor; `facing` is the
+    raw normal-to-camera cosine (None when the mesh has no usable vertex
+    normals). This is the single vertex-level visibility authority shared
+    by the source-witness projection (`project_source_witness`) and the
+    coverage planner (`plan_reference_angles`) — one formula, so a plan
+    predicts exactly what the witness math will later measure.
+    """
+
+    import numpy as np
+
+    azimuth, elevation = (math.radians(float(azimuth_deg)),
+                          math.radians(float(elevation_deg)))
+    eye = np.array([
+        math.cos(elevation) * math.cos(azimuth),
+        math.cos(elevation) * math.sin(azimuth),
+        math.sin(elevation),
+    ], dtype=np.float32)
+    forward = -eye  # camera looks at the origin
+    up = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+    side = np.cross(forward, up)
+    side /= max(float(np.linalg.norm(side)), 1e-8)
+    cam_up = np.cross(side, forward)
+    cam_x = centered @ side
+    cam_y = centered @ cam_up
+    cam_z = centered @ forward  # larger = farther from camera
+
+    # Coarse z-buffer visibility on a grid over the projected footprint.
+    mesh_w = float(cam_x.max() - cam_x.min()) or 1e-6
+    mesh_h = float(cam_y.max() - cam_y.min()) or 1e-6
+    gx = np.clip(((cam_x - cam_x.min()) / mesh_w * (grid - 1)).astype(np.int32), 0, grid - 1)
+    gy = np.clip(((cam_y - cam_y.min()) / mesh_h * (grid - 1)).astype(np.int32), 0, grid - 1)
+    cell = gy * grid + gx
+    order = np.argsort(cam_z)  # nearest first
+    zbuf = np.full(grid * grid, np.inf, dtype=np.float32)
+    np.minimum.at(zbuf, cell[order], cam_z[order])
+    depth_eps = 0.03 * (float(cam_z.max() - cam_z.min()) or 1.0)
+    visible = cam_z <= zbuf[cell] + depth_eps
+    facing = None
+    try:
+        normals = np.asarray(mesh.vertex_normals, dtype=np.float32)
+        facing = normals @ (-forward)
+        visible &= facing > float(facing_min)
+    except Exception:
+        facing = None
+    return cam_x, cam_y, visible, facing
+
+
 def project_source_witness(
     mesh: Any,
     source_rgba: Any,
@@ -183,26 +255,10 @@ def project_source_witness(
 
     import numpy as np
 
-    vertices = np.asarray(mesh.vertices, dtype=np.float32)
-    centered = vertices - vertices.mean(axis=0, keepdims=True)
-    scale = float(np.max(np.linalg.norm(centered, axis=1))) or 1.0
-    centered = centered / scale
-
-    azimuth, elevation = (math.radians(float(source_pose[0])),
-                          math.radians(float(source_pose[1])))
-    eye = np.array([
-        math.cos(elevation) * math.cos(azimuth),
-        math.cos(elevation) * math.sin(azimuth),
-        math.sin(elevation),
-    ], dtype=np.float32)
-    forward = -eye  # camera looks at the origin
-    up = np.array([0.0, 0.0, 1.0], dtype=np.float32)
-    side = np.cross(forward, up)
-    side /= max(float(np.linalg.norm(side)), 1e-8)
-    cam_up = np.cross(side, forward)
-    cam_x = centered @ side
-    cam_y = centered @ cam_up
-    cam_z = centered @ forward  # larger = farther from camera
+    centered = _centered_unit_vertices(mesh)
+    cam_x, cam_y, visible, _facing = _view_projection(
+        centered, mesh, float(source_pose[0]), float(source_pose[1]),
+        grid=grid, facing_min=facing_min)
 
     photo = np.asarray(source_rgba.convert("RGBA"), dtype=np.float32) / 255.0
     alpha = photo[:, :, 3] > 0.5
@@ -225,21 +281,6 @@ def project_source_witness(
     us = center_u + (cam_x - (cam_x.max() + cam_x.min()) / 2.0) * fit
     vs = center_v - (cam_y - (cam_y.max() + cam_y.min()) / 2.0) * fit
 
-    # Coarse z-buffer visibility on a grid over the projected footprint.
-    gx = np.clip(((cam_x - cam_x.min()) / mesh_w * (grid - 1)).astype(np.int32), 0, grid - 1)
-    gy = np.clip(((cam_y - cam_y.min()) / mesh_h * (grid - 1)).astype(np.int32), 0, grid - 1)
-    cell = gy * grid + gx
-    order = np.argsort(cam_z)  # nearest first
-    zbuf = np.full(grid * grid, np.inf, dtype=np.float32)
-    np.minimum.at(zbuf, cell[order], cam_z[order])
-    depth_eps = 0.03 * (float(cam_z.max() - cam_z.min()) or 1.0)
-    visible = cam_z <= zbuf[cell] + depth_eps
-    try:
-        normals = np.asarray(mesh.vertex_normals, dtype=np.float32)
-        visible &= (normals @ (-forward)) > float(facing_min)
-    except Exception:
-        pass
-
     ui = np.clip(us.astype(np.int32), 0, photo.shape[1] - 1)
     vi = np.clip(vs.astype(np.int32), 0, photo.shape[0] - 1)
     on_subject = alpha[vi, ui]
@@ -247,6 +288,256 @@ def project_source_witness(
     if witnessed.any():
         colors[witnessed] = photo[vi[witnessed], ui[witnessed], :3]
     return witnessed, colors
+
+
+# --- coverage-driven adaptive angle planning -------------------------------
+#
+# The planning objective is the bake's own paint-weight law, not a new
+# notion of coverage: a projected texel's blend weight is
+# `((facing - 0.2) / 0.8) ** 2` above the hard 0.2 facing cutoff
+# (`_tripo_project_observed_texture`: facing_threshold=0.2, strength**2).
+# A plan built on the binary cutoff alone was measured (recorded fleet,
+# 2026-07-15, /tmp/cov1) to prefer oblique 55-degree compound angles whose
+# texels pass the cutoff but paint at near-zero weight — coverage
+# inflation the bake cannot cash; the quadratic law reproduces the
+# certified static slots on canonical-pose subjects because head-on
+# witness IS what the law rewards.
+PLANNING_FACING_MIN = 0.2
+
+# Marginal-gain stop floor (fraction of total quality-weighted surface),
+# measured on the recorded twelve-bundle fleet spectra (2026-07-15
+# planning table, /tmp/cov1): every budget-4 slot the greedy selects
+# predicts a gain of 0.032+ (weakest: car_a's 4th slot 0.032), and every
+# genuinely-new-region residual measures 0.029+; the redundant class —
+# slots duplicating the source or earlier picks, headlined by the x-wing
+# incident's top slot from a (0,+33) source at 0.013 — measures 0.022
+# and below. 0.025 splits the populations with margin on both sides; a
+# fifth angle is never synthesized for surface that would mostly repaint
+# what something already witnesses.
+PLANNING_MIN_GAIN = 0.025
+
+# Candidate view sphere. Three principles, from the projection math and
+# the measured angle-class history rather than taste:
+# - equatorial ring at 45 deg steps: a facing-0.2 floor gives one view an
+#   azimuthal reach of +/-78.5 deg on equator-facing normals
+#   (cos(delta) >= 0.2), so 45 deg spacing over-covers the ring — no
+#   equatorial surface can fall between adjacent candidates;
+# - elevated rings at +/-55 deg: 55 is the measured production top angle
+#   (grazing-incidence remedy, owl crown) and sees straight-up/-down
+#   normals at facing sin(55) = 0.82; at el 55 an equator-facing normal
+#   keeps facing >= 0.2 within +/-69.6 deg of azimuth, so 90 deg spacing
+#   (4 views per ring) covers the ring;
+# - NO poles: a +/-55 ring already witnesses polar caps at facing 0.82
+#   (4x the floor), so a pole view adds only deep-vertical-shaft occlusion
+#   recovery while being the least generator-feasible angle class (the
+#   acceptance ladder history is equatorial and +/-55).
+# Ordering is significant: the four static slots come first, so an exact
+# marginal-gain tie resolves to the proven angle class (same
+# strictly-greater tie rule as shape-candidate selection).
+DEFAULT_PLANNING_CANDIDATES: Tuple[Tuple[str, float, float], ...] = (
+    ("back", 180.0, 0.0),
+    ("side_left", 90.0, 0.0),
+    ("side_right", -90.0, 0.0),
+    ("top", 0.0, 55.0),
+    ("underside", 0.0, -55.0),
+    ("front", 0.0, 0.0),
+    ("front_left", 45.0, 0.0),
+    ("front_right", -45.0, 0.0),
+    ("back_left", 135.0, 0.0),
+    ("back_right", -135.0, 0.0),
+    ("top_left", 90.0, 55.0),
+    ("top_right", -90.0, 55.0),
+    ("top_rear", 180.0, 55.0),
+    ("underside_left", 90.0, -55.0),
+    ("underside_right", -90.0, -55.0),
+    ("underside_rear", 180.0, -55.0),
+)
+
+
+def _vertex_areas(mesh: Any) -> Any:
+    """Barycentric area lumping: each vertex carries 1/3 of the summed
+    area of its incident faces, so vertex sums measure SURFACE, not
+    tessellation density (a dense wingtip must not outvote a coarse
+    fuselage)."""
+
+    import numpy as np
+
+    areas = np.zeros(len(mesh.vertices), dtype=np.float64)
+    faces = np.asarray(mesh.faces, dtype=np.int64)
+    face_share = np.repeat(np.asarray(mesh.area_faces, dtype=np.float64) / 3.0, 3)
+    np.add.at(areas, faces.reshape(-1), face_share)
+    return areas
+
+
+def plan_reference_angles(
+    mesh: Any,
+    source_pose: Tuple[float, float],
+    *,
+    source_rgba: Optional[Any] = None,
+    budget: int = 4,
+    candidates: Optional[Sequence[Tuple[str, float, float]]] = None,
+    min_gain: float = PLANNING_MIN_GAIN,
+    facing_min: float = PLANNING_FACING_MIN,
+    grid: int = 256,
+) -> Dict[str, Any]:
+    """Plan reference angles by greedy marginal paint-quality coverage.
+
+    The static `DEFAULT_ANGLES` assume a canonical front source photo; a
+    source witnessed from anywhere else duplicates one slot and leaves its
+    antipode to the fill (measured: the x-wing incident's (0,+33) source
+    made the static top largely redundant while the underside — the
+    largest unwitnessed region — got nothing). This planner replaces the
+    ASSUMPTION with the MEASUREMENT: compute which surface the estimated
+    source pose actually witnesses, then greedily pick, from a fixed
+    candidate view sphere, the angles that each add the most
+    newly-witnessed paint quality (the bake's own blend-weight law — see
+    the constants block above), stopping at `budget` or when the
+    marginal gain drops below `min_gain` (fraction of total
+    quality-weighted area).
+
+    Witness math is the same vertex-level projection the witnessed-
+    consistency gate uses (`_view_projection`: coarse z-buffer + facing
+    floor at the bake's 0.2 paint cutoff). Marginal gain of a candidate
+    is the area-weighted sum of its per-vertex quality improvement over
+    the best already-planned witness (views composite by best witness,
+    which is how the bake's softmax blend behaves at these weight
+    ratios). Deterministic, CPU-only, no rendering; seconds on
+    production meshes.
+
+    A generated reference witnesses the full silhouette of its view (the
+    clay-locked synthesis covers the subject, unlike a cropped photo), so
+    candidate witness fields are visibility-only; the SOURCE witness field
+    letterbox-maps the actual photo alpha when `source_rgba` is given
+    (`project_source_witness`) and falls back to visibility-only when not.
+
+    Source-witnessed surface is LOCKED, not merely already-covered: the
+    bake's `protect_observed_texels` (absolute mode) zeroes generated
+    weight wherever the real photo holds any positive weight — synthesis
+    completes the surface, it never revises the photo — so a candidate
+    earns nothing for re-witnessing the photo's own hemisphere at better
+    incidence. Without the lock the greedy measurably drifts toward
+    photo-side compound angles whose "improvement" the bake then refuses
+    to apply.
+
+    Returns a plan dict: `angles` (bake-ready (label, azimuth, elevation)
+    tuples), `selected` (per-angle predicted gains + cumulative coverage
+    — the persist-for-diagnosis record), `source_coverage`,
+    `predicted_coverage`, `static_predicted_coverage` (the same objective
+    evaluated for `DEFAULT_ANGLES`, so every bundle records the
+    counterfactual), `coverage_curve`, and `unwitnessable_ratio` (surface
+    no candidate and no source can witness above the paint floor —
+    occluded or permanently grazing). Coverages are QUALITY-WEIGHTED
+    fractions of total surface area (1.0 = every texel painted head-on),
+    so they read lower than the bake's binary `observed_coverage_ratio`;
+    they compare plans to plans, not plans to bake stats.
+    """
+
+    import numpy as np
+
+    started = time.perf_counter()
+    lattice = tuple(candidates) if candidates else DEFAULT_PLANNING_CANDIDATES
+    centered = _centered_unit_vertices(mesh)
+    areas = _vertex_areas(mesh)
+    total_area = float(areas.sum()) or 1.0
+
+    def witness_fields(azimuth: float, elevation: float) -> Tuple[Any, Any]:
+        """(witnessed_mask, quality) for one view: quality is the bake's
+        blend-weight law `strength**2` on visible vertices, 0 elsewhere."""
+
+        _, _, visible, facing = _view_projection(
+            centered, mesh, azimuth, elevation, grid=grid,
+            facing_min=facing_min)
+        if facing is None:
+            return visible, visible.astype(np.float64)
+        strength = np.clip(
+            (facing - float(facing_min)) / max(1e-6, 1.0 - float(facing_min)),
+            0.0, 1.0).astype(np.float64)
+        return visible, np.where(visible, strength * strength, 0.0)
+
+    source_azimuth, source_elevation = (float(source_pose[0]),
+                                        float(source_pose[1]))
+    source_witnessed, source_quality = witness_fields(
+        source_azimuth, source_elevation)
+    if source_rgba is not None:
+        photo_witnessed, _ = project_source_witness(
+            mesh, source_rgba, source_pose=(source_azimuth, source_elevation),
+            grid=grid, facing_min=facing_min)
+        source_witnessed = source_witnessed & photo_witnessed
+        source_quality = np.where(photo_witnessed, source_quality, 0.0)
+    source_coverage = float((areas * source_quality).sum()) / total_area
+
+    # The photo-protection lock: wherever the photo witnesses at all
+    # (>= paint floor), the bake structurally excludes generated content
+    # (`protect_observed_texels`, absolute mode), so no candidate can
+    # score there — without the lock the greedy measurably drifts toward
+    # photo-side compound angles whose "improvement" the bake refuses.
+    candidate_fields = []
+    reachable = source_witnessed.copy()
+    for _, azimuth, elevation in lattice:
+        witnessed, quality = witness_fields(float(azimuth), float(elevation))
+        reachable |= witnessed
+        candidate_fields.append(
+            np.where(source_witnessed, 0.0, quality))
+
+    def objective(quality: Any) -> float:
+        return float((areas * quality).sum()) / total_area
+
+    covered = source_quality.copy()
+    selected: List[Dict[str, Any]] = []
+    coverage_curve: List[float] = [round(source_coverage, 4)]
+    remaining = list(range(len(lattice)))
+    for _ in range(int(budget)):
+        gains = [
+            float((areas * np.maximum(candidate_fields[index] - covered,
+                                      0.0)).sum()) / total_area
+            for index in remaining
+        ]
+        if not gains:
+            break
+        best_position = int(np.argmax(gains))  # first index wins exact ties
+        best_gain = gains[best_position]
+        if best_gain < float(min_gain):
+            break
+        best_index = remaining.pop(best_position)
+        covered = np.maximum(covered, candidate_fields[best_index])
+        label, azimuth, elevation = lattice[best_index]
+        cumulative = objective(covered)
+        selected.append({
+            "label": label,
+            "azimuth_deg": float(azimuth),
+            "elevation_deg": float(elevation),
+            "predicted_gain": round(best_gain, 4),
+            "predicted_cumulative_coverage": round(cumulative, 4),
+        })
+        coverage_curve.append(round(cumulative, 4))
+
+    # Counterfactual: the static set's objective under the SAME witness
+    # math and photo lock (no-regression evidence lives in every bundle).
+    static_covered = source_quality.copy()
+    for _, azimuth, elevation in DEFAULT_ANGLES:
+        _, quality = witness_fields(float(azimuth), float(elevation))
+        static_covered = np.maximum(
+            static_covered, np.where(source_witnessed, 0.0, quality))
+    static_predicted = objective(static_covered)
+
+    return {
+        "source_pose": [source_azimuth, source_elevation],
+        "source_coverage": round(source_coverage, 4),
+        "budget": int(budget),
+        "min_gain": float(min_gain),
+        "facing_min": float(facing_min),
+        "candidates_evaluated": len(lattice),
+        "angles": tuple(
+            (row["label"], row["azimuth_deg"], row["elevation_deg"])
+            for row in selected),
+        "selected": selected,
+        "coverage_curve": coverage_curve,
+        "predicted_coverage": round(float(coverage_curve[-1]), 4),
+        "static_predicted_coverage": round(static_predicted, 4),
+        "unwitnessable_ratio": round(
+            1.0 - float(areas[reachable].sum()) / total_area, 4),
+        "elapsed_s": round(time.perf_counter() - started, 2),
+    }
 
 
 def tint_mesh_from_source(
@@ -683,6 +974,23 @@ def _view_phrase(label: str) -> str:
         "side_right": "seen from its right side profile",
         "bottom": "seen from directly underneath",
         "top": "seen from a high angle, looking down at its top",
+        # Planner lattice labels (plan_reference_angles): explicit phrases
+        # for the non-obvious compounds; anything else falls through to
+        # the generic "seen from the ... view" wording.
+        "front": "seen directly from the front",
+        "top_left": "seen from a high angle over its left side, looking down",
+        "top_right": "seen from a high angle over its right side, looking down",
+        "top_rear": "seen from a high angle behind it, looking down at its back",
+        "underside": "seen from a low angle underneath, looking up at its underside",
+        "underside_left": (
+            "seen from a low angle under its left side, looking up at its "
+            "underside"),
+        "underside_right": (
+            "seen from a low angle under its right side, looking up at its "
+            "underside"),
+        "underside_rear": (
+            "seen from a low angle behind and below, looking up at its "
+            "underside"),
     }.get(label, f"seen from the {label.replace('_', ' ')} view")
 
 

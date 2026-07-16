@@ -1,0 +1,738 @@
+{
+  "appearance_mode": "uv_basecolor",
+  "backend_id": "abstract3d:hunyuan3d21-local",
+  "background_removed": true,
+  "bundle_dir": "/Users/albou/abstract3d/out/x-wing",
+  "contact_sheet_path": "/Users/albou/abstract3d/out/x-wing/contact_sheet.png",
+  "content_type": "model/gltf-binary",
+  "device": "mps",
+  "dtype": "float16",
+  "export_axis_canonicalization": [
+    "yup_front_z_to_zup_front_x"
+  ],
+  "face_count": 119999,
+  "format": "glb",
+  "geometry_views": [
+    {
+      "label": "source",
+      "tag": "front"
+    }
+  ],
+  "ground_slab": null,
+  "guidance_scale": 5.0,
+  "license": "tencent-hunyuan-community",
+  "license_note": "Tencent Hunyuan 3D 2.1 Community License: territory-restricted (excludes the European Union, United Kingdom, and South Korea), with additional terms for large-scale commercial deployments.",
+  "material_count": 1,
+  "memory": {
+    "mps_allocated_bytes": 7365761536,
+    "rss_bytes": 16622796800
+  },
+  "metadata_path": "/Users/albou/abstract3d/out/x-wing/metadata.json",
+  "model_id": "tencent/Hunyuan3D-2.1/hunyuan3d-dit-v2-1",
+  "multiview_conditioning": false,
+  "notes": [
+    "Hunyuan3D-2.1 official shape stage (flow-matching DiT + shape VAE + marching cubes).",
+    "Tencent Hunyuan 3D 2.1 Community License: territory-restricted (excludes the European Union, United Kingdom, and South Korea), with additional terms for large-scale commercial deployments."
+  ],
+  "num_chunks": 32768,
+  "num_inference_steps": 50,
+  "octree_resolution": 512,
+  "output_bytes": 6160492,
+  "postprocess_cleanup": [
+    "keep_significant_components:3->1@2328",
+    "remove_degenerate_faces",
+    "quadric_decimation:120000",
+    "merge_vertices",
+    "fix_normals"
+  ],
+  "postprocess_warnings": [
+    "texture_reference_generation: generated bake regressed the no-references baseline and was refused by the whole-bake acceptance gate; shipping the baseline. Reasons: composition tone damage (brightening): candidate low-band L rises 0.814 per-pixel mean beyond the sanctioned-adjustment floor (25.0 L) at az90_el50, budget 0.7",
+    "shipped baseline failed the single-view sanity floors (quality_verdict=degraded): observed coverage 0.009 below floor 0.12 (healthy fleet minimum 0.18); source-view coverage 0.010 below floor 0.1; capture efficiency 0.090 below floor 0.3: the source pose painted far less than its viewpoint could see (wrong pose or broken registration)"
+  ],
+  "preview_path": "/Users/albou/abstract3d/out/x-wing/preview.png",
+  "preview_renderer": "moderngl",
+  "provider": "abstract3d:hunyuan3d21-local",
+  "quality_verdict": {
+    "reasons": [
+      "observed coverage 0.009 below floor 0.12 (healthy fleet minimum 0.18)",
+      "source-view coverage 0.010 below floor 0.1",
+      "capture efficiency 0.090 below floor 0.3: the source pose painted far less than its viewpoint could see (wrong pose or broken registration)"
+    ],
+    "verdict": "degraded"
+  },
+  "seed": 2025,
+  "source_image_path": "/Users/albou/abstract3d/out/x-wing/input.png",
+  "source_snapshot": "82920d643c0dc2f7bfd7255f45f62d386edfe60c",
+  "task": "text_to_scene3d",
+  "texture_artifacts": {
+    "camera_distance": 3.0,
+    "generated_reference_paths": [
+      "/Users/albou/abstract3d/out/x-wing/texture_reference_generated_back.png",
+      "/Users/albou/abstract3d/out/x-wing/texture_reference_generated_side_left.png",
+      "/Users/albou/abstract3d/out/x-wing/texture_reference_generated_side_right.png",
+      "/Users/albou/abstract3d/out/x-wing/texture_reference_generated_top.png"
+    ],
+    "geometry_glb_path": "/Users/albou/abstract3d/out/x-wing/geometry.glb",
+    "obj_sidecars": [
+      "material_0.png",
+      "scene.mtl"
+    ],
+    "observed_coverage_ratio": 0.0095,
+    "observed_view_stats": [
+      {
+        "azimuth_deg": 0.0,
+        "capture_efficiency": 0.0902,
+        "coverage_ratio": 0.0096,
+        "elevation_deg": 0.0,
+        "facing_fraction": 0.1064,
+        "generated": false,
+        "index": 1,
+        "label": "front"
+      }
+    ],
+    "projection_mode": "projection_only_plus_fill3d",
+    "reference_generation": {
+      "accepted": 4,
+      "angles": [
+        {
+          "accepted": true,
+          "attempts": [
+            {
+              "escalated": false,
+              "failure_family": "silhouette",
+              "registration": {
+                "applied": true,
+                "fx": 0.02,
+                "fy": 0.02,
+                "iou": 0.6038,
+                "scale": 0.88
+              },
+              "seed": 2025,
+              "silhouette_iou": 0.6038,
+              "steps": 8
+            },
+            {
+              "escalated": false,
+              "failure_family": "silhouette",
+              "registration": {
+                "applied": true,
+                "fx": 0.02,
+                "fy": 0.04,
+                "iou": 0.5071,
+                "scale": 0.88
+              },
+              "seed": 2026,
+              "silhouette_iou": 0.5071,
+              "steps": 12
+            },
+            {
+              "escalated": false,
+              "fg_chroma": {
+                "generated": 3.7,
+                "ratio": 1.0,
+                "source": 3.7
+              },
+              "material": {
+                "floor": true,
+                "passed": true,
+                "worst_part_delta_e": 1.3
+              },
+              "registration": {
+                "applied": true,
+                "fx": 0.02,
+                "fy": 0.0,
+                "iou": 0.8136,
+                "scale": 1.0
+              },
+              "seed": 2027,
+              "silhouette_iou": 0.8136,
+              "specular_suppressed_fraction": 0.0,
+              "speculars": {
+                "passed": true,
+                "worst_blob_fraction": 0.0
+              },
+              "steps": 12,
+              "texture": {
+                "flat_delta": null,
+                "floor": true,
+                "passed": true,
+                "reason": "too few tiles (src 18, gen 1)",
+                "relief_ratio": null,
+                "s50": null,
+                "selection_score": null
+              },
+              "tone_match": {
+                "applied": true,
+                "applied_shift": [
+                  -1.43,
+                  -1.29,
+                  -3.47
+                ],
+                "clipped": false,
+                "pre_match_distance": [
+                  -1.43,
+                  -1.29,
+                  -3.47
+                ]
+              }
+            }
+          ],
+          "azimuth_deg": 180.0,
+          "clay_renderer": "moderngl",
+          "conditioning": "composite",
+          "elevation_deg": 0.0,
+          "label": "back",
+          "prompt": "Left panel: a photo of x wing star wars. Right panel: an untextured model of the SAME subject seen directly from behind. Make the right panel a real photograph of the left subject seen from this angle. Copy the left subject's material identity exactly, PART BY PART: each part keeps its own material, color and texture from the left photo \u2014 never spread one part's material onto a different part. Reproduce the same surface relief, carving depth, grooves, grain, cracks, fibers and micro-texture, and the same colors and pattern. Match the roughness of each left surface exactly. Do not change any material type. Do not smooth, polish, glaze or simplify any surface. Keep the right panel's exact shape, pose and framing. Output only the finished right view as a single image, on a plain dark background, soft diffuse lighting, no gloss.",
+          "raw_payload_md5": "adbd16a519a35948784bcfd66da8af9a",
+          "render_size": 768,
+          "seconds": 468.7,
+          "silhouette_iou": 0.8136,
+          "texture_gate": "passed"
+        },
+        {
+          "accepted": true,
+          "attempts": [
+            {
+              "escalated": false,
+              "failure_family": "texture",
+              "fg_chroma": {
+                "generated": 3.7,
+                "ratio": 1.0,
+                "source": 3.7
+              },
+              "material": {
+                "floor": true,
+                "passed": true,
+                "worst_part_delta_e": 0.64
+              },
+              "registration": {
+                "applied": true,
+                "fx": -0.02,
+                "fy": 0.0,
+                "iou": 0.8499,
+                "scale": 1.0
+              },
+              "seed": 2025,
+              "silhouette_iou": 0.8499,
+              "specular_suppressed_fraction": 0.0001,
+              "speculars": {
+                "passed": true,
+                "worst_blob_fraction": 0.0
+              },
+              "steps": 8,
+              "texture": {
+                "flat_delta": 0.086,
+                "floor": true,
+                "passed": false,
+                "reason": null,
+                "relief_ratio": 0.841,
+                "s50": 4.451,
+                "selection_score": 0.67
+              },
+              "tone_match": {
+                "applied": true,
+                "applied_shift": [
+                  2.85,
+                  0.08,
+                  -4.48
+                ],
+                "clipped": false,
+                "pre_match_distance": [
+                  2.85,
+                  0.08,
+                  -4.48
+                ]
+              }
+            },
+            {
+              "escalated": true,
+              "fg_chroma": {
+                "generated": 3.7,
+                "ratio": 1.001,
+                "source": 3.7
+              },
+              "material": {
+                "floor": true,
+                "passed": true,
+                "worst_part_delta_e": 0.74
+              },
+              "registration": {
+                "applied": false,
+                "iou": 0.9562
+              },
+              "seed": 2026,
+              "silhouette_iou": 0.9429,
+              "specular_suppressed_fraction": 0.0001,
+              "speculars": {
+                "passed": true,
+                "worst_blob_fraction": 0.0
+              },
+              "steps": 12,
+              "texture": {
+                "flat_delta": -0.002,
+                "floor": true,
+                "passed": true,
+                "reason": null,
+                "relief_ratio": 0.992,
+                "s50": 4.451,
+                "selection_score": 0.992
+              },
+              "tone_match": {
+                "applied": true,
+                "applied_shift": [
+                  -5.65,
+                  -0.94,
+                  -5.44
+                ],
+                "clipped": false,
+                "pre_match_distance": [
+                  -5.65,
+                  -0.94,
+                  -5.44
+                ]
+              }
+            }
+          ],
+          "azimuth_deg": 90.0,
+          "clay_renderer": "moderngl",
+          "conditioning": "composite",
+          "elevation_deg": 0.0,
+          "label": "side_left",
+          "prompt": "Left panel: a photo of x wing star wars. Right panel: an untextured model of the SAME subject seen from its left side profile. Make the right panel a real photograph of the left subject seen from this angle. Copy the left subject's material identity exactly, PART BY PART: each part keeps its own material, color and texture from the left photo \u2014 never spread one part's material onto a different part. Reproduce the same surface relief, carving depth, grooves, grain, cracks, fibers and micro-texture, and the same colors and pattern. Match the roughness of each left surface exactly. Do not change any material type. Do not smooth, polish, glaze or simplify any surface. Keep the right panel's exact shape, pose and framing. Output only the finished right view as a single image, on a plain dark background, soft diffuse lighting, no gloss.",
+          "raw_payload_md5": "6044c95f4c5aee312e4896998f7d77c5",
+          "render_size": 768,
+          "seconds": 291.9,
+          "silhouette_iou": 0.9429,
+          "texture_gate": "passed"
+        },
+        {
+          "accepted": true,
+          "attempts": [
+            {
+              "escalated": false,
+              "failure_family": "texture",
+              "fg_chroma": {
+                "generated": 3.7,
+                "ratio": 1.0,
+                "source": 3.7
+              },
+              "material": {
+                "floor": true,
+                "passed": true,
+                "worst_part_delta_e": 0.86
+              },
+              "registration": {
+                "applied": false,
+                "iou": 0.9146
+              },
+              "seed": 2025,
+              "silhouette_iou": 0.9192,
+              "specular_suppressed_fraction": 0.0002,
+              "speculars": {
+                "passed": true,
+                "worst_blob_fraction": 0.0
+              },
+              "steps": 8,
+              "texture": {
+                "flat_delta": 0.122,
+                "floor": true,
+                "passed": false,
+                "reason": null,
+                "relief_ratio": 0.853,
+                "s50": 4.451,
+                "selection_score": 0.608
+              },
+              "tone_match": {
+                "applied": true,
+                "applied_shift": [
+                  5.08,
+                  -0.63,
+                  -5.02
+                ],
+                "clipped": false,
+                "pre_match_distance": [
+                  5.08,
+                  -0.63,
+                  -5.02
+                ]
+              }
+            },
+            {
+              "escalated": true,
+              "fg_chroma": {
+                "generated": 3.7,
+                "ratio": 1.0,
+                "source": 3.7
+              },
+              "material": {
+                "floor": true,
+                "passed": true,
+                "worst_part_delta_e": 1.53
+              },
+              "registration": {
+                "applied": false,
+                "iou": 0.9366
+              },
+              "seed": 2026,
+              "silhouette_iou": 0.9368,
+              "specular_suppressed_fraction": 0.0,
+              "speculars": {
+                "passed": true,
+                "worst_blob_fraction": 0.0
+              },
+              "steps": 12,
+              "texture": {
+                "flat_delta": 0.102,
+                "floor": true,
+                "passed": true,
+                "reason": null,
+                "relief_ratio": 0.93,
+                "s50": 4.451,
+                "selection_score": 0.726
+              },
+              "tone_match": {
+                "applied": true,
+                "applied_shift": [
+                  -1.0,
+                  -1.01,
+                  -3.61
+                ],
+                "clipped": false,
+                "pre_match_distance": [
+                  -1.0,
+                  -1.01,
+                  -3.61
+                ]
+              }
+            }
+          ],
+          "azimuth_deg": -90.0,
+          "clay_renderer": "moderngl",
+          "conditioning": "composite",
+          "elevation_deg": 0.0,
+          "label": "side_right",
+          "prompt": "Left panel: a photo of x wing star wars. Right panel: an untextured model of the SAME subject seen from its right side profile. Make the right panel a real photograph of the left subject seen from this angle. Copy the left subject's material identity exactly, PART BY PART: each part keeps its own material, color and texture from the left photo \u2014 never spread one part's material onto a different part. Reproduce the same surface relief, carving depth, grooves, grain, cracks, fibers and micro-texture, and the same colors and pattern. Match the roughness of each left surface exactly. Do not change any material type. Do not smooth, polish, glaze or simplify any surface. Keep the right panel's exact shape, pose and framing. Output only the finished right view as a single image, on a plain dark background, soft diffuse lighting, no gloss.",
+          "raw_payload_md5": "a00a6a0eabbdfb387b90f4d2cc4218b8",
+          "render_size": 768,
+          "seconds": 286.7,
+          "silhouette_iou": 0.9368,
+          "texture_gate": "passed"
+        },
+        {
+          "accepted": true,
+          "attempts": [
+            {
+              "escalated": false,
+              "fg_chroma": {
+                "generated": 3.7,
+                "ratio": 0.996,
+                "source": 3.7
+              },
+              "material": {
+                "floor": true,
+                "passed": true,
+                "worst_part_delta_e": 0.55
+              },
+              "registration": {
+                "applied": false,
+                "iou": 0.9084
+              },
+              "seed": 2025,
+              "silhouette_iou": 0.909,
+              "specular_suppressed_fraction": 0.0001,
+              "speculars": {
+                "passed": true,
+                "worst_blob_fraction": 0.0
+              },
+              "steps": 8,
+              "texture": {
+                "flat_delta": 0.063,
+                "floor": true,
+                "passed": true,
+                "reason": null,
+                "relief_ratio": 1.024,
+                "s50": 4.451,
+                "selection_score": 0.899
+              },
+              "tone_match": {
+                "applied": true,
+                "applied_shift": [
+                  -3.57,
+                  0.36,
+                  -0.11
+                ],
+                "clipped": false,
+                "pre_match_distance": [
+                  -3.57,
+                  0.36,
+                  -0.11
+                ]
+              }
+            }
+          ],
+          "azimuth_deg": 0.0,
+          "clay_renderer": "moderngl",
+          "conditioning": "composite",
+          "elevation_deg": 55.0,
+          "label": "top",
+          "prompt": "Left panel: a photo of x wing star wars. Right panel: an untextured model of the SAME subject seen from a high angle, looking down at its top. Make the right panel a real photograph of the left subject seen from this angle. Copy the left subject's material identity exactly, PART BY PART: each part keeps its own material, color and texture from the left photo \u2014 never spread one part's material onto a different part. Reproduce the same surface relief, carving depth, grooves, grain, cracks, fibers and micro-texture, and the same colors and pattern. Match the roughness of each left surface exactly. Do not change any material type. Do not smooth, polish, glaze or simplify any surface. Keep the right panel's exact shape, pose and framing. Output only the finished right view as a single image, on a plain dark background, soft diffuse lighting, no gloss.",
+          "raw_payload_md5": "76ca15120cd8dfb126988d5ec89e24a4",
+          "render_size": 768,
+          "seconds": 120.2,
+          "silhouette_iou": 0.909,
+          "texture_gate": "passed"
+        }
+      ],
+      "bake_acceptance": {
+        "accepted": false,
+        "metrics": {
+          "artifact_battery": {
+            "added_dark_patchwork": {
+              "votes": false,
+              "worst": 0.0,
+              "worst_view": null
+            },
+            "added_pale_blotch": {
+              "max_allowed": 0.009,
+              "votes": true,
+              "worst": 0.0,
+              "worst_view": null
+            },
+            "added_pale_wash": {
+              "votes": false,
+              "warn_line": 0.01,
+              "worst": 0.0,
+              "worst_view": null
+            },
+            "added_rect_haze_cells": {
+              "votes": false,
+              "warn_line": 2,
+              "worst": 2,
+              "worst_view": "az0_el50"
+            },
+            "measured_views": 8,
+            "photo_background_available": false
+          },
+          "composition_hue_damage": {
+            "evidence_margin_deg": 3.0,
+            "floor_deg": 10.0,
+            "max_allowed": 1.0,
+            "measured_views": 8,
+            "sat_floor": 15.0,
+            "source_band": null,
+            "worst": 0.0,
+            "worst_p95_deg": 0.0,
+            "worst_raw": 0.0,
+            "worst_raw_view": null,
+            "worst_view": null
+          },
+          "composition_tone_damage": {
+            "brighten_max_allowed": 0.7,
+            "brighten_worst": 0.8142,
+            "brighten_worst_view": "az90_el50",
+            "darken_max_allowed": 0.03,
+            "darken_worst": 0.0,
+            "darken_worst_view": null,
+            "floor_l": 25.0,
+            "measured_views": 8,
+            "worst_area_over_floor": 0.3104
+          },
+          "front_brightness_l": {
+            "baseline": 35.3,
+            "candidate": 42.04,
+            "min_allowed": 31.3
+          },
+          "handoff_seams": {
+            "candidate": {
+              "boundary_texels": 6845,
+              "pairs": [
+                {
+                  "boundary_texels": 2258,
+                  "co_witnessed_frac": 0.2161,
+                  "lum_share_p50": 1.0047,
+                  "step_p50": 0.1537,
+                  "step_p95": 0.3284,
+                  "views": [
+                    "side_right",
+                    "top"
+                  ]
+                },
+                {
+                  "boundary_texels": 2168,
+                  "co_witnessed_frac": 0.1448,
+                  "lum_share_p50": 0.9857,
+                  "step_p50": 0.1286,
+                  "step_p95": 0.3401,
+                  "views": [
+                    "side_left",
+                    "top"
+                  ]
+                },
+                {
+                  "boundary_texels": 1215,
+                  "co_witnessed_frac": 0.4008,
+                  "lum_share_p50": 0.9856,
+                  "step_p50": 0.0774,
+                  "step_p95": 0.2157,
+                  "views": [
+                    "back",
+                    "side_left"
+                  ]
+                },
+                {
+                  "boundary_texels": 795,
+                  "co_witnessed_frac": 0.3371,
+                  "lum_share_p50": 1.0065,
+                  "step_p50": 0.2036,
+                  "step_p95": 0.3108,
+                  "views": [
+                    "back",
+                    "side_right"
+                  ]
+                },
+                {
+                  "boundary_texels": 175,
+                  "co_witnessed_frac": 0.0,
+                  "lum_share_p50": 1.0137,
+                  "step_p50": 0.0971,
+                  "step_p95": 0.2347,
+                  "views": [
+                    "front",
+                    "side_right"
+                  ]
+                },
+                {
+                  "boundary_texels": 163,
+                  "co_witnessed_frac": 0.7178,
+                  "lum_share_p50": 1.0219,
+                  "step_p50": 0.1271,
+                  "step_p95": 0.2106,
+                  "views": [
+                    "back",
+                    "top"
+                  ]
+                },
+                {
+                  "boundary_texels": 65,
+                  "co_witnessed_frac": 0.0,
+                  "lum_share_p50": 0.9826,
+                  "step_p50": 0.5314,
+                  "step_p95": 0.5847,
+                  "views": [
+                    "front",
+                    "side_left"
+                  ]
+                },
+                {
+                  "boundary_texels": 6,
+                  "co_witnessed_frac": 0.0,
+                  "lum_share_p50": 1.0107,
+                  "step_p50": 0.2625,
+                  "step_p95": 0.268,
+                  "views": [
+                    "front",
+                    "top"
+                  ]
+                }
+              ],
+              "step_max": 0.5903,
+              "step_p50": 0.1338,
+              "step_p95": 0.328
+            },
+            "votes": false
+          },
+          "photo_fidelity_delta_e": {
+            "baseline": 16.62,
+            "candidate": 17.51,
+            "max_allowed": 18.62
+          },
+          "seam_ratio": {
+            "baseline": 0.00287,
+            "baseline_worst_view": "az-90_el50",
+            "candidate": 0.00284,
+            "candidate_worst_view": "az-90_el50",
+            "votes": false
+          },
+          "source_pose": {
+            "azimuth_deg": 0.0,
+            "elevation_deg": 0.0,
+            "origin": "baseline_stats"
+          }
+        },
+        "reasons": [
+          "composition tone damage (brightening): candidate low-band L rises 0.814 per-pixel mean beyond the sanctioned-adjustment floor (25.0 L) at az90_el50, budget 0.7"
+        ],
+        "warnings": [
+          "artifact battery (rect haze cells, non-voting): candidate adds 2 translucent axis-aligned rectangle cells at az0_el50 (patch-block grid class)"
+        ]
+      },
+      "base_seed": 2025,
+      "caption": "a spaceship fighter jet flying through the air",
+      "color_anchor": null,
+      "conditioning": "composite",
+      "image_request": {
+        "model": "AbstractFramework/flux.2-klein-4b-8bit",
+        "provider": "mlx-gen"
+      },
+      "negative_prompt": "smooth glazed finish, glossy shine, polished surface, specular highlights, reflections, airbrushed, soft focus, blurred detail, simplified surface, flat lifeless texture, CGI render, rim lighting, lens flare",
+      "rejected": 0,
+      "render_size_mode": 768,
+      "silhouette_iou_min": 0.75,
+      "subject_hint": "a x-wing from star wars, wings opened",
+      "subject_noun": "x wing star wars",
+      "tinted_conditioning": false
+    },
+    "reference_view_count": 0,
+    "source_pose": {
+      "azimuth_deg": 0.0,
+      "elevation_deg": 0.0,
+      "estimated": false,
+      "method": "declared",
+      "rejected_reason": "ncc_vetoed_by_silhouette",
+      "score": 0.0184,
+      "score_at_declared": -0.0637,
+      "silhouette_iou": null
+    },
+    "source_registration": {
+      "method": "photo_bbox_center"
+    },
+    "symmetry_completion": {
+      "applied": false,
+      "coverage_ratio": 0.0,
+      "geometry_symmetry_score": 0.9853,
+      "mode": "none"
+    },
+    "texture_completion": "mirror_symmetry",
+    "texture_padding": 8,
+    "texture_path": "/Users/albou/abstract3d/out/x-wing/texture.png",
+    "unseen_fill_mode": "mesh_harmonic",
+    "uv_preview_path": "/Users/albou/abstract3d/out/x-wing/uv_preview.png",
+    "uv_vertex_count": 82787,
+    "vertex_mapping_count": 82787
+  },
+  "texture_completion": "auto",
+  "texture_mode": "baked_basecolor",
+  "texture_resolution": 2048,
+  "timings_s": {
+    "inference": 1023.0869,
+    "load": 14.4717,
+    "mesh": 4.1097,
+    "preprocess": 2.2545,
+    "source_image_generation": 9.7298,
+    "texture": 1354.9491,
+    "total": 2394.13
+  },
+  "topology": {
+    "body_count": 1,
+    "euler_number": -3,
+    "is_watertight": false
+  },
+  "topology_raw": {
+    "body_count": 1,
+    "euler_number": 0,
+    "is_watertight": false
+  },
+  "uv_present": true,
+  "vertex_count": 59998,
+  "volume_decoder": "adaptive"
+}

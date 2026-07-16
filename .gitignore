@@ -71,3 +71,6 @@ artifacts/validation/generated-reference-completion/**/scene.obj
 # Generated references v3 proof (adversarial rounds 1-2: completion-only
 # protection, strict-only baking, person policy, whole-bake acceptance)
 !artifacts/validation/generated-references-v3/
+
+
+untracked

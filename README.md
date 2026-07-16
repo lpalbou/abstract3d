@@ -94,6 +94,17 @@ which closed a six-cycle adversarial zero-defect program on 2026-07-07
   `person_warning` on the record. Generated views are plausible synthesis, not ground
   truth, and every bundle records full provenance (prompts, seeds, per-attempt gate
   metrics, image hashes, acceptance verdict)
+- coverage-driven reference angle planning (`texture_reference_angle_planning`,
+  default `auto`): the synthesized angles are the canonical
+  back/side_left/side_right/top set when the source photo is a canonical front view,
+  and are PLANNED when the pose lane estimates a non-canonical source pose — greedy
+  selection over a fixed view sphere maximizing marginal newly-witnessed surface under
+  the bake's own paint-weight law, from the surface the estimated pose actually
+  witnesses (an elevated top-down photo plans underside coverage and drops the
+  now-redundant top; measured on the x-wing incident photo). `adaptive` and `static`
+  force either behavior; an explicit `texture_reference_generation_angles` list
+  overrides everything. The plan, its predicted per-angle coverage gains, and the
+  static counterfactual are always recorded in the bundle metadata
 
 Texture color is exact where a photo observed the surface and reconstructed elsewhere;
 regions no photo can see remain approximations unless you add more views (real or generated).

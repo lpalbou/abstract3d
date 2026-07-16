@@ -20,7 +20,14 @@ on synthetic textured meshes:
   them (the measured (0,0)-pose bug class),
 - the artifact battery refuses a candidate that ADDS a foreign pale
   blotch (the image-in-image stamp payload / white rim-splash class)
-  and never punishes inherited or removed artifacts (A/B direction).
+  and never punishes inherited or removed artifacts (A/B direction),
+- the CATASTROPHIC-BASELINE regime (the measured x-wing incident: a
+  pose-collapsed baseline is ~all fill and the brighten-A/B vote
+  false-refuses correct rescues): a collapsed baseline switches the
+  brighten vote off, the hue vote to the absolute source-band form,
+  and arms the mirror-consistency axis; healthy baselines keep the
+  exact current behavior (the chair-incident doctrine: the regime must
+  never soften the gate where the baseline carries evidence).
 """
 
 from __future__ import annotations
@@ -393,6 +400,208 @@ def test_inherited_blotch_is_not_punished() -> None:
                    for reason in verdict["reasons"])
     assert verdict["metrics"]["artifact_battery"][
         "added_pale_blotch"]["worst"] == 0.0
+
+
+def broken_baseline_stats() -> dict:
+    """Stats of a registration-collapsed single-photo bake (the x-wing
+    incident shape: source coverage 0.0096 / efficiency 0.090, both
+    under the corpus-calibrated collapse floors 0.10 / 0.25)."""
+
+    return {
+        "observed_coverage_ratio": 0.01,
+        "observed_view_stats": [{
+            "index": 1, "label": "front", "coverage_ratio": 0.01,
+            "capture_efficiency": 0.09, "facing_fraction": 0.11}],
+    }
+
+
+def rescued_candidate_stats(total: float = 0.30) -> dict:
+    """Stats of a candidate that measurably fixes the coverage collapse
+    (references added witnessed surface; the source row is inherited
+    from the same broken registration)."""
+
+    return {
+        "observed_coverage_ratio": total,
+        "observed_view_stats": [
+            {"index": 1, "label": "front", "coverage_ratio": 0.01,
+             "capture_efficiency": 0.09, "facing_fraction": 0.11},
+            {"index": 2, "label": "back", "coverage_ratio": 0.15,
+             "capture_efficiency": 0.5, "facing_fraction": 0.3}],
+        "symmetry_completion": {"geometry_symmetry_score": 0.98},
+    }
+
+
+def healthy_baseline_stats() -> dict:
+    return {
+        "observed_coverage_ratio": 0.20,
+        "observed_view_stats": [{
+            "index": 1, "label": "front", "coverage_ratio": 0.18,
+            "capture_efficiency": 0.5, "facing_fraction": 0.36}],
+    }
+
+
+def bright_back_pair() -> tuple:
+    """Dark sphere baseline + near-white back candidate: the brighten
+    displacement is far over the healthy budget (the same construction
+    the both-directions test refuses)."""
+
+    dark_sphere = textured_sphere(noise_texture(21, low=60, high=110))
+    bright = np.asarray(noise_texture(21, low=60, high=110), np.uint8).copy()
+    white_band = np.asarray(noise_texture(5, low=245, high=255), np.uint8)
+    bright[:, :26] = white_band[:, :26]
+    bright[:, -26:] = white_band[:, -26:]
+    return dark_sphere, textured_sphere(Image.fromarray(bright, "RGB"))
+
+
+def test_catastrophic_regime_accepts_brightening_rescue() -> None:
+    """The x-wing incident class: the baseline collapsed to ~all fill,
+    the candidate brightens it beyond the healthy budget — which is
+    what correct references DO to a fill bake. With a collapsed
+    baseline the brighten axis must record (loudly) instead of voting,
+    and the same candidate that the healthy regime refuses must ship."""
+
+    dark_sphere, bright_back = bright_back_pair()
+    try:
+        photo = source_photo_of(dark_sphere)
+    except Exception as exc:  # pragma: no cover - environment specific
+        pytest.skip(f"offscreen renderer unavailable: {exc}")
+
+    # Control: with NO stats (status quo) the brighten vote refuses.
+    refused = evaluate_generated_bake(dark_sphere, bright_back,
+                                      source_rgba=photo)
+    assert any("tone damage (brightening)" in r for r in refused["reasons"])
+    assert refused["metrics"]["baseline_regime"]["regime"] == "healthy"
+
+    verdict = evaluate_generated_bake(
+        dark_sphere, bright_back, source_rgba=photo,
+        baseline_stats=broken_baseline_stats(),
+        candidate_stats=rescued_candidate_stats())
+    regime = verdict["metrics"]["baseline_regime"]
+    assert regime["regime"] == "catastrophic"
+    assert regime["collapse"]["fired"] is True
+    assert regime["baseline_sanity"]["accepted"] is False
+    assert regime["candidate_fixes_collapse"]["value"] is True
+    tone = verdict["metrics"]["composition_tone_damage"]
+    assert tone["brighten_worst"] > tone["brighten_max_allowed"]
+    assert tone["brighten_votes"] is False
+    assert tone["darken_votes"] is True
+    assert any("recorded, not voting" in w for w in verdict["warnings"])
+    assert not any("tone damage (brightening)" in r
+                   for r in verdict["reasons"])
+    assert verdict["accepted"] is True
+
+
+def test_catastrophic_regime_refuses_off_evidence_hue() -> None:
+    """Broken baseline + WRONG candidate (30-deg hue-rotated back): the
+    absolute source-band axis must carry the refusal — the A/B drift
+    charge is fill-confounded in this regime and no longer votes."""
+
+    base_mesh = textured_sphere(red_noise_texture(11))
+    try:
+        photo = source_photo_of(base_mesh)
+    except Exception as exc:  # pragma: no cover - environment specific
+        pytest.skip(f"offscreen renderer unavailable: {exc}")
+    base = np.asarray(red_noise_texture(11), np.uint8).copy()
+    rotated = hue_rotate_array(base, 30.0)
+    base[:, :26] = rotated[:, :26]
+    base[:, -26:] = rotated[:, -26:]
+    candidate = textured_sphere(Image.fromarray(base, "RGB"))
+
+    verdict = evaluate_generated_bake(
+        base_mesh, candidate, source_rgba=photo,
+        baseline_stats=broken_baseline_stats(),
+        candidate_stats=rescued_candidate_stats())
+    assert verdict["metrics"]["baseline_regime"]["regime"] == "catastrophic"
+    assert verdict["accepted"] is False
+    absolute = verdict["metrics"]["absolute_hue_damage"]
+    assert absolute["votes"] is True
+    assert absolute["worst"] > absolute["max_allowed"]
+    assert any("candidate hue sits" in r for r in verdict["reasons"])
+    # the A/B drift form is recorded but not the voter here
+    assert verdict["metrics"]["composition_hue_damage"]["votes"] is False
+
+
+def test_catastrophic_regime_refuses_asymmetric_displaced_content() -> None:
+    """Broken baseline + content that breaks the subject's own
+    left-right symmetry (the mis-registration signature: an 8% lateral
+    content shift measured 1.496-1.499 vs fleet accepts <= 0.516): the
+    mirror-consistency axis must refuse. The band is BRIGHT so the
+    still-voting darken axis stays quiet and the mirror axis is proven
+    to carry the refusal alone."""
+
+    base_mesh = textured_sphere(noise_texture(31, low=90, high=130))
+    try:
+        photo = source_photo_of(base_mesh)
+    except Exception as exc:  # pragma: no cover - environment specific
+        pytest.skip(f"offscreen renderer unavailable: {exc}")
+    asym = np.asarray(noise_texture(31, low=90, high=130), np.uint8).copy()
+    white_band = np.asarray(noise_texture(6, low=240, high=255), np.uint8)
+    # one-sided band (u in [0.15, 0.35]): visible on ONE flank only
+    asym[:, 38:90] = white_band[:, 38:90]
+    candidate = textured_sphere(Image.fromarray(asym, "RGB"))
+
+    verdict = evaluate_generated_bake(
+        base_mesh, candidate, source_rgba=photo,
+        baseline_stats=broken_baseline_stats(),
+        candidate_stats=rescued_candidate_stats())
+    assert verdict["metrics"]["baseline_regime"]["regime"] == "catastrophic"
+    mirror = verdict["metrics"]["mirror_consistency"]
+    assert mirror["votes"] is True
+    assert mirror["worst"] > mirror["max_allowed"]
+    assert any("breaks left-right symmetry" in r for r in verdict["reasons"])
+    assert verdict["accepted"] is False
+    # darkening (still voting) must not be the carrier
+    assert not any("tone damage (darkening)" in r
+                   for r in verdict["reasons"])
+
+
+def test_catastrophic_regime_requires_coverage_rescue() -> None:
+    """Both-broken case: a candidate that does not fix the coverage
+    collapse ships the baseline exactly as today, whatever its renders
+    look like."""
+
+    dark_sphere, bright_back = bright_back_pair()
+    try:
+        photo = source_photo_of(dark_sphere)
+    except Exception as exc:  # pragma: no cover - environment specific
+        pytest.skip(f"offscreen renderer unavailable: {exc}")
+    verdict = evaluate_generated_bake(
+        dark_sphere, bright_back, source_rgba=photo,
+        baseline_stats=broken_baseline_stats(),
+        candidate_stats=rescued_candidate_stats(total=0.05))
+    assert verdict["metrics"]["baseline_regime"][
+        "candidate_fixes_collapse"]["value"] is False
+    assert verdict["accepted"] is False
+    assert any("does not fix the witnessed-coverage collapse" in r
+               for r in verdict["reasons"])
+
+
+def test_healthy_baseline_keeps_brighten_vote() -> None:
+    """The chair-incident doctrine at unit level: with a HEALTHY
+    baseline (stats above the collapse floors) the brighten axis keeps
+    its strict vote and the absolute axes stay out of the verdict —
+    the regime may only relax judgment where the baseline measurably
+    carries no evidence."""
+
+    dark_sphere, bright_back = bright_back_pair()
+    try:
+        photo = source_photo_of(dark_sphere)
+    except Exception as exc:  # pragma: no cover - environment specific
+        pytest.skip(f"offscreen renderer unavailable: {exc}")
+    verdict = evaluate_generated_bake(
+        dark_sphere, bright_back, source_rgba=photo,
+        baseline_stats=healthy_baseline_stats(),
+        candidate_stats=rescued_candidate_stats())
+    regime = verdict["metrics"]["baseline_regime"]
+    assert regime["regime"] == "healthy"
+    assert regime["collapse"]["fired"] is False
+    assert regime["baseline_sanity"]["accepted"] is True
+    assert verdict["accepted"] is False
+    assert any("tone damage (brightening)" in r for r in verdict["reasons"])
+    assert verdict["metrics"]["composition_tone_damage"][
+        "brighten_votes"] is True
+    assert "absolute_hue_damage" not in verdict["metrics"]
+    assert "mirror_consistency" not in verdict["metrics"]
 
 
 def test_gate_pose_resolves_from_bake_stats(baseline) -> None:

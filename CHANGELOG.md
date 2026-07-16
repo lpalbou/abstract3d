@@ -2,6 +2,349 @@
 
 ## Unreleased
 
+### Added (coverage-driven adaptive reference-angle planning)
+
+The generated-reference angles are no longer unconditionally the static
+`DEFAULT_ANGLES` (back / side_left / side_right / top): those slots
+encode the ASSUMPTION of a canonical front source photo, and the x-wing
+incident measured what happens when the assumption is false — from its
+(0,+33) top-elevation source the whole static set predicts 0.257 of
+quality-weighted witnessed surface while the planner's set predicts
+0.453 (+76%), because the underside (first pick, gain 0.223 — 3x the
+static set's best slot) was never a static slot and the static top
+duplicates surface the photo and the planner's elevated picks already
+witness (residual gain 0.013, below the stop floor).
+
+- **Planner** (`reference_generation.plan_reference_angles`): greedy
+  selection over a fixed 16-candidate view sphere (equatorial ring at
+  45° steps — one facing-0.2 view reaches ±78.5° of azimuth, so the
+  ring over-covers; ±55° rings at 90° steps — 55° is the measured
+  production top angle and sees vertical normals at facing 0.82; no
+  poles — the ±55° rings already witness polar caps at 4x the paint
+  floor, and poles are the least generator-feasible class), maximizing
+  marginal newly-witnessed surface under the bake's own paint-weight
+  law (`((facing-0.2)/0.8)^2` — a binary-cutoff objective measurably
+  inflates coverage with grazing content the bake paints at near-zero
+  weight). Surface the source photo witnesses is LOCKED (the bake's
+  `protect_observed_texels` absolute mode forbids generated content
+  there, so no candidate may claim it). Stops at `budget` (4) or when
+  the marginal gain drops below `min_gain` = 0.025, measured on the
+  recorded twelve-bundle fleet: every genuinely-new-region slot
+  predicts 0.029+ (every budget-4 pick 0.032+), the redundant class
+  0.022 and below. Deterministic, CPU-only, no rendering (~0.1 s on
+  120k-face production meshes). Witness math is the existing
+  `project_source_witness` projection, factored into a shared
+  vertex-visibility helper (`_view_projection`) and verified
+  bit-identical on fleet meshes.
+- **One pose estimate per run** (hunyuan runtime + `rebake_bundle`):
+  the refs-off A/B baseline is now baked BEFORE reference generation
+  (the generation flow always baked it — after the candidate — so this
+  reorders, costing zero extra bakes), and its pose-guard verdict is
+  the single source-pose statement threaded to angle planning, to
+  generation conditioning (`source_pose` — historically hardcoded
+  (0,0) in the pipeline while the bake estimated, so the anchor-class
+  witnessed-consistency gate judged the WRONG region on pose-estimated
+  subjects), and through the A/B verdict. Threading the pose through
+  `source_pose_override` was measured and REJECTED: an override flips
+  every view's registration to the projector frame — semantics the
+  estimated-pose lane must not inherit (measured on the face proof:
+  verdict1 failures 2 -> 10 when estimated poses are re-centered) and
+  which would break the certified owl byte-identity even at (0,0).
+- **Option surface**: `texture_reference_angle_planning` /
+  `--texture-reference-angle-planning` / `reference_angle_planning`
+  (rebake) ∈ {auto, adaptive, static}; explicit
+  `texture_reference_generation_angles` continues to override
+  everything (unchanged contract). The plan — planned angles, per-angle
+  predicted gains, coverage curve, static counterfactual, and the
+  planning mode that actually chose the angles — is persisted in
+  `texture_artifacts.reference_generation.angle_plan` in every
+  generation-active bundle regardless of mode (persist-for-diagnosis).
+- **Default: `auto`** — adaptive exactly when the pose lane COMMITS a
+  non-canonical source pose (estimated, or an explicit non-zero rebake
+  override), static otherwise. Justification from the fleet planning
+  table (2026-07-15, /tmp/cov1): on every declared-pose subject (owl,
+  chair, face) the adaptive advantage is small (+6-7% relative
+  predicted coverage) and inside the planner's own noise, so the
+  certified declared-pose flows keep their static sets and stay
+  byte-identical; on every estimated-pose subject the static set
+  leaves large measured coverage on the table (+15% portrait, +40-57%
+  cars, +76% x-wing incident, +110% starship) because the static slots
+  double-cover the photo hemisphere and miss its antipode. The pose
+  guard's double-keyed commit semantics bound the wrong-plan risk: a
+  pose only moves on decisive shape evidence, and planning under a
+  deliberately mis-estimated pose (±15° on every fleet subject) costs
+  at most 3.3% of the true-pose plan's predicted coverage while still
+  beating the static set everywhere (sensitivity study in
+  /tmp/cov1/report.md).
+
+Validated (MPS, the production mlx-gen + flux.2-klein-4b-8bit
+configuration; full logs and proof renders in /tmp/cov1):
+
+- Full suite **398 passed, 3 skipped, 3 xfailed** (entry 382 + 16 new
+  tests); parity canaries **3/3** (the refs-off paths this program must
+  not touch are pinned byte-level and pass unchanged).
+- **Owl e2e (auto -> static lane)**: texture.png md5 a275ea10… and
+  geometry md5 c5d2409b… — **byte-identical to the approved standard**
+  (6th reproduction); ACCEPT healthy; coverage 0.83; the angle plan is
+  recorded in metadata (adaptive counterfactual +6%, not taken).
+- **X-wing incident photo i23d (auto -> adaptive lane)**: pose
+  silhouette_rescue (0,+33); planned underside_right (gain 0.223) /
+  underside_left / top_right / side_left — the underside first, the
+  incident's redundant top dropped (residual 0.013 < 0.025 floor); 4/4
+  planned angles accepted (2 needed one texture-family retry);
+  whole-bake ACCEPT healthy; **coverage 0.5525 vs 0.4132** for the
+  static-angle run of the same photo on the same tree (/tmp/xfix3,
+  +34% relative); texture_qa battery quiet (exit 0); underside render
+  carries plating structure where the static run had fill.
+- **Starship rebake (auto -> adaptive)**: plan underside_right /
+  top_right / underside_left / side_right, 4/4 accepted first try
+  (IoU 0.92-0.96); ACCEPT healthy; coverage **0.7033**; battery quiet
+  (exit 0); the certified proof's flat-fill underside now carries
+  witnessed plating structure.
+- **Sports-car v7 rebake (anchor class, auto -> adaptive)**: 3/4
+  accepted — the planned underside_rear is strict-rejected 6/6
+  (palette_flip family; floor-only candidates are recorded, never
+  baked), the correct refusal for a class the generator cannot render
+  faithfully; coverage **0.3528 vs 0.3353** for the static-mode rebake
+  on the same tree (both ACCEPT healthy, battery quiet on both). The
+  historical v7 product bundle shipped refs-off at coverage 0.112.
+- Pose threading is a deliberate behavior change for the anchor-class
+  gates: the witnessed-consistency gate now judges the region the
+  photo ACTUALLY witnesses (measured on the pinned v7 parity views:
+  the historically-accepted side_left FAILS the witnessed veto at the
+  true pose with tile median 16.96 — under the old (0,0) assumption
+  the gate judged it in the wrong lane and could not see the
+  contradiction). Ladders re-roll more on cars (v7 static-mode top:
+  6/6 witness_veto) and acceptance sets shift within the strict-line
+  contract; the pre-existing `close.dark_smears_4x` refs-on-car class
+  (KnowledgeBase) measures 3 (historical bundle) / 36 (static rebake)
+  / 55 (adaptive rebake) — present in BOTH modes, invisible at product
+  angles, battery quiet; the count tracks how much rim-adjacent
+  surface the references witness (fill has nothing to detect).
+
+### Validated (x-wing incident program — elevated-capture pose + catastrophic-baseline regime; adversarial validation on the merged tree; end-to-end proof)
+
+Validator pass (2026-07-15, /tmp/xfix3) over the two concurrent
+landings below: the pose-lane extended elevation search
+(`texturing.py`) and the catastrophic-baseline acceptance regime
+(`bake_acceptance.py` + call sites). No neutralizations were needed —
+no fleet case regressed on the merged tree.
+
+- **Suite**: 375 passed at entry -> **382 passed, 3 skipped, 3
+  xfailed** on the merged tree (+2 pose tests, +5 regime tests; zero
+  failures). Parity canaries **3/3** at entry, at the pose landing,
+  and on the final merged tree (P1 pose (17.5, 8.0) exact /
+  identical_frac 1.000; P2 c84f2e49… twice; P3 e32ba995… twice).
+- **Fleet pose matrix reproduced independently** (own harness, entry
+  worktree vs merged tree, field-by-field including the full guard
+  trail): **11/11 recorded mover/stayer verdicts bit-identical**
+  (movers fresh_car/car_a/car_b/v7/v4/v2/starship/portrait2mv at
+  their recorded poses; stayers owl/chair/face at declared), the only
+  additive change being the `extended_search` trail key
+  (consulted=False on all 11, in-band best 0.80-0.97). The x-wing
+  moves declared (0,0) -> **silhouette_rescue (0, +33)** with the
+  extension consulted (core best 0.7343 < 0.75 action floor,
+  extended best 0.8506).
+- **Acceptance pins reproduced independently**: fix1 12/12 at the
+  pinned margins (mistoned brighten 2.8155/2.7995, misreg dark
+  0.1004, darktoned 0.3324); hue1 18/18 (rotations 1.978/1.312/6.508
+  REFUSE, hue15 0.623 ACCEPT, car_bo3 vetoed 0.008 / raw 1.870);
+  afix2 battery (accepts <= 0.0036 blotch, v7cand_stamp votes at
+  0.0245); gfix2 2048 rebuilds read healthy-regime ACCEPT with
+  collapse=False. Catastrophic-regime fixtures rerun on the landed
+  gate: x-wing pre-fix pair ACCEPTs with every voting axis green
+  (brighten 0.814 recorded as warning); chair guards clean ACCEPT /
+  +25 L REFUSE (hue-abs 0.282) / misreg REFUSE (mirror 1.495) /
+  rotated REFUSE (hue-abs 5.177). Entry-tree control reproduced BOTH
+  pre-fix defects: the clean rescue REFUSED (brighten 1.025 +
+  confounded hue 1.038) and the misreg candidate ACCEPTED (a real
+  pre-fix acceptance hole the mirror axis closes).
+- **End-to-end proof (MPS, the incident configuration)**:
+  - **The user's exact command** (t23d x-wing): exit 0 **healthy**,
+    zero warnings, 33 min. Fresh t2i draw (top-elevation class);
+    pose silhouette_rescue (0, +15) matching its photo, observed
+    coverage **0.6255** (incident: 0.0095), 4/4 references accepted,
+    whole-bake **ACCEPT in the healthy regime**, battery quiet.
+    Hostile turnaround at el 0/10/50 + top + underside: the texture
+    wraps the ship everywhere (hull plating, cockpit), no
+    fill-dominated product surface, no historical artifact class.
+  - **Elevated-capture i23d control on the exact incident photo**:
+    pose **(0, +33)** — the landscape-predicted basin — coverage
+    0.4132 (source view 0.2064, efficiency 0.462), healthy, 4/4 refs,
+    ACCEPT healthy regime, battery quiet, texture wraps at all
+    elevations. The pose fix is validated against the exact failing
+    input independent of t2i draw variance.
+  - **Owl e2e regression (references on)**: geometry md5 c5d2409b…
+    == the approved standard (5th byte-identical reproduction) and
+    texture.png md5 a275ea10… **byte-identical to the approved
+    proof bake**; ACCEPT 17.02 -> 17.24 / 19.02; battery quiet.
+- **Honest residuals** (tracked, no regression): (a) the fresh t23d
+  x-wing fails the standalone `texel.facet_cellular` QA gate (fill
+  cellular fraction 0.111 vs its 0.080 line — straight-edged
+  fill-detail cells on the never-witnessed underside), a pre-existing
+  fill-synthesis class, not a program regression: the approved
+  legacy chair proof measures 0.542 on the same gate (6.8x its line)
+  and the i23d control PASSES (0.033); battery quiet on all three.
+  (b) The incident bundle itself passes standalone texture_qa exit 0
+  (uniform fill carries nothing for artifact detectors to fire on;
+  only the registration-floor warning names it) — the coverage
+  floors in bundle metadata (quality_verdict) remain the load-bearing
+  detection for the fill class, as designed.
+
+### Fixed (texture acceptance — catastrophic-baseline regime: a collapsed baseline is not an A/B reference; the x-wing incident, gate side)
+
+Live incident (x-wing bundle, 2026-07-15; fix program /tmp/xfix2;
+concurrent with the pose-lane fix below): the source pose failed
+(coverage 0.0095), the no-references baseline failed the single-view
+sanity floors, and `evaluate_generated_bake` still used that ~99%-fill
+bake as the A/B reference — refusing a healthy candidate (4 accepted
+references, IoU 0.81-0.94, artifact battery quiet, fidelity within
+slack) on ONE axis: tone brightening 0.814 vs budget 0.7 at az90_el50.
+Brightening a fill baseline is what correct references DO; the
+directional budgets were calibrated on baselines with witnessed
+coverage 0.112-0.83 (fix1's fleet). The user received the fill
+texture.
+
+- **Regime boundary (measured, not a special case)**: the gate now
+  computes both bakes' single-view sanity verdicts from their stats
+  (the signal the runtime already records — threaded to the call
+  sites, never recomputed) and derives `baseline_regime` from the
+  corpus-calibrated registration-collapse line (`artifact_gates`
+  floors: source coverage < 0.10 AND capture efficiency < 0.25).
+  Healthy/pinned baselines measure >= 0.1088 / 0.2944 (the one
+  sub-0.10 live bundle, car_final at 0.0572, is rescued by its 0.3273
+  efficiency); the measured catastrophes sit at 0.0096/0.090 (x-wing),
+  0.0498/0.166 (v4 ghost), 0.013/0.030 (the broken-chair guards).
+  Deliberately NOT the sanity-floors verdict itself: the pinned v7
+  baseline fails the 0.12 total floor at 0.112 while fix1 PROVED the
+  A/B axes calibrated at that coverage — user-visible degradation and
+  A/B-semantic collapse are different, separately measured lines.
+- **Catastrophic regime** (baseline collapsed): fidelity, brightness,
+  darken and the battery keep their A/B votes (the photo is external
+  truth and fill is dark-biased and blotch-free by construction —
+  added == absolute, measured 0.0000 baseline blotch on both broken
+  baselines). Brighten-A/B records loudly but cannot vote (measured
+  0.81-1.03 on CORRECT rescues vs 10.85 on a +25 L mis-tone — same
+  sign, no boundary; no absolute replacement exists: honestly-bright
+  unseen surface measures 6.26 of above-photo-band mass where the
+  mis-tone measures 0.28 — inverted). Hue switches to the ABSOLUTE
+  source-band form (`_band_distance_damage`, floor 10 deg, budget
+  0.15: catastrophic-lane accepts <= 0.035, the +25 L mis-tone's
+  gamut-bend 0.284 = 1.9x over, a bake-dominating 30-deg rotation
+  5.18 = 35x; colorless photos keep the legacy A/B charge
+  fail-closed). A NEW mirror-consistency axis (`_mirror_pair_damage`,
+  az90 vs mirrored az-90 at both elevations, floor 15 L, budget 1.0,
+  gated on the bake's own geometry-symmetry score >= 0.95; fleet
+  scores 0.966-0.985) catches displaced content: the
+  8%-content-shifted back measures 1.496-1.499 in BOTH regimes vs
+  fleet accepts <= 0.516 (the starship's honest texture asymmetry).
+  The candidate must also measurably FIX the collapse (total coverage
+  >= the 0.12 floor and > baseline) or both bakes are broken and the
+  baseline ships degraded exactly as before.
+- **Metadata honesty**: `metrics["baseline_regime"]` records the
+  regime, the collapse values, and both sanity verdicts; every tone /
+  hue / mirror metric carries its vote flag; both call sites
+  (`rebake_bundle`, `hunyuan3d_runtime._run_generation`) reuse the
+  gate's recorded sanity verdict for whichever side ships, and a
+  catastrophic-accept ships the candidate with its own floors verdict
+  (source rows inherited from the broken registration until the pose
+  fix heals them) plus explicit postprocess warnings.
+- **X-wing outcome (CPU rebuilds of the shipped bundle + its 4
+  persisted references at 2048)**: pre-pose-fix tree — collapse fires
+  (0.0096/0.090), the candidate fixes coverage 0.0095 -> 0.3336, every
+  voting axis green (fidelity 16.63 -> 17.51 vs max 18.63; brightness
+  35.29 -> 42.04; darken 0.0/0.03; hue-abs 0.000/0.15; mirror
+  0.000/1.0 at geometry score 0.9853; added blotch 0.0/0.009) and the
+  bake ACCEPTS with brighten 0.814 recorded as a loud warning — the
+  incident verdict flips for the measured reason. Post-pose-fix tree —
+  the pose lane finds (0, +33), the baseline passes the collapse line
+  (coverage 0.212/efficiency 0.476) and the gate hands back to the
+  normal healthy A/B path seamlessly (verified on the merged tree:
+  regime healthy, candidate ACCEPT).
+- **Chair-incident guard** (wrong refs must never ship because a bad
+  baseline flattered them — here inverted: a bad baseline must not
+  damn correct ones either): fix1's chair fixtures rebuilt over a
+  DELIBERATELY collapsed baseline (center-occluded source alpha,
+  coverage 0.0179). Correct back ref ACCEPTS (previously refused by
+  the same poisoned axes: brighten 1.025 + fill-confounded hue 1.038);
+  +25 L mis-tone REFUSES via absolute hue 0.282; 8% content shift
+  REFUSES via mirror consistency 1.495; 30-deg hue rotation REFUSES
+  via absolute hue 5.18. Measured limits recorded (KnowledgeBase): the
+  bright-side pure-L mis-tone and, under degraded photo evidence, the
+  -25 L dark mis-tone present no absolute evidence separable from
+  honest subjects (the portrait's legitimate back ref sits -25.9 L
+  from its photo) — the healthy lane keeps refusing those classes
+  decisively (pinned +/-25 L verdicts unchanged, margins 4x/11x).
+- **Pins**: all 12 fix1 fixture verdicts, hue1's 3 chroma-rotation
+  REFUSEs + live pairs (car_bo3 vetoed 0.008 / raw 1.870 reproduced to
+  the third digit), the hue15 probe, gfix2's gate rows
+  (fresh_car/v7/owl full @2048) and afix2's battery calibration
+  (v7cand_stamp 0.0245 refuses; all 12 accept pairs quiet) hold on the
+  landed gate — every pinned baseline stays in the healthy regime by
+  measurement, so the healthy path is bit-unchanged. Suite green with
+  5 new regime tests; parity canaries 3/3 with the historical md5
+  pins.
+
+### Fixed (source pose — elevated captures outside the rescue lane's search band; the x-wing incident)
+
+Live user incident (`out/x-wing`): the t2i source photo is a
+top-three-quarter capture (true camera ~el +33), a routine real-world
+class (top-down product photos, aerial vehicles, figurines shot from
+above). The NCC spike was rightly vetoed by the silhouette guard
+(`ncc_vetoed_by_silhouette`, score_at_declared -0.064), but the rescue
+lane only searched el {-15..+15}, so the bake shipped declared (0,0):
+observed coverage 0.0095 / capture efficiency 0.090 — the texture was
+fill. Measured landscape (extended grid, el +/-60): the true basin is
+(az 0, el +30) registered-silhouette IoU 0.857 vs 0.734 best-in-band
+(below the 0.75 action floor) and 0.617 declared.
+
+Fix (`estimate_pose_with_silhouette_guard`): EXTENDED ELEVATION SEARCH,
+coarse-to-fine, consulted ONLY when the calibrated band cannot itself
+justify action (in-band best registered IoU < `rescue_min_best_riou`
+0.75). Below that floor the guard probes elevation tiers +/-25/40/55
+(full azimuth window at step 10), refines one grid-resolution
+neighborhood (az +/-5, el +/-8) around the probe argmax, and merges the
+evidence into the UNCHANGED veto/override/rescue logic; the trail
+records `extended_search`. Above the floor the photo is explained
+within the band and the extension never runs — measured on the recorded
+fleet (in-band best 0.80-0.97 everywhere), so every calibrated verdict
+keeps a bit-identical decision trail and pays zero extra renders. The
+double-key thresholds transfer to the high-elevation basin without
+retuning, with measured margins: riou gap 0.234 (2.3x the 0.10 key),
+declared aspect err 1.093 (7.3x the 0.15 key; the frontal render's
+bbox aspect is ~3x the elevated photo's — wings edge-on vs plan view),
+basin best 0.851 vs
+floor 0.75, and the basin pose's own aspect err 0.014-0.10 stays safely
+below the commit-side override key. Budget: worst case ~74 extra
+renders+registrations, ~4-6 s CPU on a 120k-face mesh, on top of the
+~105-pose calibrated band (measured guard wall time 10.2 -> 14.4 s on
+the x-wing; fleet cases unchanged at 10-11 s).
+
+Results: x-wing pose (0,0) -> silhouette_rescue **(0, +33)** (riou
+0.851); source-only CPU rebake coverage **0.0095 -> 0.2135 (22x)**,
+capture efficiency 0.090 -> 0.475 (floors pass). Fleet regression
+(12 cases): fresh car (40,15), gfix3 draw A ncc (25.9,15), draw B
+rescue (25,8), v7 ncc (17.5,8), v4 rescue (+20,0), v2 rescue (+30,8),
+starship ncc (30,15), portrait ncc (20,8), owl/chair/face declared —
+all reproduce exactly (trail-identical); parity canaries 3/3. Synthetic
+controls: fleet meshes rendered at known elevated poses recover within
+one grid step (car (10,40) exact; x-wing (5,45) -> (5,48)); a
+round/pose-tolerant subject (owl at el 40) keeps declared honestly —
+its in-band registration is 0.868, above the floor, and pose barely
+moves its silhouette (the projection cost of staying is small by the
+same measure). Characterized limit (recorded, not silently widened):
+a capture whose opposite-sign elevation MIRROR registers in-band just
+above the floor (synthetic car at el -35: its el +15 mirror registers
+0.763) ships the in-band rescue exactly as before — catching it would
+require far-band candidates to join calibrated plateaus at
+jitter-scale margins, which the recorded fleet forbids. The NCC lane's
+elevation candidates are measured NOT necessary to extend (its validity
+assumption is already broken on this class — score_at_declared -0.064 —
+and the rescue lands within one grid step of the coverage optimum
+without it); left untouched. New tests:
+`test_pose_guard_recovers_elevated_capture_via_extended_search`,
+`test_pose_guard_extension_stays_out_of_calibrated_band_decisions`.
+
 ### Validated (five-agent artifact program — integration matrix on the merged tree; end-to-end proof pack)
 
 Integrator-validator pass (2026-07-14, /tmp/afix5) over the four

@@ -756,6 +756,155 @@ def test_shape_candidates_option_validation(monkeypatch, tmp_path) -> None:
     assert capture["seeds"] == []
 
 
+def test_texture_reference_angle_planning_option_validation(monkeypatch, tmp_path) -> None:
+    from abstract3d.errors import InvalidRequestError
+
+    backend = runtime.Hunyuan3DShapeBackend(owner=None)
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere], capture)
+
+    with pytest.raises(InvalidRequestError, match="texture_reference_angle_planning"):
+        backend.i23d(
+            _alpha_disc_image(), device="cpu", texture_mode="none",
+            texture_reference_angle_planning="clever",
+        )
+    # A typo fails in milliseconds, before any diffusion draw.
+    assert capture["seeds"] == []
+
+    # every valid mode is consumed silently (geometry-only run: the
+    # planning lane itself is exercised by the bundle/rebake tests)
+    for mode in ("auto", "adaptive", "static"):
+        result = backend.i23d(
+            _alpha_disc_image(), device="cpu", texture_mode="none",
+            texture_reference_angle_planning=mode,
+        )
+        assert result["metadata"]["appearance_mode"] == "geometry_only"
+
+
+def test_list_operations_schema_exposes_angle_planning() -> None:
+    backend = runtime.Hunyuan3DShapeBackend(owner=None)
+    operations = backend.list_operations(task="image_to_scene3d")
+    schema = operations[0]["parameter_schema"]["properties"]
+    assert schema["texture_reference_angle_planning"]["enum"] == [
+        "auto", "adaptive", "static"]
+
+
+def test_texture_stage_adaptive_planning_threads_pose_and_plan(
+        monkeypatch, tmp_path) -> None:
+    """Full texture-stage integration on the fake runtime: the baseline
+    bake runs FIRST, its pose estimate reaches generation's source_pose,
+    the adaptive plan chooses the generated angles, and the plan (with
+    predicted gains) lands in texture_artifacts.reference_generation."""
+
+    import io
+
+    from PIL import Image
+
+    # Host-only workaround (documented in the validation harnesses): after
+    # real torch tensor work, skimage's colorconv matmul through Accelerate
+    # segfaults on this macOS host. The einsum route is numerically
+    # identical (asserted) and only this test runs torch work + lab2rgb in
+    # one process.
+    import skimage.color.colorconv as _colorconv
+
+    def _convert_einsum(matrix, arr):
+        arr = _colorconv._prepare_colorarray(arr)
+        return np.einsum("...i,ji->...j", arr, matrix.astype(arr.dtype))
+
+    probe = np.random.default_rng(1).random((5, 7, 3))
+    matrix = np.asarray([[3.24, -1.54, -0.50], [-0.97, 1.88, 0.04],
+                         [0.06, -0.20, 1.06]])
+    assert float(np.abs(_convert_einsum(matrix, probe)
+                        - (probe @ matrix.T)).max()) < 1e-12
+    monkeypatch.setattr(_colorconv, "_convert", _convert_einsum)
+
+    backend = runtime.Hunyuan3DShapeBackend(owner=None)
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere], capture)
+
+    monkeypatch.setattr(runtime, "has_image_composer", lambda owner: True)
+    monkeypatch.setattr(
+        "abstract3d.image_composition.resolve_image_generation_request",
+        lambda owner: {})
+    monkeypatch.setattr(
+        "abstract3d.captioning.caption_image", lambda image, **kw: "test object")
+
+    def fake_matte(img):
+        arr = np.asarray(img.convert("RGBA")).copy()
+        dark = arr[:, :, :3].astype(int).sum(axis=2) < 90
+        arr[:, :, 3] = np.where(dark, 0, 255).astype(np.uint8)
+        return Image.fromarray(arr, "RGBA")
+
+    monkeypatch.setattr(
+        "abstract3d.segmentation.remove_background_robust", fake_matte)
+
+    def tinting_echo(prompt, image, **kwargs):
+        # Right panel of the composite canvas = the clay at the requested
+        # angle; tint its foreground with the source color so both the
+        # silhouette gate and the material gates pass for ANY planned
+        # angle without knowing the plan in advance.
+        canvas = Image.open(io.BytesIO(image)).convert("RGB")
+        right = canvas.crop((canvas.width // 2, 0, canvas.width, canvas.height))
+        arr = np.asarray(right).copy()
+        arr[arr.sum(axis=2) > 90] = (180, 160, 140)
+        buffer = io.BytesIO()
+        Image.fromarray(arr).save(buffer, format="PNG")
+        return buffer.getvalue()
+
+    monkeypatch.setattr(
+        "abstract3d.reference_generation.default_i2i_generator",
+        lambda owner: tinting_echo)
+
+    seen_pose: dict = {}
+    from abstract3d import reference_generation as refgen
+
+    real_generate = refgen.generate_reference_views
+
+    def spy_generate(mesh_arg, source, **kwargs):
+        seen_pose["source_pose"] = kwargs.get("source_pose")
+        return real_generate(mesh_arg, source, **kwargs)
+
+    monkeypatch.setattr(
+        "abstract3d.reference_generation.generate_reference_views",
+        spy_generate)
+
+    result = backend.i23d(
+        _alpha_disc_image(),
+        device="cpu",
+        texture_mode="baked_basecolor",
+        texture_resolution=64,
+        texture_reference_generation="on",
+        texture_reference_angle_planning="adaptive",
+    )
+    metadata = result["metadata"]
+    report = metadata["texture_artifacts"]["reference_generation"]
+    plan = report["angle_plan"]
+    assert plan["mode"] == "adaptive"
+    assert plan["angles_source"] == "adaptive"
+    assert plan["selected"], "the sphere plan must select angles"
+    assert all(row["predicted_gain"] >= plan["min_gain"]
+               for row in plan["selected"])
+    # generation ran exactly the planned angles, conditioned on the
+    # baseline bake's pose statement
+    generated_labels = [row["label"] for row in report["angles"]]
+    assert generated_labels == [row["label"] for row in plan["selected"]]
+    assert seen_pose["source_pose"] == tuple(plan["source_pose"])
+    source_pose = metadata["texture_artifacts"]["source_pose"]
+    assert seen_pose["source_pose"] == (
+        float(source_pose["azimuth_deg"]), float(source_pose["elevation_deg"]))
+    # the A/B machinery ran against the pre-baked baseline
+    assert "bake_acceptance" in report
+    # accepted views reached the bake
+    view_labels = [row.get("label") for row in
+                   metadata["texture_artifacts"]["observed_view_stats"]]
+    for label in generated_labels:
+        if any(entry["label"] == label and entry["accepted"]
+               for entry in report["angles"]):
+            assert label in view_labels
+
+
 def test_shape_candidates_config_key_default(monkeypatch, tmp_path) -> None:
     from types import SimpleNamespace
 

@@ -311,6 +311,28 @@ def test_i23d_passes_shape_candidates(monkeypatch, tmp_path) -> None:
     assert _CaptureManager.calls["shape_candidates"] == 3
 
 
+def test_i23d_passes_angle_planning_only_when_set(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(cli, "Scene3DManager", _CaptureManager)
+
+    exit_code = cli.main(
+        [
+            "i23d", "car.png", "--output-dir", str(tmp_path),
+            "--backend", "hunyuan3d21",
+            "--texture-reference-angle-planning", "adaptive",
+        ]
+    )
+    assert exit_code == 0
+    assert _CaptureManager.calls["texture_reference_angle_planning"] == "adaptive"
+
+    # strict option contract: unset means ABSENT, not None
+    exit_code = cli.main(
+        ["i23d", "car.png", "--output-dir", str(tmp_path),
+         "--backend", "hunyuan3d21"]
+    )
+    assert exit_code == 0
+    assert "texture_reference_angle_planning" not in _CaptureManager.calls
+
+
 def test_t23d_quality_preset_maps_to_shape_candidates(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(cli, "Scene3DManager", _CaptureManager)
 

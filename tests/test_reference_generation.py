@@ -726,3 +726,294 @@ def test_generate_reference_views_rejects_unknown_render_size_mode() -> None:
             angles=[("back", 180.0, 0.0)],
             render_size="huge",
         )
+
+
+# --- coverage-driven adaptive angle planning --------------------------------
+
+
+def test_plan_reference_angles_front_source_covers_the_complement() -> None:
+    """A front source must plan the COMPLEMENT: the antipodal back first,
+    only angles off the witnessed front hemisphere, and vertical (top or
+    bottom band) coverage. On a featureless sphere the optimal complement
+    under the bake's paint-weight law is back + elevated-rear compounds
+    (they out-cover the equatorial sides against a locked front cap), so
+    exact labels are asserted only where geometry forces them; the
+    canonical-slot reproduction on real front-pose subjects is pinned by
+    the recorded fleet table (owl/face plan back + both profiles)."""
+
+    plan = refgen.plan_reference_angles(sphere_mesh(), (0.0, 0.0))
+    selected = plan["selected"]
+    assert selected[0]["label"] == "back"
+    # no pick duplicates the source-facing front
+    for row in selected:
+        assert abs(row["azimuth_deg"]) >= 45.0 or abs(row["elevation_deg"]) >= 40.0
+    assert "front" not in [row["label"] for row in selected]
+    # vertical coverage: at least one elevated or depressed band pick
+    assert any(abs(row["elevation_deg"]) >= 40.0 for row in selected)
+    assert len(selected) <= plan["budget"]
+    # gains are the greedy sequence: non-increasing, all above the floor
+    gains = [row["predicted_gain"] for row in selected]
+    assert gains == sorted(gains, reverse=True)
+    assert all(g >= plan["min_gain"] for g in gains)
+    # curve starts at the source coverage and increases with each pick
+    curve = plan["coverage_curve"]
+    assert curve[0] == plan["source_coverage"]
+    assert all(b > a for a, b in zip(curve, curve[1:]))
+    assert plan["predicted_coverage"] == curve[-1]
+    # the plan must not lose to the static counterfactual it replaces
+    assert plan["predicted_coverage"] >= plan["static_predicted_coverage"]
+
+
+def test_plan_reference_angles_front_source_real_proportions() -> None:
+    """On a subject with real-world proportions (wider than deep — the
+    owl/face class), a front source plans the canonical profile slots:
+    both sides witness large head-on area that the back cannot reach."""
+
+    mesh = sphere_mesh()
+    mesh.apply_scale([1.0, 0.6, 0.8])  # deep in x, narrow in y: side-heavy
+    plan = refgen.plan_reference_angles(mesh, (0.0, 0.0))
+    labels = [row["label"] for row in plan["selected"]]
+    assert "side_left" in labels and "side_right" in labels
+    assert "front" not in labels
+
+
+def test_plan_reference_angles_top_source_plans_underside_drops_top() -> None:
+    """The x-wing incident class: an elevated source witnesses the top, so
+    the plan must select underside coverage and must NOT spend a slot on
+    the (now redundant) static top."""
+
+    plan = refgen.plan_reference_angles(sphere_mesh(), (0.0, 55.0))
+    labels = [row["label"] for row in plan["selected"]]
+    assert labels, "elevated source must still plan complementary views"
+    # first pick is the antipode class: an underside-band angle
+    assert plan["selected"][0]["elevation_deg"] <= -40.0
+    assert "top" not in labels  # the incident's redundant slot
+    assert any(row["elevation_deg"] <= -40.0 for row in plan["selected"])
+
+
+def test_plan_reference_angles_respects_budget_and_min_gain() -> None:
+    mesh = sphere_mesh()
+    two = refgen.plan_reference_angles(mesh, (0.0, 0.0), budget=2)
+    assert len(two["selected"]) <= 2
+
+    # an impossible floor: nothing qualifies, the plan is legitimately empty
+    nothing = refgen.plan_reference_angles(mesh, (0.0, 0.0), min_gain=1.0)
+    assert nothing["angles"] == ()
+    assert nothing["selected"] == []
+    assert nothing["coverage_curve"] == [nothing["source_coverage"]]
+
+
+def test_plan_reference_angles_deterministic_and_fast() -> None:
+    mesh = sphere_mesh()
+    photo = solid_rgba((150, 110, 80))
+    first = refgen.plan_reference_angles(mesh, (10.0, 20.0), source_rgba=photo)
+    second = refgen.plan_reference_angles(mesh, (10.0, 20.0), source_rgba=photo)
+    for key in ("angles", "selected", "coverage_curve", "predicted_coverage",
+                "static_predicted_coverage", "source_coverage",
+                "unwitnessable_ratio"):
+        assert first[key] == second[key], key
+
+
+def test_plan_reference_angles_photo_lock_excludes_source_hemisphere() -> None:
+    """Surface the photo witnesses is locked (the bake's
+    protect_observed_texels forbids generated content there), so a
+    candidate at the source pose itself must predict zero gain."""
+
+    mesh = sphere_mesh()
+    plan = refgen.plan_reference_angles(
+        mesh, (0.0, 0.0), source_rgba=solid_rgba((150, 110, 80)),
+        candidates=[("front", 0.0, 0.0), ("back", 180.0, 0.0)], budget=2,
+        min_gain=0.0)
+    by_label = {row["label"]: row for row in plan["selected"]}
+    assert "back" in by_label
+    assert by_label["back"]["predicted_gain"] > 0.1
+    assert ("front" not in by_label
+            or by_label["front"]["predicted_gain"] < 0.01)
+
+
+def test_plan_reference_angles_report_carries_diagnosis_fields() -> None:
+    plan = refgen.plan_reference_angles(sphere_mesh(), (0.0, 33.0))
+    for key in ("source_pose", "source_coverage", "budget", "min_gain",
+                "facing_min", "candidates_evaluated", "selected",
+                "coverage_curve", "predicted_coverage",
+                "static_predicted_coverage", "unwitnessable_ratio",
+                "elapsed_s"):
+        assert key in plan, key
+    assert plan["source_pose"] == [0.0, 33.0]
+    # a closed convex-ish mesh: nearly everything is witnessable
+    assert plan["unwitnessable_ratio"] < 0.05
+    # angles are bake-ready (label, azimuth, elevation) tuples
+    for label, azimuth, elevation in plan["angles"]:
+        assert isinstance(label, str)
+        assert isinstance(azimuth, float) and isinstance(elevation, float)
+
+
+def test_planner_lattice_labels_resolve_to_sensible_phrases() -> None:
+    """Every lattice label must produce a human-sensible view phrase for
+    the generation prompt (explicit entry or the generic fallback)."""
+
+    for label, _azimuth, _elevation in refgen.DEFAULT_PLANNING_CANDIDATES:
+        phrase = refgen._view_phrase(label)
+        assert phrase.startswith("seen")
+        assert "_" not in phrase
+    assert "underside" in refgen._view_phrase("underside")
+    assert "behind" in refgen._view_phrase("top_rear")
+
+
+def test_rebake_bundle_adaptive_planning_generates_planned_angles(
+        tmp_path, monkeypatch) -> None:
+    """reference_angle_planning="adaptive": the generated views are exactly
+    the planned angles, and the plan (with predicted gains) is persisted in
+    the metadata."""
+
+    from abstract3d import bundle as bundle_api
+
+    bundle_dir = tmp_path / "bundle"
+    bundle_dir.mkdir()
+    mesh = sphere_mesh()
+    mesh.export(bundle_dir / "geometry.glb")
+    solid_rgba((150, 120, 90), size=64).save(bundle_dir / "input.png")
+    (bundle_dir / "metadata.json").write_text(json.dumps({"texture_resolution": 64}))
+
+    # The plan is deterministic: compute it up front to build one matching
+    # generation per planned angle, in call order.
+    plan = refgen.plan_reference_angles(
+        mesh, (0.0, 0.0), source_rgba=solid_rgba((150, 120, 90), size=64))
+    planned = list(plan["angles"])
+    assert planned, "sphere front-source plan must select angles"
+
+    def render_generation(azimuth, elevation):
+        from abstract3d.rendering import render_mesh_views
+
+        clay = render_mesh_views(
+            mesh, size=96, azimuths=[azimuth], elevation=elevation)[0]
+        silhouette = refgen.clay_silhouette(clay)
+        rgba = np.zeros((*silhouette.shape, 4), np.uint8)
+        rgba[silhouette] = (180, 140, 100, 255)
+        return Image.fromarray(rgba, "RGBA")
+
+    generator = make_fake_generator(
+        [render_generation(az, el) for _label, az, el in planned])
+    monkeypatch.setattr(
+        "abstract3d.segmentation.remove_background_robust",
+        lambda img: img.convert("RGBA"))
+    monkeypatch.setattr(
+        "abstract3d.reference_generation.default_i2i_generator",
+        lambda owner: generator)
+
+    out_dir = tmp_path / "rebake"
+    _mesh, _stats = bundle_api.rebake_bundle(
+        bundle_dir,
+        output_dir=out_dir,
+        generate_references="on",
+        reference_angle_planning="adaptive",
+        texture_resolution=64,
+    )
+    metadata = json.loads((out_dir / "metadata.json").read_text())
+    report = metadata["generated_references"]
+    assert report["angle_plan"]["angles_source"] == "adaptive"
+    assert report["angle_plan"]["mode"] == "adaptive"
+    generated_labels = [entry["label"] for entry in report["angles"]]
+    assert generated_labels == [label for label, _az, _el in planned]
+    selected = report["angle_plan"]["selected"]
+    assert [row["label"] for row in selected] == generated_labels
+    assert all(row["predicted_gain"] > 0 for row in selected)
+    for label in generated_labels:
+        assert (out_dir / f"generated_{label}.png").exists()
+
+
+def test_rebake_bundle_auto_planning_stays_static_on_declared_pose(
+        tmp_path, monkeypatch) -> None:
+    """Default "auto" mode on a declared-pose subject keeps the static
+    angle set (no fleet change) while still persisting the plan."""
+
+    from abstract3d import bundle as bundle_api
+
+    bundle_dir = tmp_path / "bundle"
+    bundle_dir.mkdir()
+    mesh = sphere_mesh()
+    mesh.export(bundle_dir / "geometry.glb")
+    solid_rgba((150, 120, 90), size=64).save(bundle_dir / "input.png")
+
+    matching = clay_matching_generation(mesh, 180.0)
+    generator = make_fake_generator([matching])
+    monkeypatch.setattr(
+        "abstract3d.segmentation.remove_background_robust",
+        lambda img: img.convert("RGBA"))
+    monkeypatch.setattr(
+        "abstract3d.reference_generation.default_i2i_generator",
+        lambda owner: generator)
+
+    out_dir = tmp_path / "rebake"
+    bundle_api.rebake_bundle(
+        bundle_dir,
+        output_dir=out_dir,
+        generate_references="on",
+        generation_angles=[("back", 180.0, 0.0)],
+        texture_resolution=64,
+    )
+    metadata = json.loads((out_dir / "metadata.json").read_text())
+    report = metadata["generated_references"]
+    # explicit angles keep their historical precedence over any planning
+    assert report["angle_plan"]["angles_source"] == "explicit"
+    assert report["angle_plan"]["mode"] == "auto"
+    # the plan itself is still recorded for diagnosis
+    assert "selected" in report["angle_plan"]
+    assert "predicted_coverage" in report["angle_plan"]
+    assert "static_predicted_coverage" in report["angle_plan"]
+
+
+def test_rebake_bundle_threads_estimated_pose_to_generation(
+        tmp_path, monkeypatch) -> None:
+    """The pose statement the bake uses (override here) must reach
+    generation's source_pose — the historical flow hardcoded (0,0) for
+    the runtime while the bake estimated, splitting the two consumers."""
+
+    from abstract3d import bundle as bundle_api
+
+    bundle_dir = tmp_path / "bundle"
+    bundle_dir.mkdir()
+    mesh = sphere_mesh()
+    mesh.export(bundle_dir / "geometry.glb")
+    solid_rgba((150, 120, 90), size=64).save(bundle_dir / "input.png")
+
+    seen = {}
+    real_generate = refgen.generate_reference_views
+
+    def spy_generate(mesh_arg, source, **kwargs):
+        seen["source_pose"] = kwargs.get("source_pose")
+        return real_generate(mesh_arg, source, **kwargs)
+
+    monkeypatch.setattr(
+        "abstract3d.reference_generation.generate_reference_views",
+        spy_generate)
+    monkeypatch.setattr(
+        "abstract3d.segmentation.remove_background_robust",
+        lambda img: img.convert("RGBA"))
+    matching = clay_matching_generation(mesh, 180.0)
+    monkeypatch.setattr(
+        "abstract3d.reference_generation.default_i2i_generator",
+        lambda owner: make_fake_generator([matching]))
+
+    bundle_api.rebake_bundle(
+        bundle_dir,
+        output_dir=tmp_path / "rebake",
+        generate_references="on",
+        generation_angles=[("back", 180.0, 0.0)],
+        source_pose_override=(10.0, 25.0),
+        texture_resolution=64,
+    )
+    assert seen["source_pose"] == (10.0, 25.0)
+
+
+def test_rebake_bundle_rejects_unknown_planning_mode(tmp_path) -> None:
+    from abstract3d import bundle as bundle_api
+
+    bundle_dir = tmp_path / "bundle"
+    bundle_dir.mkdir()
+    sphere_mesh().export(bundle_dir / "geometry.glb")
+    solid_rgba((150, 120, 90), size=64).save(bundle_dir / "input.png")
+    with pytest.raises(ValueError, match="reference_angle_planning"):
+        bundle_api.rebake_bundle(
+            bundle_dir, reference_angle_planning="clever",
+            texture_resolution=64, write_outputs=False)

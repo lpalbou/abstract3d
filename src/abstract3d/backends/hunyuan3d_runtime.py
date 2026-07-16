@@ -2072,6 +2072,22 @@ class Hunyuan3DShapeBackend:
                         "false; 'on' alone is not consent)."
                     ),
                 },
+                "texture_reference_angle_planning": {
+                    "type": "string",
+                    "enum": ["auto", "adaptive", "static"],
+                    "description": (
+                        "How reference-generation angles are chosen when no "
+                        "explicit angle list is given. 'static' is the "
+                        "canonical back/side_left/side_right/top set; "
+                        "'adaptive' plans angles from the estimated source "
+                        "pose and the mesh's own coverage geometry (greedy "
+                        "marginal newly-witnessed surface); 'auto' (default) "
+                        "plans adaptively exactly when the pose lane commits "
+                        "a non-canonical source pose and keeps declared-pose "
+                        "flows on the static set. The plan and its predicted "
+                        "gains are recorded in metadata either way."
+                    ),
+                },
                 "device": {"type": "string"},
                 "seed": {"type": "integer"},
             },
@@ -2592,6 +2608,28 @@ class Hunyuan3DShapeBackend:
             )
         except ValueError as exc:
             raise InvalidRequestError(str(exc)) from exc
+        # Reference-angle planning mode: which angles the generation lane
+        # synthesizes when the caller did not pass an explicit list.
+        # "static" is the historical DEFAULT_ANGLES set; "adaptive" plans
+        # angles from the estimated source pose + mesh coverage
+        # (reference_generation.plan_reference_angles); "auto" (default)
+        # plans adaptively exactly when the pose lane committed a
+        # non-canonical source pose — the measured class where the static
+        # set leaves coverage on the table (recorded-fleet planning table,
+        # 2026-07-15: +15% to +110% predicted witnessed surface on every
+        # estimated-pose subject vs +6-7% on declared-pose subjects) —
+        # and keeps the certified declared-pose flows byte-identical.
+        texture_reference_angle_planning = str(
+            kwargs.pop("texture_reference_angle_planning", None)
+            or _owner_cfg(self._owner, "scene3d_texture_reference_angle_planning")
+            or _env("ABSTRACT3D_TEXTURE_REFERENCE_ANGLE_PLANNING")
+            or "auto"
+        ).strip().lower()
+        if texture_reference_angle_planning not in {"auto", "adaptive", "static"}:
+            raise InvalidRequestError(
+                "texture_reference_angle_planning must be one of: auto, "
+                f"adaptive, static (got {texture_reference_angle_planning!r})"
+            )
         # Person-specific acknowledgment: "on" is texture-quality opt-in,
         # not identity-synthesis consent. Synthesizing views of a person
         # requires this separate, explicit attestation.
@@ -2983,11 +3021,35 @@ class Hunyuan3DShapeBackend:
             ]
             observed_views.extend(dict(reference) for reference in loaded_references)
 
+            bake_kwargs = dict(
+                texture_resolution=texture_resolution,
+                texture_completion=texture_completion,
+                # Hunyuan reconstructs in a canonical orthographic frame
+                # from a deterministically recentered conditioning image
+                # (ImageProcessorV2.recenter, border_ratio 0.15). The
+                # bake replicates that exact frame per view, which makes
+                # photo-to-mesh registration deterministic instead of an
+                # estimation problem.
+                projection_model="orthographic",
+                canonical_border_ratio=0.15,
+            )
             # Single-photo runs: synthesize the unseen angles from the mesh's
             # own clay renders (silhouette-locked i2i; IoU-gated; tone-matched)
             # so the bake witnesses the whole surface instead of surrendering
             # ~70% of it to mirror completion and fill.
             reference_generation_report: Optional[Dict[str, Any]] = None
+            # Baseline-first bake state (generation lane only): the refs-off
+            # A/B baseline is baked BEFORE generation so its own pose-guard
+            # verdict (source_pose in its stats) is the ONE pose estimate
+            # threaded to angle planning, generation conditioning, and —
+            # through the A/B verdict — acceptance. The generation flow
+            # already baked this exact baseline (after the candidate);
+            # reordering costs zero extra bakes and removes the
+            # generation-vs-bake pose split (generation historically
+            # assumed (0,0) regardless of the estimated pose).
+            baseline_mesh_bake: Optional[Any] = None
+            baseline_stats: Optional[Dict[str, Any]] = None
+            baseline_bake_views: Optional[List[Dict[str, Any]]] = None
             if (
                 texture_reference_generation in {"auto", "on"}
                 and not loaded_references
@@ -3018,15 +3080,97 @@ class Hunyuan3DShapeBackend:
                     )
                 else:
                     from ..image_composition import resolve_image_generation_request
+                    from ..texturing import bake_projection_texture as _bake
+
+                    try:
+                        # Fresh shallow copies: the bake registers views in
+                        # place (view["rgba"] is replaced by its aligned
+                        # version) and the candidate bake below must start
+                        # from the same pristine inputs.
+                        baseline_bake_views = [dict(v) for v in observed_views]
+                        baseline_mesh_bake, baseline_stats = _bake(
+                            mesh.copy(), observed_views=baseline_bake_views,
+                            **bake_kwargs)
+                    except Exception:
+                        # The identical bake below will reproduce this
+                        # failure and take the established texture-failure
+                        # path; the generation lane proceeds without a pose
+                        # estimate (declared (0,0)) exactly as it did
+                        # before the reorder.
+                        baseline_mesh_bake = None
+                        baseline_stats = None
+                        baseline_bake_views = None
+
+                    source_pose_record = dict(
+                        (baseline_stats or {}).get("source_pose") or {})
+                    source_pose_tuple = (
+                        float(source_pose_record.get("azimuth_deg") or 0.0),
+                        float(source_pose_record.get("elevation_deg") or 0.0),
+                    )
+                    pose_estimated = bool(source_pose_record.get("estimated"))
+
+                    # Coverage-driven angle plan: CPU, deterministic,
+                    # seconds. Always computed (persist-for-diagnosis: the
+                    # planned angles + predicted gains reach metadata even
+                    # when the static set ships), never fatal.
+                    angle_plan: Optional[Dict[str, Any]] = None
+                    plan_error: Optional[str] = None
+                    from ..reference_generation import plan_reference_angles
+
+                    try:
+                        angle_plan = plan_reference_angles(
+                            mesh, source_pose_tuple,
+                            source_rgba=source_image.convert("RGBA"))
+                    except Exception as exc:
+                        plan_error = f"{type(exc).__name__}: {exc}"
 
                     try:
                         from ..reference_generation import DEFAULT_ANGLES
 
-                        refgen_angles = texture_reference_generation_angles or DEFAULT_ANGLES
+                        # Angle precedence (unchanged contract at the top):
+                        # explicit angles override everything; otherwise
+                        # "adaptive" (or "auto" on a pose-lane-committed
+                        # non-canonical source) uses the plan; "static" and
+                        # every fallback keep DEFAULT_ANGLES.
+                        adaptive_active = bool(
+                            texture_reference_angle_planning == "adaptive"
+                            or (texture_reference_angle_planning == "auto"
+                                and pose_estimated)
+                        )
+                        if texture_reference_generation_angles:
+                            refgen_angles = texture_reference_generation_angles
+                            angles_source = "explicit"
+                        elif adaptive_active and angle_plan is not None:
+                            refgen_angles = tuple(angle_plan.get("angles") or ())
+                            angles_source = "adaptive"
+                        else:
+                            refgen_angles = DEFAULT_ANGLES
+                            angles_source = "static"
+                            if adaptive_active and plan_error:
+                                postprocess_warnings.append(
+                                    "texture_reference_angle_planning: plan "
+                                    f"failed ({plan_error}); falling back to "
+                                    "the static angle set."
+                                )
+                        angle_plan_record: Dict[str, Any] = {
+                            "mode": texture_reference_angle_planning,
+                            "angles_source": angles_source,
+                        }
+                        if angle_plan is not None:
+                            angle_plan_record.update(angle_plan)
+                            angle_plan_record.pop("angles", None)
+                        if plan_error:
+                            angle_plan_record["error"] = plan_error
                         refgen_kwargs = dict(
                             subject_hint=subject_hint,
                             seed=seed,
                             image_request=resolve_image_generation_request(self._owner),
+                            # The pose estimate conditions the witnessed-
+                            # consistency gate (and the optional tint
+                            # projection) on where the photo actually looks
+                            # from; (0.0, 0.0) — the historical assumption —
+                            # is exactly what a declared-pose subject gets.
+                            source_pose=source_pose_tuple,
                             # Person subjects are refused in BOTH modes
                             # unless the person-specific acknowledgment is
                             # given: "on" is texture-quality opt-in, not
@@ -3049,7 +3193,24 @@ class Hunyuan3DShapeBackend:
                             for view in synthesized_geometry_views
                             if view.get("raw_bytes")
                         }
-                        if replay_sources:
+                        if not refgen_angles:
+                            # An adaptive plan may legitimately select ZERO
+                            # angles (the source already witnesses every
+                            # plannable region above the min-gain floor):
+                            # synthesizing nothing is the plan, not a
+                            # failure.
+                            generated_views = []
+                            reference_generation_report = {
+                                "angles": [],
+                                "accepted": 0,
+                                "rejected": 0,
+                                "skipped": (
+                                    "angle plan selected no angles: every "
+                                    "candidate's predicted coverage gain is "
+                                    "below the min-gain floor"
+                                ),
+                            }
+                        elif replay_sources:
                             generated_views, reference_generation_report = (
                                 _generate_references_with_replay(
                                     mesh,
@@ -3068,6 +3229,9 @@ class Hunyuan3DShapeBackend:
                                 angles=refgen_angles,
                                 **refgen_kwargs,
                             )
+                        if reference_generation_report is not None:
+                            reference_generation_report["angle_plan"] = (
+                                angle_plan_record)
                         observed_views.extend(generated_views)
                         if not generated_views:
                             skip_reason = (
@@ -3096,18 +3260,6 @@ class Hunyuan3DShapeBackend:
                             f"with the single photo: {type(exc).__name__}: {exc}"
                         )
             try:
-                bake_kwargs = dict(
-                    texture_resolution=texture_resolution,
-                    texture_completion=texture_completion,
-                    # Hunyuan reconstructs in a canonical orthographic frame
-                    # from a deterministically recentered conditioning image
-                    # (ImageProcessorV2.recenter, border_ratio 0.15). The
-                    # bake replicates that exact frame per view, which makes
-                    # photo-to-mesh registration deterministic instead of an
-                    # estimation problem.
-                    projection_model="orthographic",
-                    canonical_border_ratio=0.15,
-                )
                 # Snapshot real views before the candidate bake mutates them
                 # in place (registration replaces view["rgba"]): the A/B
                 # baseline must start from the same pristine inputs.
@@ -3118,8 +3270,16 @@ class Hunyuan3DShapeBackend:
                      if not view.get("generated")]
                     if generated_present else None
                 )
-                export_mesh, texture_stats = bake_projection_texture(
-                    mesh, observed_views=observed_views, **bake_kwargs)
+                if baseline_stats is not None and not generated_present:
+                    # No accepted generated views, but the generation lane
+                    # already baked the refs-off baseline for its pose
+                    # estimate — that IS the single-photo bake; re-baking
+                    # the same deterministic inputs would only cost time.
+                    export_mesh, texture_stats = (
+                        baseline_mesh_bake, baseline_stats)
+                else:
+                    export_mesh, texture_stats = bake_projection_texture(
+                        mesh, observed_views=observed_views, **bake_kwargs)
                 if generated_present and baseline_views:
                     # Whole-bake acceptance: per-view gates cannot see
                     # composition-level failure (handoff seams, overall
@@ -3127,8 +3287,14 @@ class Hunyuan3DShapeBackend:
                     # not regress the no-references baseline.
                     from ..bake_acceptance import evaluate_generated_bake
 
-                    baseline_mesh_bake, baseline_stats = bake_projection_texture(
-                        mesh.copy(), observed_views=baseline_views, **bake_kwargs)
+                    if baseline_stats is None or baseline_mesh_bake is None:
+                        # Generation ran without the pre-bake (its baseline
+                        # bake failed but the candidate bake then
+                        # succeeded — different view set): bake the
+                        # baseline now, as the historical order did.
+                        baseline_mesh_bake, baseline_stats = bake_projection_texture(
+                            mesh.copy(), observed_views=baseline_views,
+                            **bake_kwargs)
                     # The gate resolves the fidelity pose from the
                     # baseline bake's own stats (a hardcoded (0,0) on a
                     # pose-estimated subject charges ~9 dE of pure pose
@@ -3145,15 +3311,24 @@ class Hunyuan3DShapeBackend:
                     )
                     if reference_generation_report is not None:
                         reference_generation_report["bake_acceptance"] = verdict
+                    # The gate computes both sides' sanity floors and the
+                    # baseline regime once (metrics["baseline_regime"]);
+                    # the shipped side's verdict is threaded from there
+                    # instead of recomputed.
+                    gate_regime = (
+                        verdict["metrics"].get("baseline_regime") or {})
+                    from ..bake_acceptance import evaluate_single_view_bake
+
                     if not verdict["accepted"]:
                         export_mesh, texture_stats = (
                             baseline_mesh_bake, baseline_stats)
                         postprocess_warnings.append(
                             "texture_reference_generation: generated bake "
                             "regressed the no-references baseline and was "
-                            "refused by the whole-bake acceptance gate; "
-                            "shipping the baseline. Reasons: "
-                            + "; ".join(verdict["reasons"])
+                            "refused by the whole-bake acceptance gate "
+                            f"({gate_regime.get('regime', 'healthy')} "
+                            "baseline regime); shipping the baseline. "
+                            "Reasons: " + "; ".join(verdict["reasons"])
                         )
                         # The refused-candidate branch ships the BASELINE
                         # — which is a single-photo bake that never met
@@ -3164,9 +3339,9 @@ class Hunyuan3DShapeBackend:
                         # floors existed one branch below). Same
                         # self-healing contract as the no-references
                         # branch: mark it loudly.
-                        from ..bake_acceptance import evaluate_single_view_bake
-
-                        single_verdict = evaluate_single_view_bake(texture_stats)
+                        single_verdict = (
+                            gate_regime.get("baseline_sanity")
+                            or evaluate_single_view_bake(texture_stats))
                         texture_stats["single_view_sanity"] = single_verdict
                         if not single_verdict["accepted"]:
                             quality_verdict = {
@@ -3176,6 +3351,39 @@ class Hunyuan3DShapeBackend:
                             postprocess_warnings.append(
                                 "shipped baseline failed the single-view "
                                 "sanity floors (quality_verdict=degraded): "
+                                + "; ".join(single_verdict["reasons"])
+                            )
+                    elif gate_regime.get("regime") == "catastrophic":
+                        # Catastrophic-regime acceptance: the candidate
+                        # replaced a baseline whose source registration
+                        # collapsed (the measured x-wing incident: the
+                        # old brighten-vs-fill vote shipped the ~99%-fill
+                        # baseline over 4 accepted references). The
+                        # shipped candidate's own floors verdict — its
+                        # source-view rows inherited from the broken
+                        # registration until the pose lane heals them —
+                        # is the honest health record of what ships.
+                        single_verdict = (
+                            gate_regime.get("candidate_sanity")
+                            or evaluate_single_view_bake(texture_stats))
+                        texture_stats["single_view_sanity"] = single_verdict
+                        postprocess_warnings.append(
+                            "texture_reference_generation: no-references "
+                            "baseline failed the registration-collapse "
+                            "floors; the whole-bake gate judged the "
+                            "candidate under the catastrophic-baseline "
+                            "regime (absolute axes) and ACCEPTED it"
+                        )
+                        if not single_verdict["accepted"]:
+                            quality_verdict = {
+                                "verdict": "degraded",
+                                "reasons": single_verdict["reasons"],
+                            }
+                            postprocess_warnings.append(
+                                "shipped candidate still fails the "
+                                "single-view sanity floors it inherits "
+                                "from the broken source registration "
+                                "(quality_verdict=degraded): "
                                 + "; ".join(single_verdict["reasons"])
                             )
                 else:

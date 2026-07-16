@@ -6,6 +6,56 @@ section with an explanation.
 
 ## Critical insights
 
+### The pipeline's generation lane historically gated at source_pose (0,0); threading the estimated pose is a gate-accuracy fix with measured acceptance-set shifts
+
+Found while landing adaptive angle planning (2026-07-15, /tmp/cov1):
+`generate_reference_views` was called by the hunyuan runtime WITHOUT
+`source_pose`, so on pose-estimated subjects the anchor-class
+witnessed-consistency gate judged the witnessed region at the wrong
+camera — the v7 parity fixture's ACCEPTED side_left reference passes
+the witness-starved lane at (0,0) (witnessed_px 2707) but FAILS the
+witnessed veto at the true (17.5, 8) pose (witnessed_px 39561, tile
+median 16.96): the shipped view contradicts the photo exactly where
+the photo is evidence, and the mis-posed gate structurally could not
+see it. The fix (one pose estimate read from the A/B baseline bake,
+threaded to planning + generation) makes the gate judge the right
+region; consequences measured on the v7 rebake: stricter ladders
+(static-mode top 6/6 witness_veto; underside_rear 6/6 palette_flip
+under adaptive), acceptance sets shift within the strict-line
+contract, both modes ACCEPT healthy with quiet batteries. Related
+detector behavior: `close.dark_smears_4x` counts GROW with witnessed
+rim-adjacent surface (historical refs-off-adjacent v7 bundle 3, static
+rebake 36, adaptive rebake 55) — uniform fill has nothing to detect,
+so a coverage gain can raise artifact COUNTS without the artifact
+CLASS being new (it long predates this program; see the refs-on
+underbody insight above). Residual dedupe debt: the candidate bake
+still re-runs the pose guard internally (deterministic, identical
+result); the clean fix is a `source_pose_estimate` kwarg on
+`bake_projection_texture`, out of scope for the planning program.
+
+### View-coverage planning must price witness quality in the consumer's own weight law (binary visibility inflates)
+
+Measured while building the reference-angle planner (2026-07-15,
+/tmp/cov1): a greedy planner whose objective counts binary
+facing-above-cutoff (0.2) area chose oblique 55-degree compound angles
+(top_rear / underside_rear) over the certified head-on canonical slots
+on EVERY canonical-pose fleet subject — those obliques "witness" two
+regions at once (back + underside at facing ~0.5-0.6), but the bake
+paints a facing-f texel at weight `((f-0.2)/0.8)^2`, so their claimed
+coverage is painted at a fraction of head-on weight and the certified
+static doctrine measurably beats the "better" plan. Scoring each vertex
+at the bake's own quadratic paint law reproduced the certified slots on
+canonical subjects with zero per-subject tuning. General rule: a
+planner that feeds a downstream consumer must use the consumer's own
+acceptance/weight law as its objective; any binary proxy for a graded
+consumer over-values marginal claims exactly where the consumer
+discounts them. Corollary from the same program: surface the source
+photo witnesses must be LOCKED in the plan (zero attainable gain), not
+merely marked covered — the bake's `protect_observed_texels` (absolute
+mode) structurally refuses generated content there, and a planner
+unaware of that lock drifts toward photo-side compound angles whose
+"improvements" the bake then discards.
+
 ### Reference-acceptance gates are fixed-pixel; frame-size changes silently re-tune them (auto-size default blocked)
 
 Measured on the integrator's MPS validation of per-angle reference
@@ -318,6 +368,95 @@ product. Calibrate the stayers explicitly: the chair's override veto
 fires while its basin gap (0.064 < 0.10) still correctly refuses the
 move — reject-without-move is legitimate when the evidence names no
 better pose, and only then.
+
+### A calibrated search band is a hypothesis, not a boundary; widen it exactly when its own action floor says it explains nothing (x-wing elevated capture)
+
+The rescue lane's elevation band ({-15..+15}) encoded an unstated
+assumption — photos are near-eye-level — that a routine class violates
+(top-down product shots, aerial vehicles, figurines from above). The
+x-wing incident: NCC spike rightly vetoed, rescue searched the wrong
+band, bake shipped declared (0,0) at coverage 0.0095 (fill texture)
+while the true basin at (0, +30) measured riou 0.857. The fix pattern
+that preserved every calibrated verdict bit-identically: the search
+already HAS a self-diagnostic — the action floor
+(`rescue_min_best_riou` 0.75). If the best in-band pose clears it, the
+band explains the photo and widening adds only cost and plateau-
+perturbation risk (measured fleet: in-band best 0.80-0.97, extension
+never consulted, trails bit-identical). If nothing in-band clears the
+floor, the photo is either outside the band or registers nowhere —
+exactly the cases a coarse-to-fine far-band probe (tiers +/-25/40/55,
+az step 10, one az +/-5 / el +/-8 refinement) distinguishes for ~74
+renders, paid only by unexplained photos. The double-key thresholds
+transferred to the high-elevation basin unchanged (gap 2.3x its key,
+declared aspect err 7.3x, commit-side aspect err 10x under) — measure
+before retuning constants for a new regime; geometry may already
+separate. Known accepted limit: a capture whose opposite-sign elevation
+mirror registers in-band just above the floor (car at el -35: its
+el +15 mirror scores 0.763) keeps the in-band answer — that class needs
+evidence the floor cannot provide without risking the calibrated
+plateaus.
+
+### A relative gate is only as trustworthy as its reference; when the reference measurably collapses, switch the poisoned axes to absolute judgment (catastrophic-baseline regime)
+
+The whole-bake A/B gate judged every axis AGAINST the no-references
+baseline — semantics that silently presuppose the baseline carries
+subject evidence. The x-wing incident broke the presupposition: the
+source pose failed (coverage 0.0095, 99% fill), the baseline itself
+failed the sanity floors, and the gate still refused a healthy
+4-reference candidate on tone BRIGHTENING (0.814 vs 0.7) — brightening
+a ~all-fill baseline is what correct references DO (measured: correct
+rescues 0.81-1.03, a +25 L mis-tone 10.85 — same sign, no boundary).
+The wrong texture shipped BECAUSE the reference was broken, the exact
+mirror of the chair-incident doctrine (there a bad baseline flattered
+wrong refs; here it damned correct ones). The general rule: every
+relative axis must name the property of the reference it presupposes,
+and the gate must MEASURE that property and switch to absolute
+judgment where it fails. The regime boundary is the corpus-calibrated
+registration-collapse line (source coverage < 0.10 AND efficiency
+< 0.25 — healthy fleet min 0.1088/0.2944, measured catastrophes
+0.0096-0.05/0.03-0.17), NOT the user-facing sanity floors: the pinned
+v7 baseline fails the 0.12 total floor at 0.112 while the fix1 program
+PROVED the A/B axes calibrated at that coverage — quality degradation
+and semantic collapse are different lines. Per-axis outcome (all
+measured, /tmp/xfix2): fidelity/brightness/darken-A/B and the battery
+keep voting (photo is external truth; fill is dark-biased and
+blotch-free by construction), brighten-A/B records loudly but cannot
+vote (no absolute replacement exists — honestly-bright unseen surface
+is indistinguishable from a bright mis-tone: 6.26 vs 0.28 INVERTED),
+hue switches to the absolute source-band form (accepts <= 0.035,
+mis-tone gamut-bend 0.284, bake-dominating 30-deg rotation 5.18 vs
+budget 0.15), and a NEW mirror-consistency axis (subject's own
+geometry-symmetry score gates it) catches displaced content (8%
+content shift 1.496-1.499 vs fleet accepts <= 0.516 at floor 15).
+The candidate must also measurably FIX the collapse (total coverage
+floor) or both are broken and the baseline ships degraded, as before.
+Known measured limits, recorded not papered over: bright-side pure-L
+mis-tones and (under degraded photo evidence) -25 L dark mis-tones on
+never-witnessed surface present no absolute evidence any measured axis
+separates from honest subjects (portrait's legit back ref is -25.9 L
+from its photo) — the healthy lane keeps refusing those classes where
+baseline evidence exists.
+
+### A catastrophically broken product can pass artifact-focused QA clean; health floors and artifact detectors are complementary, never substitutes (x-wing validation)
+
+The incident's shipped fill bake passes the standalone texture QA
+battery with exit 0 — uniform propagated fill has no cellular
+structure, no blotch components, no seam steps, nothing for artifact
+detectors to fire on; only the warn-only registration-floor check
+(coverage 0.0096 / efficiency 0.090) names the break, while the
+coverage floors in bundle metadata carry the actual degraded verdict.
+Meanwhile a HEALTHY refs-on x-wing bake fails the same script's
+`texel.facet_cellular` gate (fill 0.111 vs its 0.080 line;
+straight-edged fill-detail cells on the never-witnessed underside —
+the approved legacy chair proof measures 0.542 on that gate and the
+i23d control passes at 0.033). The two failure families are
+orthogonal by construction: artifact gates measure structure that
+should not exist, health floors measure evidence that must. A green
+artifact battery on a broken bake, or a red texel gate on a healthy
+one, is not a contradiction — reading either instrument as a
+sufficient verdict is the error. Ship-time verdicts must combine a
+health-floor lane and an artifact lane, and validation must consult
+both plus the metadata verdict, never the QA exit code alone.
 
 ### A refusal branch ships a DIFFERENT product; that product needs its own acceptance
 

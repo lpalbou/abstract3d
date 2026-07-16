@@ -80,6 +80,104 @@ denies them zero-false-fire margins (full reasoning in
 `artifact_gates`'s module docstring). The battery is proven
 non-interfering on all pinned fixture pairs (fix1's 12, hue1's live
 pairs, fix3's chroma rotations — verdicts unchanged).
+
+CATASTROPHIC-BASELINE REGIME (2026-07-15 program, /tmp/xfix2): the A/B
+doctrine PRESUPPOSES the baseline carries subject evidence. The
+measured x-wing incident broke that assumption: the source pose failed
+(coverage 0.0095 — 99% of the shipped baseline is propagated fill),
+the baseline itself failed the single-view sanity floors, and the gate
+still used it as the A/B reference — refusing a healthy candidate
+(4 accepted references, IoU 0.81-0.94, battery quiet) on the tone
+BRIGHTENING axis (0.814 vs budget 0.7), because brightening a
+99%-dark-fill baseline is exactly what correct references DO. The
+directional budgets were calibrated on baselines with witnessed
+coverage 0.112-0.83 (fix1's labeled fleet); at witnessed collapse the
+brighten statistic measures the fill deficit, not damage (correct
+rescues measure 0.81-1.03, a +25 L mis-tone 10.85 — same sign, no
+usable boundary).
+
+The regime boundary is the REGISTRATION-COLLAPSE line already
+calibrated in `artifact_gates.registration_floor_check` (source-view
+coverage < 0.10 AND capture efficiency < 0.25, AND-ed because each
+margin alone is thin): the healthy/pinned fleet measures source
+coverage >= 0.1088 with the one sub-0.10 live bundle (car_final,
+0.0572) rescued by its efficiency 0.3273, while the measured
+catastrophes sit at 0.0096/0.090 (x-wing), 0.0498/0.166 (v4 ghost) and
+0.013/0.030 (the broken-chair guards) — a >= 1.9x gap on the AND. The
+single-view sanity verdicts of BOTH stats dicts (the floors signal the
+runtime already records) are computed once here and recorded in
+`metrics["baseline_regime"]` so callers thread them instead of
+recomputing. Deliberately NOT the sanity-floors verdict itself as the
+vote boundary: the pinned v7 car baseline fails the 0.12 total floor
+at 0.112 while the fix1 program PROVED the A/B axes calibrated at that
+coverage (its labeled-accept margins are the calibration table) — the
+floors mark user-visible degradation, the collapse line marks where
+A/B semantics measurably die.
+
+Under the catastrophic regime (per-axis analysis measured in
+/tmp/xfix2/report.md):
+
+- RESCUE PRECONDITION: the candidate must measurably fix the collapse
+  — its TOTAL observed coverage must pass the sanity floor (0.12) and
+  exceed the baseline's (references exist to add witnessed surface; a
+  candidate that does not is the both-broken case and ships the
+  baseline + degraded exactly as today). Source-view floors are
+  INHERITED (both bakes share the broken source registration) and
+  recorded as unfixable-by-references; the pose lane owns them.
+- photo fidelity A/B and front brightness A/B: KEEP VOTING unchanged —
+  the photo is external truth and the baseline side only cancels
+  registration/renderer residue; the witnessed subset must not
+  regress (measured: x-wing +0.89 dE within the +2.0 slack).
+- tone DARKENING A/B: KEEPS VOTING unchanged — baseline fill is
+  dark-biased by construction, so content darker than fill beyond the
+  25 L floor is alien in any regime (measured 0.000 on every
+  catastrophic-lane accept).
+- tone BRIGHTENING A/B: RECORDED ONLY (loud warning, no vote) — the
+  poisoned axis (measured false-firing 0.81-1.03 on correct rescues).
+  No absolute replacement exists: the photo's own L band cannot bound
+  it (renders are headlight-lit and honestly-bright unseen surface is
+  legitimate — the correct x-wing candidate measures 6.26 of
+  above-band mass at floor 5 while a +25 L mis-tone measures 0.28:
+  inverted), so the bright-side pure-L mis-tone on never-witnessed
+  surface is a DOCUMENTED LIMIT of the lane (bounded by the floors,
+  battery, hue and fidelity votes that still hold).
+- composition hue: switches to the ABSOLUTE source-band form
+  (`_band_distance_damage`): the A/B drift charge is fill-vs-content
+  confound writ large at 98% fill (measured 1.04 on a CORRECT
+  broken-chair rescue — over the 1.0 budget), while the candidate's
+  own hue vs the photo band needs no baseline. Floor 10 deg (the same
+  sanctioned drift), budget 0.15: catastrophic-lane accepts measure
+  <= 0.035, a +25 L mis-tone's gamut-bend measures 0.284 (1.9x over)
+  and a 30-deg rotated back that DOMINATES the bake measures 5.18
+  (35x). No-band photos keep the legacy A/B charge (fail-closed).
+- NEW mirror-pair consistency (`_mirror_pair_damage`, catastrophic
+  only): geometry-symmetric subjects (score >= 0.95 from the bake's
+  own `symmetry_completion` stats; fleet measures 0.966-0.985) whose
+  TEXTURE breaks left-right low-band tone symmetry carry displaced
+  content — candidate-internal evidence needing no baseline. az90 vs
+  mirrored az-90 smoothed-L delta beyond a 15 L floor, budget 1.0:
+  fleet accepts measure <= 0.516 (starship, honest texture
+  asymmetry), the 8%-content-shifted back measures 1.496-1.499 in
+  BOTH baseline regimes (lateral displacement breaks symmetry by
+  construction). Catches the mis-registration class the collapse
+  removed from the A/B darken axis's reach.
+- artifact battery: unchanged A/B vote — measured on both broken
+  baselines: fill carries 0.0000 blotch mass, so added == absolute in
+  this lane by measurement, not by reinterpretation.
+- tone-vs-photo band exceedance: RECORDED (non-voting) — measured
+  non-separating in both directions (subject backs legitimately
+  depart the photo band; the dark side overlaps the car-class's own
+  sub-band glass/shadow mass), kept in metrics for fixture-driven
+  recalibration.
+
+KNOWN LIMITS of the lane (measured, documented): (a) the bright-side
+pure-L mis-tone above; (b) a -25 L dark mis-tone under DEGRADED photo
+evidence (the occluded-rim guard) is indistinguishable from the
+honestly-dark-back accept class (portrait back ref measures -25.9 L
+from its photo) on every absolute axis measured — it ships as a
+floors-passing, battery-quiet, hue-consistent bake (the healthy lane
+keeps refusing the class decisively via darken-A/B 0.33, and the
+confounded axis that refused it before ALSO refused correct rescues).
 """
 
 from __future__ import annotations
@@ -519,6 +617,185 @@ def _chroma_field_damage(candidate_render: Any, baseline_render: Any, *,
     }
 
 
+def _source_tone_band(source_rgba: Any, *,
+                      smoothing_sigma: float) -> Optional[Dict[str, float]]:
+    """The L analog of `_source_hue_band`: smoothed-L [q2, q98] over the
+    photo foreground (same normalized convolution, same extent-rescaled
+    sigma), the subject's own low-band tone evidence.
+
+    RECORD-ONLY consumer for now: measured on the fleet
+    (/tmp/xfix2/measure_abs.json) the band cannot carry a vote in either
+    direction — renders are headlight-lit and never-witnessed surface
+    legitimately departs the photo span (the correct x-wing candidate
+    carries 6.26 of above-band mass at floor 5 while a +25 L mis-tone
+    carries 0.28; the dark side overlaps the car class's own sub-band
+    glass/shadow mass at every floor). Kept in the catastrophic-regime
+    metrics so future fixture classes can calibrate against real data.
+    """
+
+    import numpy as np
+    from scipy import ndimage
+
+    rgba = np.asarray(source_rgba.convert("RGBA"), dtype=np.uint8)
+    foreground = rgba[:, :, 3] > 128
+    if int(foreground.sum()) < 500:
+        return None
+    rows, cols = np.nonzero(foreground)
+    extent = float(max(int(rows.max() - rows.min()),
+                       int(cols.max() - cols.min()), 1))
+    sigma = float(smoothing_sigma) * extent / (0.85 * 512.0)
+    smooth_l = _masked_smooth(_lab(source_rgba)[:, :, 0], foreground, sigma)
+    interior = ndimage.binary_erosion(foreground, iterations=4)
+    if int(interior.sum()) < 256:
+        return None
+    values = smooth_l[interior]
+    lo, hi = np.percentile(values, [2.0, 98.0])
+    return {"lo_l": round(float(lo), 2), "hi_l": round(float(hi), 2),
+            "median_l": round(float(np.median(values)), 2)}
+
+
+def _band_distance_damage(render: Any, band: Dict[str, float], *,
+                          floor_deg: float, sat_floor: float,
+                          smoothing_sigma: float,
+                          tone_band: Optional[Dict[str, float]] = None,
+                          ) -> Optional[Dict[str, float]]:
+    """ABSOLUTE hue judgment of one view against the source photo's own
+    hue evidence — the catastrophic-regime replacement for the A/B drift
+    charge, whose baseline side is propagated fill at witnessed
+    collapse (measured charging a CORRECT broken-chair rescue 1.04 over
+    the 1.0 budget purely for disagreeing with fill hue).
+
+    Statistic: on the interior foreground where the candidate's own
+    smoothed chroma clears `sat_floor`, integrate the circular distance
+    OUTSIDE the photo band beyond `floor_deg`, weighted by the
+    saturated-area fraction — `mean(max(band_dist - floor, 0)) *
+    sat_frac`. Same smoothing, same saturation floor, same sanctioned
+    drift floor (10 deg) as the A/B axis; only the reference changes
+    (photo evidence instead of the untrustworthy baseline).
+
+    Measured (/tmp/xfix2, catastrophic-lane populations): accepts
+    <= 0.035 (correct broken-chair rescue; the x-wing candidate 0.000),
+    +25 L mis-tone gamut-bend 0.284, a 30-deg hue-rotated back
+    DOMINATING the bake 5.18. When `tone_band` is given, the L
+    exceedance of the same interior is returned for the record
+    (non-voting, see `_source_tone_band`).
+    """
+
+    import numpy as np
+    from scipy import ndimage
+
+    foreground = _render_foreground(render)
+    interior = ndimage.binary_erosion(foreground, iterations=4)
+    if int(interior.sum()) < 500:
+        return None
+    lab = _lab(render)
+    a = _masked_smooth(lab[:, :, 1], foreground, smoothing_sigma)[interior]
+    b = _masked_smooth(lab[:, :, 2], foreground, smoothing_sigma)[interior]
+    out: Dict[str, float] = {}
+    if tone_band is not None:
+        smooth_l = _masked_smooth(lab[:, :, 0], foreground,
+                                  smoothing_sigma)[interior]
+        out["tone_below_band"] = float(np.maximum(
+            float(tone_band["lo_l"]) - smooth_l, 0.0).mean())
+        out["tone_above_band"] = float(np.maximum(
+            smooth_l - float(tone_band["hi_l"]), 0.0).mean())
+    saturated = np.hypot(a, b) >= float(sat_floor)
+    sat_frac = float(saturated.mean())
+    out["sat_frac"] = sat_frac
+    if not saturated.any():
+        out["hue_damage"] = 0.0
+        return out
+    hue = np.degrees(np.arctan2(b[saturated], a[saturated]))
+    centered = (hue - float(band["mu_deg"]) + 180.0) % 360.0 - 180.0
+    band_dist = np.maximum(
+        np.maximum(centered - float(band["hi_deg"]),
+                   float(band["lo_deg"]) - centered), 0.0)
+    out["hue_damage"] = float(
+        np.maximum(band_dist - float(floor_deg), 0.0).mean() * sat_frac)
+    return out
+
+
+def _mirror_pair_damage(render_a: Any, render_b: Any, *,
+                        floor_l: float,
+                        smoothing_sigma: float) -> Optional[float]:
+    """Left-right texture-symmetry damage: smoothed-L delta between one
+    side view and the MIRRORED opposite side view, integrated beyond
+    `floor_l` on the co-foreground interior.
+
+    A geometry-symmetric subject (score gated by the caller from the
+    bake's own `symmetry_completion` stats) renders mirror-consistent
+    silhouettes under the head-light rig; texture that breaks low-band
+    left-right symmetry beyond the floor is displaced/foreign content —
+    candidate-internal evidence that needs neither the baseline nor a
+    photo view of the damaged surface. Measured (/tmp/xfix2): fleet
+    accepts <= 0.516 at floor 15 (the starship's honest texture
+    asymmetry; portrait hair 0.428; every car/owl/chair accept
+    <= 0.30), the 8%-content-shifted chair back 1.496-1.499 under BOTH
+    baseline regimes — the mis-registration class signature, structural
+    because lateral displacement breaks symmetry by construction.
+    """
+
+    import numpy as np
+    from scipy import ndimage
+
+    try:
+        from PIL import Image
+    except Exception:  # pragma: no cover - PIL is a hard dependency
+        return None
+    mirrored = render_b.transpose(Image.FLIP_LEFT_RIGHT)
+    fg_a = _render_foreground(render_a)
+    fg_b = _render_foreground(mirrored)
+    interior = ndimage.binary_erosion(fg_a & fg_b, iterations=4)
+    if int(interior.sum()) < 500:
+        return None
+    delta = np.abs(
+        _masked_smooth(_lab(render_a)[:, :, 0], fg_a, smoothing_sigma)
+        - _masked_smooth(_lab(mirrored)[:, :, 0], fg_b, smoothing_sigma)
+    )[interior]
+    return float(np.maximum(delta - float(floor_l), 0.0).mean())
+
+
+def _source_view_row(stats: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """The SOURCE view's stats row (same resolution rule as
+    `evaluate_single_view_bake`)."""
+
+    view_rows = (stats or {}).get("observed_view_stats") or []
+    return next(
+        (row for row in view_rows if row.get("index") == 1
+         or row.get("label") in ("front", "source", "view_01")),
+        view_rows[0] if view_rows else None)
+
+
+def _baseline_collapse(stats: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Registration-collapse test of the BASELINE's source row — the
+    catastrophic-regime boundary.
+
+    Reuses the corpus-calibrated floors of
+    `artifact_gates.registration_floor_check` (source coverage < 0.10
+    AND capture efficiency < 0.25; AND-ed because each margin alone is
+    thin): healthy/pinned baselines measure >= 0.1088 coverage (the one
+    sub-0.10 live bundle, car_final at 0.0572, is rescued by its 0.3273
+    efficiency), the measured catastrophes 0.0096/0.090 (x-wing),
+    0.0498/0.166 (v4), 0.013/0.030 (broken-chair guards). Missing stats
+    resolve to NOT collapsed — the status-quo healthy path, recorded as
+    such.
+    """
+
+    from .artifact_gates import (REGISTRATION_EFFICIENCY_FLOOR,
+                                 REGISTRATION_SOURCE_COVERAGE_FLOOR)
+
+    row = _source_view_row(stats)
+    coverage = None if row is None else row.get("coverage_ratio")
+    efficiency = None if row is None else row.get("capture_efficiency")
+    fired = (coverage is not None and efficiency is not None
+             and float(coverage) < REGISTRATION_SOURCE_COVERAGE_FLOOR
+             and float(efficiency) < REGISTRATION_EFFICIENCY_FLOOR)
+    return {"fired": bool(fired), "source_coverage": coverage,
+            "capture_efficiency": efficiency,
+            "coverage_floor": REGISTRATION_SOURCE_COVERAGE_FLOOR,
+            "efficiency_floor": REGISTRATION_EFFICIENCY_FLOOR}
+
+
 def _seam_ratio(render: Any, *, edge_delta_e: float,
                 min_extent_ratio: float) -> float:
     """Fraction of foreground pixels on LONG coherent strong edges.
@@ -625,6 +902,10 @@ def evaluate_generated_bake(
     hue_sat_floor: float = 15.0,
     hue_damage_budget: float = 1.0,
     hue_evidence_margin_deg: float = 3.0,
+    catastrophic_hue_budget: float = 0.15,
+    mirror_floor_l: float = 15.0,
+    mirror_damage_budget: float = 1.0,
+    mirror_symmetry_floor: float = 0.95,
     edge_delta_e: float = 18.0,
     seam_min_extent_ratio: float = 0.12,
 ) -> Dict[str, Any]:
@@ -632,7 +913,11 @@ def evaluate_generated_bake(
 
     `baseline_stats` / `candidate_stats` are the bake stats dicts; when
     given they supply the fidelity pose (the bake's own estimated source
-    pose) and the texture-space handoff ledger for the record. Passing an
+    pose), the texture-space handoff ledger for the record, AND the
+    baseline-regime signal: a baseline whose source registration
+    collapsed (see `_baseline_collapse` and the module docstring's
+    catastrophic-regime section) is not a trustworthy A/B reference, and
+    the axes that presuppose one switch to absolute judgment. Passing an
     explicit `source_pose` overrides the stats (external capture fact).
 
     Constants, each carried by a measured separation (fixture program in
@@ -681,21 +966,92 @@ def evaluate_generated_bake(
       pinned rotations keep 1.31 (20 deg) / 1.98 / 6.51 (30 deg). See
       `_chroma_field_damage`.
 
+    Catastrophic-regime constants (all measured, /tmp/xfix2/report.md;
+    only consulted when the baseline's source registration collapsed):
+
+    - `catastrophic_hue_budget` 0.15: the absolute source-band hue
+      vote (`_band_distance_damage`) — catastrophic-lane accepts
+      measure <= 0.035 (4.3x under), the +25 L mis-tone gamut-bend
+      0.284 (1.9x over), a bake-dominating 30-deg rotation 5.18 (35x).
+    - `mirror_floor_l` 15 / `mirror_damage_budget` 1.0: left-right
+      texture-symmetry damage (`_mirror_pair_damage`) — fleet accepts
+      <= 0.516 (starship's honest asymmetry; 1.9x under), the
+      8%-content-shifted back 1.496-1.499 (1.5x over) in BOTH regimes.
+    - `mirror_symmetry_floor` 0.95: the axis only votes when the
+      bake's own `symmetry_completion` geometry score clears it (fleet
+      measures 0.966-0.985); asymmetric or unscored geometry abstains,
+      recorded.
+
     Returns a report dict: `accepted` (bool), per-check `metrics`
-    (baseline/candidate values), and human-readable `reasons` for every
-    failed check. The caller ships the baseline when `accepted` is False.
+    (baseline/candidate values, plus `baseline_regime` with both sanity
+    verdicts and the collapse signal), and human-readable `reasons` for
+    every failed check. The caller ships the baseline when `accepted`
+    is False.
     """
 
     import math
 
     metrics: Dict[str, Any] = {}
     reasons: List[str] = []
+    warnings: List[str] = []
 
     gate_pose, pose_origin = _resolve_gate_pose(
         source_pose, baseline_stats, candidate_stats)
     metrics["source_pose"] = {
         "azimuth_deg": gate_pose[0], "elevation_deg": gate_pose[1],
         "origin": pose_origin}
+
+    # BASELINE REGIME (module docstring, catastrophic-regime section):
+    # the sanity floors of BOTH stats dicts are computed once here (pure
+    # stats math — callers reuse the recorded verdicts instead of
+    # recomputing) and the collapse boundary decides which judgment the
+    # relative axes get. Missing stats resolve to healthy: the status
+    # quo, recorded as such.
+    collapse = _baseline_collapse(baseline_stats)
+    catastrophic = bool(collapse["fired"])
+    regime = "catastrophic" if catastrophic else "healthy"
+
+    def _sanity_of(stats: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        # Only judge floors where coverage evidence exists — a stats
+        # dict without it (older persisted subsets) records None, not a
+        # hollow "accepted".
+        if not stats or (stats.get("observed_coverage_ratio") is None
+                         and not stats.get("observed_view_stats")):
+            return None
+        return evaluate_single_view_bake(stats)
+
+    baseline_sanity = _sanity_of(baseline_stats)
+    candidate_sanity = _sanity_of(candidate_stats)
+    metrics["baseline_regime"] = {
+        "regime": regime,
+        "collapse": collapse,
+        "baseline_sanity": baseline_sanity,
+        "candidate_sanity": candidate_sanity,
+    }
+    if catastrophic:
+        # RESCUE PRECONDITION: references exist to add witnessed
+        # surface; a candidate that does not measurably fix the
+        # coverage collapse is the both-broken case and ships the
+        # baseline + degraded exactly as today. Source-view floors are
+        # inherited by construction (both bakes share the broken source
+        # registration) and stay recorded in the sanity verdicts above;
+        # the pose lane owns their repair.
+        base_total = (baseline_stats or {}).get("observed_coverage_ratio")
+        cand_total = (candidate_stats or {}).get("observed_coverage_ratio")
+        coverage_floor = 0.12  # evaluate_single_view_bake's total floor
+        fixes = (cand_total is not None
+                 and float(cand_total) >= coverage_floor
+                 and (base_total is None
+                      or float(cand_total) > float(base_total)))
+        metrics["baseline_regime"]["candidate_fixes_collapse"] = {
+            "value": bool(fixes), "candidate_total": cand_total,
+            "baseline_total": base_total, "min_allowed": coverage_floor}
+        if not fixes:
+            reasons.append(
+                "catastrophic-baseline regime: candidate does not fix "
+                f"the witnessed-coverage collapse (total {cand_total} vs "
+                f"floor {coverage_floor}, baseline {base_total}) — "
+                "both bakes are broken, shipping the baseline")
 
     base_fid = _photo_fidelity(baseline_mesh, source_rgba, gate_pose, render_size)
     cand_fid = _photo_fidelity(candidate_mesh, source_rgba, gate_pose, render_size)
@@ -777,7 +1133,16 @@ def evaluate_generated_bake(
         "brighten_max_allowed": float(tone_brighten_budget),
         "floor_l": float(tone_damage_floor_l),
         "worst_area_over_floor": round(worst_area, 4),
-        "measured_views": measured_views}
+        "measured_views": measured_views,
+        # Directional vote flags (regime honesty): darkening votes in
+        # both regimes (fill is dark-biased by construction — darker
+        # than fill beyond the floor is alien everywhere); brightening
+        # presupposes the baseline carries subject tone and is
+        # measurement-only when the baseline collapsed (measured
+        # false-firing 0.81-1.03 on correct rescues of ~99%-fill
+        # baselines: the x-wing incident).
+        "darken_votes": True,
+        "brighten_votes": not catastrophic}
     if measured_views and worst["darken"][0] > float(tone_darken_budget):
         reasons.append(
             f"composition tone damage (darkening): candidate low-band L "
@@ -785,11 +1150,20 @@ def evaluate_generated_bake(
             f"sanctioned-adjustment floor ({tone_damage_floor_l} L) at "
             f"{worst['darken'][1]}, budget {tone_darken_budget}")
     if measured_views and worst["brighten"][0] > float(tone_brighten_budget):
-        reasons.append(
-            f"composition tone damage (brightening): candidate low-band L "
-            f"rises {worst['brighten'][0]:.3f} per-pixel mean beyond the "
-            f"sanctioned-adjustment floor ({tone_damage_floor_l} L) at "
-            f"{worst['brighten'][1]}, budget {tone_brighten_budget}")
+        if not catastrophic:
+            reasons.append(
+                f"composition tone damage (brightening): candidate low-band L "
+                f"rises {worst['brighten'][0]:.3f} per-pixel mean beyond the "
+                f"sanctioned-adjustment floor ({tone_damage_floor_l} L) at "
+                f"{worst['brighten'][1]}, budget {tone_brighten_budget}")
+        else:
+            warnings.append(
+                f"catastrophic-baseline regime: brightening vs the "
+                f"collapsed baseline measures {worst['brighten'][0]:.3f} "
+                f"at {worst['brighten'][1]} (healthy-regime budget "
+                f"{tone_brighten_budget}) — recorded, not voting: the "
+                "baseline is ~all fill and brightening it is what "
+                "correct references do")
     metrics["composition_hue_damage"] = {
         "worst": round(worst_hue[0], 4),
         "worst_view": worst_hue[1],
@@ -804,14 +1178,122 @@ def evaluate_generated_bake(
         "worst_raw": round(worst_hue_raw[0], 4),
         "worst_raw_view": worst_hue_raw[1],
         "evidence_margin_deg": float(hue_evidence_margin_deg),
-        "source_band": source_band}
-    if hue_views and worst_hue[0] > float(hue_damage_budget):
+        "source_band": source_band,
+        # In the catastrophic regime the A/B drift charge is the fill
+        # confound writ large (98%+ of the co-foreground is fill) and
+        # only the absolute source-band axis votes — except for
+        # colorless photos (no band), where the legacy charge stays
+        # fail-closed.
+        "votes": (not catastrophic) or source_band is None}
+    hue_ab_votes = (not catastrophic) or source_band is None
+    if hue_views and worst_hue[0] > float(hue_damage_budget) and hue_ab_votes:
         reasons.append(
             f"composition hue damage: candidate low-band hue rotates "
             f"{worst_hue[0]:.3f} deg-mass beyond the sanctioned drift "
             f"floor ({hue_floor_deg} deg) on saturated surface off the "
             f"source photo's own hue evidence at "
             f"{worst_hue[1]}, budget {hue_damage_budget}")
+
+    if catastrophic:
+        # ABSOLUTE AXES (catastrophic regime only; module docstring +
+        # /tmp/xfix2/report.md carry every margin). The candidate is
+        # judged against the SOURCE PHOTO's own evidence and its own
+        # internal symmetry — the collapsed baseline is not a reference.
+        try:
+            tone_band = _source_tone_band(
+                source_rgba, smoothing_sigma=float(tone_smoothing_px))
+        except Exception:
+            tone_band = None
+        worst_abs_hue = (0.0, None)
+        worst_below = (0.0, None)
+        worst_above = (0.0, None)
+        abs_views = 0
+        if source_band is not None:
+            for label, candidate_render in candidate_renders:
+                abs_row = _band_distance_damage(
+                    candidate_render, source_band,
+                    floor_deg=float(hue_floor_deg),
+                    sat_floor=float(hue_sat_floor), smoothing_sigma=sigma,
+                    tone_band=tone_band)
+                if abs_row is None:
+                    continue
+                abs_views += 1
+                if abs_row["hue_damage"] > worst_abs_hue[0]:
+                    worst_abs_hue = (abs_row["hue_damage"], label)
+                if abs_row.get("tone_below_band", 0.0) > worst_below[0]:
+                    worst_below = (abs_row["tone_below_band"], label)
+                if abs_row.get("tone_above_band", 0.0) > worst_above[0]:
+                    worst_above = (abs_row["tone_above_band"], label)
+        metrics["absolute_hue_damage"] = {
+            "worst": round(worst_abs_hue[0], 4),
+            "worst_view": worst_abs_hue[1],
+            "max_allowed": float(catastrophic_hue_budget),
+            "floor_deg": float(hue_floor_deg),
+            "measured_views": abs_views,
+            "votes": source_band is not None,
+            "source_band": source_band}
+        if abs_views and worst_abs_hue[0] > float(catastrophic_hue_budget):
+            reasons.append(
+                f"catastrophic-baseline regime: candidate hue sits "
+                f"{worst_abs_hue[0]:.3f} deg-mass off the source photo's "
+                f"own hue evidence beyond the sanctioned drift floor "
+                f"({hue_floor_deg} deg) at {worst_abs_hue[1]}, budget "
+                f"{catastrophic_hue_budget}")
+        # Photo tone band exceedance: RECORDED ONLY (measured
+        # non-separating in both directions — see _source_tone_band).
+        metrics["absolute_tone_band"] = {
+            "band": tone_band,
+            "below_worst": round(worst_below[0], 4),
+            "below_worst_view": worst_below[1],
+            "above_worst": round(worst_above[0], 4),
+            "above_worst_view": worst_above[1],
+            "votes": False}
+
+        # MIRROR-PAIR CONSISTENCY: candidate-internal evidence, gated
+        # on the bake's own geometry-symmetry score.
+        symmetry_score = ((candidate_stats or {}).get("symmetry_completion")
+                          or {}).get("geometry_symmetry_score")
+        mirror_applicable = (symmetry_score is not None and float(
+            symmetry_score) >= float(mirror_symmetry_floor))
+        worst_mirror = (0.0, None)
+        mirror_views = 0
+        if mirror_applicable:
+            by_label = dict(candidate_renders)
+            for elevation in ("el10", "el50"):
+                left = by_label.get(f"az90_{elevation}")
+                right = by_label.get(f"az-90_{elevation}")
+                if left is None or right is None:
+                    continue
+                damage = _mirror_pair_damage(
+                    left, right, floor_l=float(mirror_floor_l),
+                    smoothing_sigma=sigma)
+                if damage is None:
+                    continue
+                mirror_views += 1
+                if damage > worst_mirror[0]:
+                    worst_mirror = (damage, f"az90/az-90 {elevation}")
+        metrics["mirror_consistency"] = {
+            "worst": round(worst_mirror[0], 4),
+            "worst_pair": worst_mirror[1],
+            "max_allowed": float(mirror_damage_budget),
+            "floor_l": float(mirror_floor_l),
+            "geometry_symmetry_score": symmetry_score,
+            "min_symmetry_score": float(mirror_symmetry_floor),
+            "measured_pairs": mirror_views,
+            "votes": mirror_applicable}
+        if not mirror_applicable:
+            warnings.append(
+                "catastrophic-baseline regime: mirror-consistency axis "
+                f"abstained (geometry symmetry score {symmetry_score} "
+                f"below {mirror_symmetry_floor} or unrecorded)")
+        if mirror_views and worst_mirror[0] > float(mirror_damage_budget):
+            reasons.append(
+                f"catastrophic-baseline regime: candidate texture breaks "
+                f"left-right symmetry of its own geometry (score "
+                f"{symmetry_score}) by {worst_mirror[0]:.3f} low-band L "
+                f"beyond the {mirror_floor_l} L floor at "
+                f"{worst_mirror[1]}, budget {mirror_damage_budget} — "
+                "displaced/mis-registered content")
 
     # Long-edge seam ratio: OBSERVABILITY ONLY (see module docstring for
     # the measured mis-ranking that retired its vote). Kept in the record
@@ -848,7 +1330,7 @@ def evaluate_generated_bake(
         candidate_renders, baseline_renders, photo_ref=photo_ref)
     metrics["artifact_battery"] = battery["metrics"]
     reasons.extend(battery["reasons"])
-    warnings = list(battery["warnings"])
+    warnings.extend(battery["warnings"])
 
     return {"accepted": not reasons, "reasons": reasons,
             "warnings": warnings, "metrics": metrics}

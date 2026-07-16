@@ -1001,6 +1001,77 @@ def test_pose_estimator_recovers_injected_yaw_and_rejects_frontal() -> None:
     assert abs(float(turned["azimuth_deg"]) - 15.0) <= 5.0
 
 
+def _winged_pose_mesh():
+    """A winged subject whose silhouette is strongly elevation-dependent
+    (the x-wing class): thin wide wings edge-on at el 0, plan-view from
+    above. A tail fin breaks the top/bottom elevation mirror and an
+    off-axis knob breaks bilateral symmetry (chirality carrier)."""
+    import trimesh
+
+    body = trimesh.creation.box(extents=(1.4, 0.34, 0.34))
+    wings = trimesh.creation.box(extents=(0.55, 1.7, 0.06))
+    fin = trimesh.creation.box(extents=(0.28, 0.06, 0.5))
+    fin.apply_translation([-0.55, 0.0, 0.35])
+    knob = trimesh.creation.icosphere(subdivisions=2, radius=0.16)
+    knob.apply_translation([0.62, 0.22, 0.08])
+    return trimesh.util.concatenate([body, wings, fin, knob])
+
+
+def _render_pose_photo(mesh, azimuth: float, elevation: float) -> Image.Image:
+    from abstract3d.rendering import render_mesh_views
+
+    rendered = render_mesh_views(
+        mesh, azimuths=(azimuth,), elevation=elevation, size=384)[0]
+    array = np.asarray(rendered.convert("RGBA"), dtype=np.float32) / 255.0
+    background = array[2, 2, :3]
+    mask = np.abs(array[:, :, :3] - background).sum(axis=2) > 0.08
+    rgba = np.zeros((*mask.shape, 4), dtype=np.uint8)
+    rgba[:, :, :3] = (array[:, :, :3] * 255).astype(np.uint8)
+    rgba[:, :, 3] = np.where(mask, 255, 0)
+    return Image.fromarray(rgba)
+
+
+def test_pose_guard_recovers_elevated_capture_via_extended_search() -> None:
+    """The x-wing incident class: a capture elevated far outside the
+    calibrated band (el +/-15) must be recovered by the extended-elevation
+    rescue within one grid step (az 5 / el 8), and the extension must
+    report itself in the trail (entered because the calibrated band's best
+    registered IoU sits below the action floor)."""
+    mesh = _winged_pose_mesh()
+    photo = _render_pose_photo(mesh, 10.0, 40.0)
+
+    result = texturing.estimate_pose_with_silhouette_guard(
+        mesh, photo, azimuth_window_deg=15.0)
+
+    extension = (result.get("guard_trail") or {}).get("extended_search") or {}
+    assert extension.get("consulted") is True, extension
+    assert result["estimated"] is True, result
+    assert abs(float(result["azimuth_deg"]) - 10.0) <= 5.0, result
+    assert abs(float(result["elevation_deg"]) - 40.0) <= 8.0, result
+
+
+def test_pose_guard_extension_stays_out_of_calibrated_band_decisions() -> None:
+    """Fleet-matrix invariant: when the calibrated band explains the photo
+    (best in-band registered IoU above the action floor — true for every
+    recorded fleet case, measured 0.80-0.97), the extended search must not
+    even be consulted, so in-band movers and stayers keep their calibrated
+    behavior bit-identically."""
+    mesh = _winged_pose_mesh()
+
+    frontal = texturing.estimate_pose_with_silhouette_guard(
+        mesh, _render_pose_photo(mesh, 0.0, 0.0), azimuth_window_deg=15.0)
+    frontal_extension = (frontal.get("guard_trail") or {}).get("extended_search") or {}
+    assert frontal_extension.get("consulted") is False, frontal_extension
+    assert float(frontal["azimuth_deg"]) == 0.0 and float(frontal["elevation_deg"]) == 0.0
+
+    in_band = texturing.estimate_pose_with_silhouette_guard(
+        mesh, _render_pose_photo(mesh, 10.0, 8.0), azimuth_window_deg=15.0)
+    in_band_extension = (in_band.get("guard_trail") or {}).get("extended_search") or {}
+    assert in_band_extension.get("consulted") is False, in_band_extension
+    assert abs(float(in_band["azimuth_deg"]) - 10.0) <= 5.0, in_band
+    assert abs(float(in_band["elevation_deg"]) - 8.0) <= 8.0, in_band
+
+
 def test_projector_layered_zone_gate_surrenders_film_band() -> None:
     """A thin plate hovering over a larger plate is a film shell: the covered
     band must be surrendered (weights zeroed) and marked contested, while the

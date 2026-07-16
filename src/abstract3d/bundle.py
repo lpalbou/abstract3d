@@ -140,6 +140,7 @@ def rebake_bundle(
     references: Sequence[Mapping[str, Any]] = (),
     generate_references: str = "off",
     generation_angles: Optional[Sequence[Tuple[str, float, float]]] = None,
+    reference_angle_planning: str = "auto",
     subject_hint: Optional[str] = None,
     allow_person_subjects: bool = False,
     owner: Any = None,
@@ -159,6 +160,16 @@ def rebake_bundle(
     `scene.glb`, `texture.png`, `uv_preview.png`, and `metadata.json` with
     the bake stats, input hashes, and schema version.
 
+    `reference_angle_planning` selects the generation lane's angles when
+    `generation_angles` is not given: "static" is the historical
+    back/sides/top set, "adaptive" plans angles from the source pose and
+    the mesh's coverage geometry (`plan_reference_angles`), and "auto"
+    (default) is adaptive exactly when the pose is non-canonical (an
+    estimated pose, or an explicit non-zero `source_pose_override`) —
+    the measured class where the static set leaves coverage on the table.
+    The plan and its predicted gains are recorded in the metadata either
+    way (persist-for-diagnosis).
+
     Caveat documented from the review: TripoSR bundles rebake without the
     triplane color prior (`base_color_fn` requires the resident model), so
     unseen texels fall back to projection fill; Hunyuan bundles rebake with
@@ -168,6 +179,11 @@ def rebake_bundle(
     from . import texturing
     from .backends.triposr_runtime import _mesh_export_bytes
 
+    if reference_angle_planning not in ("auto", "adaptive", "static"):
+        raise ValueError(
+            "reference_angle_planning must be one of: auto, adaptive, "
+            f"static (got {reference_angle_planning!r})"
+        )
     loaded = load_bundle(bundle_dir)
     mesh = loaded.geometry_mesh()
     resolution = int(
@@ -176,13 +192,31 @@ def rebake_bundle(
         or 2048
     )
     views = prepare_observed_views(loaded.input_path, references)
+    bake_kwargs = dict(
+        texture_resolution=resolution,
+        texture_completion=texture_completion,
+        projection_model=projection_model,
+        source_pose_override=source_pose_override,
+        scarcity_rescue=scarcity_rescue,
+        compositing=compositing,
+    )
 
     generation_report: Optional[Dict[str, Any]] = None
+    # Baseline-first bake state (generation lane only): the refs-off A/B
+    # baseline is baked BEFORE generation so its own stats carry the ONE
+    # source-pose statement (the guard's estimate, or the caller's
+    # override) that is then threaded to angle planning and generation
+    # conditioning. The generation flow already baked this exact baseline
+    # (after the candidate); reordering costs zero extra bakes and removes
+    # the generation-vs-bake pose split.
+    baseline_textured: Optional[Any] = None
+    baseline_stats: Optional[Dict[str, Any]] = None
     if generate_references in ("auto", "on") and len(views) == 1:
         from .reference_generation import (
             DEFAULT_ANGLES,
             auto_generation_ready,
             generate_reference_views,
+            plan_reference_angles,
         )
 
         # Rebake/pipeline parity (measured on the sports-car incident):
@@ -207,36 +241,116 @@ def rebake_bundle(
             generation_report = {"skipped": readiness_reason}
         else:
             try:
-                generated_views, generation_report = generate_reference_views(
-                    mesh,
-                    views[0]["rgba"],
-                    owner=owner,
-                    angles=generation_angles or DEFAULT_ANGLES,
-                    subject_hint=subject_hint,
-                    seed=int(seed),
-                    # The tint projection needs the source camera; the pose
-                    # override is that fact when the capture recorded one.
-                    source_pose=tuple(source_pose_override or (0.0, 0.0)),
-                    # Synthesizing a person's face is refused in BOTH modes
-                    # unless the caller passes the person-specific
-                    # acknowledgment: "on" is texture-quality opt-in, not
-                    # identity-synthesis consent (no gate defends identity).
-                    person_policy=(
-                        "proceed" if allow_person_subjects else "skip"
-                    ),
-                )
-                views.extend(generated_views)
-                try:
-                    from .backends.step1x_runtime import _release_mlx_generation_cache
+                baseline_textured, baseline_stats = texturing.bake_projection_texture(
+                    loaded.geometry_mesh(),
+                    observed_views=[dict(view) for view in views],
+                    **bake_kwargs)
+            except Exception:
+                # The identical bake below will reproduce this failure on
+                # the established path; generation proceeds with the
+                # caller's pose statement (override or declared (0,0)),
+                # exactly as it did before the reorder.
+                baseline_textured = None
+                baseline_stats = None
+            source_pose_record = dict(
+                (baseline_stats or {}).get("source_pose") or {})
+            source_pose_tuple = (
+                float(source_pose_record.get("azimuth_deg")
+                      if source_pose_record.get("azimuth_deg") is not None
+                      else (source_pose_override or (0.0, 0.0))[0]),
+                float(source_pose_record.get("elevation_deg")
+                      if source_pose_record.get("elevation_deg") is not None
+                      else (source_pose_override or (0.0, 0.0))[1]),
+            )
+            pose_committed = bool(
+                source_pose_record.get("estimated")
+                or (source_pose_override is not None
+                    and tuple(source_pose_override) != (0.0, 0.0))
+            )
 
-                    _release_mlx_generation_cache()
-                except Exception:
-                    pass
+            angle_plan: Optional[Dict[str, Any]] = None
+            plan_error: Optional[str] = None
+            try:
+                angle_plan = plan_reference_angles(
+                    mesh, source_pose_tuple, source_rgba=views[0]["rgba"])
+            except Exception as exc:
+                plan_error = f"{type(exc).__name__}: {exc}"
+
+            adaptive_active = bool(
+                reference_angle_planning == "adaptive"
+                or (reference_angle_planning == "auto" and pose_committed)
+            )
+            if generation_angles:
+                resolved_angles: Sequence[Tuple[str, float, float]] = (
+                    generation_angles)
+                angles_source = "explicit"
+            elif adaptive_active and angle_plan is not None:
+                resolved_angles = tuple(angle_plan.get("angles") or ())
+                angles_source = "adaptive"
+            else:
+                resolved_angles = DEFAULT_ANGLES
+                angles_source = "static"
+            angle_plan_record: Dict[str, Any] = {
+                "mode": reference_angle_planning,
+                "angles_source": angles_source,
+            }
+            if angle_plan is not None:
+                angle_plan_record.update(angle_plan)
+                angle_plan_record.pop("angles", None)
+            if plan_error:
+                angle_plan_record["error"] = plan_error
+            try:
+                if not resolved_angles:
+                    # An adaptive plan may legitimately select ZERO angles
+                    # (the source already witnesses every plannable region
+                    # above the min-gain floor).
+                    generation_report = {
+                        "angles": [], "accepted": 0, "rejected": 0,
+                        "skipped": (
+                            "angle plan selected no angles: every "
+                            "candidate's predicted coverage gain is below "
+                            "the min-gain floor"
+                        ),
+                    }
+                else:
+                    generated_views, generation_report = generate_reference_views(
+                        mesh,
+                        views[0]["rgba"],
+                        owner=owner,
+                        angles=resolved_angles,
+                        subject_hint=subject_hint,
+                        seed=int(seed),
+                        # The witnessed-consistency gate (and the optional
+                        # tint projection) is conditioned on the same pose
+                        # statement the bake uses: the caller's override
+                        # when given, else the baseline bake's own guard
+                        # estimate. (0,0) — the historical assumption —
+                        # is exactly what a declared-pose subject gets.
+                        source_pose=source_pose_tuple,
+                        # Synthesizing a person's face is refused in BOTH
+                        # modes unless the caller passes the person-specific
+                        # acknowledgment: "on" is texture-quality opt-in, not
+                        # identity-synthesis consent (no gate defends
+                        # identity).
+                        person_policy=(
+                            "proceed" if allow_person_subjects else "skip"
+                        ),
+                    )
+                    views.extend(generated_views)
+                    try:
+                        from .backends.step1x_runtime import _release_mlx_generation_cache
+
+                        _release_mlx_generation_cache()
+                    except Exception:
+                        pass
+                if generation_report is not None:
+                    generation_report["angle_plan"] = angle_plan_record
             except Exception as exc:
                 if generate_references == "on":
                     raise
                 generation_report = {
-                    "skipped": f"generation failed: {type(exc).__name__}: {exc}"
+                    "skipped": f"generation failed: {type(exc).__name__}: {exc}",
+                    "angle_plan": angle_plan_record,
                 }
 
     started = time.perf_counter()
@@ -252,16 +366,15 @@ def rebake_bundle(
         if generated_present else None
     )
     generated_view_snapshots = [dict(view) for view in views if view.get("generated")]
-    bake_kwargs = dict(
-        texture_resolution=resolution,
-        texture_completion=texture_completion,
-        projection_model=projection_model,
-        source_pose_override=source_pose_override,
-        scarcity_rescue=scarcity_rescue,
-        compositing=compositing,
-    )
-    textured, stats = texturing.bake_projection_texture(
-        mesh, observed_views=views, **bake_kwargs)
+    if baseline_stats is not None and not generated_present:
+        # The generation lane already baked the refs-off baseline for its
+        # pose estimate and no generated views were accepted: that IS the
+        # single-photo bake (deterministic inputs; the parity canaries pin
+        # this determinism).
+        textured, stats = baseline_textured, baseline_stats
+    else:
+        textured, stats = texturing.bake_projection_texture(
+            mesh, observed_views=views, **bake_kwargs)
 
     if generated_present and baseline_views:
         # WHOLE-BAKE ACCEPTANCE (adversarial round 2): per-view gates are
@@ -273,9 +386,10 @@ def rebake_bundle(
         # bake_acceptance.evaluate_generated_bake).
         from .bake_acceptance import evaluate_generated_bake
 
-        baseline_mesh = loaded.geometry_mesh()
-        baseline_textured, baseline_stats = texturing.bake_projection_texture(
-            baseline_mesh, observed_views=baseline_views, **bake_kwargs)
+        if baseline_stats is None or baseline_textured is None:
+            baseline_mesh = loaded.geometry_mesh()
+            baseline_textured, baseline_stats = texturing.bake_projection_texture(
+                baseline_mesh, observed_views=baseline_views, **bake_kwargs)
         # The gate resolves the fidelity pose from the baseline bake's own
         # stats (measuring at a hardcoded (0,0) on a pose-estimated
         # subject charges ~9 dE of pure pose error to BOTH sides:
@@ -292,6 +406,12 @@ def rebake_bundle(
         if generation_report is None:
             generation_report = {}
         generation_report["bake_acceptance"] = verdict
+        # The gate computes both sides' single-view sanity floors and the
+        # baseline regime once (metrics["baseline_regime"]); the shipped
+        # side's verdict is threaded from there instead of recomputed.
+        gate_regime = verdict["metrics"].get("baseline_regime") or {}
+        from .bake_acceptance import evaluate_single_view_bake
+
         if not verdict["accepted"]:
             # The generated bake regressed the baseline: ship the baseline.
             # The generated images and the verdict stay in metadata as the
@@ -299,13 +419,22 @@ def rebake_bundle(
             textured, stats = baseline_textured, baseline_stats
             views = baseline_views
             # The shipped baseline is a single-photo bake that never met
-            # the A/B machinery; run the same sanity floors the
+            # the A/B machinery; record the same sanity floors the
             # no-references path records, so a broken-on-its-own baseline
             # (pose collapse: measured coverage 0.058 shipped "healthy")
             # is loud in the metadata instead of silent.
-            from .bake_acceptance import evaluate_single_view_bake
-
-            stats["single_view_sanity"] = evaluate_single_view_bake(stats)
+            stats["single_view_sanity"] = (
+                gate_regime.get("baseline_sanity")
+                or evaluate_single_view_bake(stats))
+        elif gate_regime.get("regime") == "catastrophic":
+            # Catastrophic-regime acceptance: the candidate replaced a
+            # baseline whose source registration collapsed (the measured
+            # x-wing incident class). Its own floors verdict — source-view
+            # rows inherited from the broken registration until the pose
+            # lane heals them — is the honest health record of what ships.
+            stats["single_view_sanity"] = (
+                gate_regime.get("candidate_sanity")
+                or evaluate_single_view_bake(stats))
     bake_seconds = round(time.perf_counter() - started, 3)
 
     if write_outputs:

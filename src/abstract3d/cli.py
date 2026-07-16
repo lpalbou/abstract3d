@@ -58,7 +58,14 @@ def _parser() -> argparse.ArgumentParser:
     common.add_argument("--texture-reference-generation-angles", default=None,
                         help="Angles to synthesize: labels (back, side_left, top, bottom, ...) "
                              "or explicit 'label:azimuth,elevation' entries separated by ';' "
-                             "(e.g. 'bottom:0,-75; back:180,0').")
+                             "(e.g. 'bottom:0,-75; back:180,0'). Overrides any planning mode.")
+    common.add_argument("--texture-reference-angle-planning", default=None,
+                        choices=["auto", "adaptive", "static"],
+                        help="How reference-generation angles are chosen when no explicit "
+                             "list is given (hunyuan3d21): 'static' is the canonical "
+                             "back/sides/top set; 'adaptive' plans angles from the estimated "
+                             "source pose and the mesh's coverage geometry; 'auto' (default) "
+                             "plans adaptively exactly when the source pose is non-canonical.")
     common.add_argument("--texture-reference-allow-person", dest="texture_reference_allow_person",
                         action="store_true", default=None,
                         help="Person-specific acknowledgment for reference generation: no gate "
@@ -191,6 +198,7 @@ def main(argv: list[str] | None = None) -> int:
             "model_subfolder": args.model_subfolder,
             "texture_reference_generation": args.texture_reference_generation,
             "texture_reference_generation_angles": args.texture_reference_generation_angles,
+            "texture_reference_angle_planning": args.texture_reference_angle_planning,
             "texture_reference_allow_person": args.texture_reference_allow_person,
         }
         if args.command == "i23d":

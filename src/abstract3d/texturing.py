@@ -1247,6 +1247,9 @@ def estimate_pose_with_silhouette_guard(
     rescue_min_aspect_err: float = 0.15,
     rescue_min_best_riou: float = 0.75,
     plateau_band: float = 0.03,
+    extended_elevations: Sequence[float] = (-55.0, -40.0, -25.0, 25.0, 40.0, 55.0),
+    extended_azimuth_step_deg: float = 10.0,
+    extended_refine_step_deg: float = 8.0,
 ) -> Dict[str, Any]:
     """Source-pose estimation with an independent SILHOUETTE evidence channel.
 
@@ -1282,6 +1285,40 @@ def estimate_pose_with_silhouette_guard(
     owl 0.000/0.002, chair 0.064/0.076, face 0.054/0.131 stay. The weak-
     evidence contract is preserved: below the double-keyed gate the
     declared pose ships exactly as before.
+
+    EXTENDED ELEVATION SEARCH (the x-wing incident): elevated captures are
+    a routine real-world class (top-down product photos, aerial vehicles,
+    figurines shot from above), but the calibrated band only reaches
+    el +/-15 — a top-three-quarter photo (true pose ~el +30) had its NCC
+    spike rightly vetoed, then the rescue searched the wrong band and the
+    bake shipped declared (0,0) at coverage 0.0095 (19x below the basin).
+    The wider band is consulted ONLY when the calibrated band cannot
+    itself justify action (its best registered IoU is below
+    `rescue_min_best_riou`): if any calibrated pose already clears the
+    action floor, the photo's pose is explained within the band and the
+    extension adds only cost and risk — measured on the recorded fleet,
+    every case's in-band best is 0.80-0.97, so the fleet pays zero extra
+    renders and keeps bit-identical decision trails. Below the floor the
+    extension probes coarse elevation tiers (default +/-25/40/55 at
+    azimuth step `extended_azimuth_step_deg`), then refines one local
+    grid-resolution neighborhood (azimuth +/-`azimuth_step_deg`,
+    elevation +/-`extended_refine_step_deg`) around the probe argmax, and
+    the merged evidence map feeds the UNCHANGED veto/override/rescue
+    logic. Measured on the x-wing: refined basin (0,+33) riou 0.851 vs
+    declared 0.617 (gap 2.3x the key), declared aspect err 1.09 (7.3x the
+    key), basin-pose aspect err 0.014-0.10 (safely below the commit-side
+    override key) — the double-key thresholds transfer to high-elevation
+    basins without retuning; source-only rebake coverage 0.0095 -> 0.2135
+    (22x). Budget: worst case ~74 extra renders+registrations (~6 s CPU
+    at size 256 on a 120k-face mesh) on top of the ~105-pose calibrated
+    band, paid only by photos the band cannot explain. Measured limit
+    (characterized, not silently fixed): a capture whose OPPOSITE-sign
+    elevation mirror registers in-band ABOVE the floor (synthetic car at
+    el -35: its el +15 mirror registers 0.763, 0.013 over the floor)
+    still ships the in-band rescue exactly as the current tree does —
+    widening the entry predicate to catch it would let far-band
+    candidates join calibrated plateaus at jitter-scale margins, which
+    the recorded fleet forbids.
     """
     import math
 
@@ -1373,12 +1410,56 @@ def estimate_pose_with_silhouette_guard(
     riou: Dict[Tuple[float, float], float] = {}
     masks: Dict[Tuple[float, float], Any] = {}
     aspects: Dict[Tuple[float, float], Optional[float]] = {}
+
+    def measure_pose(azimuth: float, elevation: float) -> None:
+        key = (float(azimuth), float(elevation))
+        if key in riou:
+            return
+        _, mask = render_mask(*key)
+        masks[key] = mask
+        aspects[key] = bbox_aspect(mask)
+        riou[key], _ = register_mask(photo_alpha, mask)
+
     for elevation in elevations:
         for azimuth in azimuths:
-            _, mask = render_mask(azimuth, elevation)
-            masks[(azimuth, elevation)] = mask
-            aspects[(azimuth, elevation)] = bbox_aspect(mask)
-            riou[(azimuth, elevation)], _ = register_mask(photo_alpha, mask)
+            measure_pose(azimuth, elevation)
+
+    # EXTENDED ELEVATION SEARCH, coarse-to-fine: consulted only when the
+    # calibrated band cannot itself justify action (its best registered
+    # IoU is below the action floor `rescue_min_best_riou`). Above the
+    # floor the photo's pose is explained within the band, and adding
+    # far-band candidates could only perturb the calibrated plateau; below
+    # it, either the pose is outside the band (elevated/depressed capture)
+    # or the subject registers nowhere — the wider probe distinguishes the
+    # two. Coarse tiers keep the cost proportionate; one local refinement
+    # restores grid resolution around the discovered basin so the final
+    # pose lands within one calibrated grid step of the truth.
+    core_best_riou = max(riou.values()) if riou else 0.0
+    extension_trail: Dict[str, Any] = {
+        "consulted": bool(core_best_riou < float(rescue_min_best_riou)),
+        "core_best_riou": round(core_best_riou, 4),
+    }
+    if extension_trail["consulted"] and extended_elevations:
+        probe_azimuths = [float(a) for a in np.arange(
+            -float(rescue_azimuth_max), float(rescue_azimuth_max) + 1e-9,
+            float(extended_azimuth_step_deg))]
+        for elevation in extended_elevations:
+            for azimuth in probe_azimuths:
+                measure_pose(azimuth, elevation)
+        core_elevations = {float(e) for e in elevations}
+        probe_best = max(
+            (key for key in riou if key[1] not in core_elevations),
+            key=lambda k: riou[k], default=None)
+        if probe_best is not None:
+            for d_azimuth in (-float(azimuth_step_deg), 0.0, float(azimuth_step_deg)):
+                for d_elevation in (-float(extended_refine_step_deg), 0.0,
+                                    float(extended_refine_step_deg)):
+                    measure_pose(probe_best[0] + d_azimuth,
+                                 probe_best[1] + d_elevation)
+        extension_trail["poses_measured"] = len(riou)
+        extension_trail["extended_best_riou"] = round(
+            max(riou.values()) if riou else 0.0, 4)
+    result_trail["extended_search"] = extension_trail
 
     declared_key = (0.0, 0.0)
     declared_riou = riou.get(declared_key, 0.0)
