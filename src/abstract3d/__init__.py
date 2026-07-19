@@ -10,7 +10,7 @@ __all__ = [
     "TripoSRBackend",
 ]
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 _LAZY_BACKEND_EXPORTS = {
     "Hunyuan3DShapeBackend",

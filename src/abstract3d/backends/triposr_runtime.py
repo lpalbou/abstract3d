@@ -70,6 +70,24 @@ _TASK_ALIASES = {
     "image_to_scene3d": "image_to_scene3d",
     "i23d": "image_to_scene3d",
 }
+# Every **kwargs option `_run_generation` consumes (composition keys ride
+# IMAGE_REQUEST_KEYS separately). Used for the millisecond-cheap preflight
+# rejection before model load; the post-pop `reject_unknown_options` at the
+# end of `_run_generation` stays authoritative — if a new pop is added
+# without extending this set, the preflight rejects it loudly (fail-closed),
+# which the option-contract tests catch immediately.
+_TRIPOSR_GENERATION_OPTION_KEYS = frozenset(
+    {
+        "cleanup",
+        "texture_mode",
+        "texture_resolution",
+        "texture_completion",
+        "texture_reference_views",
+        "texture_reference_images",
+        "texture_reference_angles",
+        "texture_reference_remove_background",
+    }
+)
 _RUNTIME_IMPORTS = (
     "numpy",
     "skimage",
@@ -450,6 +468,38 @@ def _remap_triposr_checkpoint_key(key: str) -> str:
     return key
 
 
+def _select_triposr_state_dict(model_keys: set, checkpoint: Mapping) -> Mapping:
+    """Pick the checkpoint key naming that fits THIS transformers version.
+
+    The remap translates the legacy ViT naming
+    (`encoder.layer.N.attention.attention.query`) onto the newer
+    `layers.N.attention.q_proj` layout — but which naming the instantiated
+    model wants depends on the installed transformers version, and applying
+    the remap UNCONDITIONALLY corrupted checkpoints that already matched the
+    model raw (live incident: transformers 5.6.0, 192 clean keys rewritten
+    into 192 misses — reported by core 2026-07-19). Reactive selection:
+    measure key-set fit for the raw and remapped forms and load whichever
+    fits strictly better; a tie keeps raw (never rewrite what already fits).
+    """
+    raw_keys = set(checkpoint.keys())
+    raw_score = len(model_keys - raw_keys) + len(raw_keys - model_keys)
+    if raw_score == 0:
+        return checkpoint
+
+    remapped = {_remap_triposr_checkpoint_key(key): value for key, value in checkpoint.items()}
+    remapped_keys = set(remapped.keys())
+    remapped_score = len(model_keys - remapped_keys) + len(remapped_keys - model_keys)
+    if remapped_score < raw_score:
+        return remapped
+    if raw_score > 0 and remapped_score >= raw_score:
+        raise Abstract3DError(
+            "The TripoSR checkpoint does not fit this transformers version's model layout "
+            f"in either naming (raw mismatch={raw_score}, remapped mismatch={remapped_score}). "
+            "Check the pinned transformers version against the abstract3d support range."
+        )
+    return checkpoint
+
+
 def _select_device(owner: Any, explicit: Optional[str] = None) -> str:
     requested = str(explicit or _owner_cfg(owner, "scene3d_device") or _env("ABSTRACT3D_DEVICE") or "auto").strip().lower()
     torch = importlib.import_module("torch")
@@ -553,8 +603,12 @@ def _load_triposr_model(owner: Any, *, model_id: str, device: str, chunk_size: i
     OmegaConf.resolve(cfg)
     model = TSR(cfg)
     checkpoint = torch.load(weight_path, map_location="cpu")
-    checkpoint = {_remap_triposr_checkpoint_key(key): value for key, value in checkpoint.items()}
-    missing, unexpected = model.load_state_dict(checkpoint, strict=False)
+    # Reactive normalization: only rewrite checkpoint keys when the rewrite
+    # measurably fits this transformers version's model better (see
+    # _select_triposr_state_dict — the unconditional remap corrupted clean
+    # checkpoints on versions whose layout already matches the file).
+    selected = _select_triposr_state_dict(set(model.state_dict().keys()), checkpoint)
+    missing, unexpected = model.load_state_dict(selected, strict=False)
     if missing or unexpected:
         raise Abstract3DError(
             "Failed to normalize the TripoSR checkpoint for this transformers version. "
@@ -3051,6 +3105,21 @@ class TripoSRBackend:
         from PIL import Image
         import psutil
         import torch
+
+        # Validate option names BEFORE loading the model or running inference:
+        # the enforcement check at the end of this method (after every pop) is
+        # authoritative, but reaching it costs minutes of model load + compute.
+        # A typo or another backend's knob (e.g. `seed` — TripoSR is
+        # feed-forward and takes none) must fail in milliseconds instead.
+        from . import reject_unknown_options
+        from ..image_composition import IMAGE_REQUEST_KEYS
+
+        unknown_preflight = {
+            key: None
+            for key in kwargs
+            if key not in _TRIPOSR_GENERATION_OPTION_KEYS and key not in IMAGE_REQUEST_KEYS
+        }
+        reject_unknown_options(self.backend_id, unknown_preflight)
 
         model_runtime = self._load_runtime(model_id=model, device=device, chunk_size=chunk_size)
         actual_task = _TASK_ALIASES.get(task, task)

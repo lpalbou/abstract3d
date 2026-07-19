@@ -1,6 +1,25 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (2026-07-19)
+
+### Fixed (TripoSR loading)
+
+- **Checkpoint normalization is reactive, not unconditional**: the
+  legacy-to-new ViT key remap used to rewrite every checkpoint key before
+  `load_state_dict`, corrupting checkpoints that already match the
+  instantiated model raw (live failure on transformers 5.6.0: 192 clean keys
+  rewritten into 192 misses — found by abstractcore running the real
+  image-to-3D path). `_select_triposr_state_dict` now measures key-set fit
+  for the raw and remapped forms and loads whichever fits strictly better;
+  a tie keeps raw, and neither fitting refuses loudly naming both mismatch
+  scores. Verified both ways: raw branch on transformers 5.6.0
+  (abstractcore's clean-run receipt, 79.7s), remapped branch on 5.9.0
+  (live model load).
+- **Unknown generation options are rejected before model load**: a typo or
+  another backend's knob (e.g. `seed` — TripoSR is feed-forward and takes
+  none) used to fail only after minutes of model load and inference; a
+  millisecond preflight now rejects it with the same actionable message,
+  and the post-consumption check stays as the authoritative backstop.
 
 ### Added (coverage-driven adaptive reference-angle planning)
 

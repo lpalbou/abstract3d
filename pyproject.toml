@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "abstract3d"
-version = "0.2.0"
+version = "0.3.0"
 description = "Abstract3D plugin for local-first text-to-3D and image-to-3D generation in AbstractFramework"
 readme = "README.md"
 requires-python = ">=3.10"

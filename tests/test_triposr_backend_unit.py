@@ -44,6 +44,38 @@ def test_checkpoint_key_remap_matches_transformers_v5_layout() -> None:
     assert runtime._remap_triposr_checkpoint_key("decoder.weight") == "decoder.weight"
 
 
+def test_checkpoint_selection_keeps_raw_when_it_already_fits() -> None:
+    # Reactive normalization (core's live find, 2026-07-19): a checkpoint whose
+    # keys already match the instantiated model must load RAW — the
+    # unconditional remap rewrote 192 clean keys into 192 misses on
+    # transformers versions using the legacy encoder.layer naming.
+    legacy_key = "image_tokenizer.model.encoder.layer.0.attention.attention.query.weight"
+    model_keys = {legacy_key, "decoder.weight"}
+    checkpoint = {legacy_key: 1, "decoder.weight": 2}
+    selected = runtime._select_triposr_state_dict(model_keys, checkpoint)
+    assert set(selected.keys()) == model_keys  # untouched
+
+
+def test_checkpoint_selection_remaps_when_model_wants_new_layout() -> None:
+    legacy_key = "image_tokenizer.model.encoder.layer.0.attention.attention.query.weight"
+    new_key = "image_tokenizer.model.layers.0.attention.q_proj.weight"
+    model_keys = {new_key, "decoder.weight"}
+    checkpoint = {legacy_key: 1, "decoder.weight": 2}
+    selected = runtime._select_triposr_state_dict(model_keys, checkpoint)
+    assert set(selected.keys()) == model_keys  # remap applied
+
+
+def test_checkpoint_selection_refuses_when_neither_naming_fits() -> None:
+    import pytest
+
+    from abstract3d.errors import Abstract3DError
+
+    model_keys = {"a.weight", "b.weight"}
+    checkpoint = {"totally.different.weight": 1}
+    with pytest.raises(Abstract3DError, match="either naming"):
+        runtime._select_triposr_state_dict(model_keys, checkpoint)
+
+
 def test_resolve_source_dir_prefers_configured_checkout(monkeypatch, tmp_path) -> None:
     source_dir = tmp_path / "triposr"
     (source_dir / "tsr").mkdir(parents=True)
