@@ -5770,6 +5770,58 @@ def protect_observed_texels(
     return stats
 
 
+def reference_view_authority(
+    stats: Mapping[str, Any],
+    *,
+    provenance_by_label: Optional[Mapping[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    """Fold per-view paint authority out of bake stats for bundle metadata.
+
+    One row per view that actually SHIPPED in the blend (the bake's
+    `observed_view_stats`), so the report always describes the baked
+    texture — a reference the acceptance lane refused never appears here.
+    `authority` states the doctrine each view baked under:
+
+    - "full": real-photo evidence; may paint (and win contests on) any
+      texel it credibly observes.
+    - "protected_completion_only": synthesized/generated witness; its
+      weights were subordinated and `protect_observed_texels` (absolute
+      mode) zeroed them wherever ANY real view holds positive weight, so
+      it completes unobserved surface but never revises the photo.
+
+    `provenance_by_label` optionally names HOW a view came to be treated
+    as synthesized ("explicit_flag" / "filename_inference"); generated
+    views without an entry are the pipeline's own synthesis lane.
+    Protected rows carry the protection mode and the per-view count of
+    zeroed texels so a report shows exactly how much paint the lock
+    withheld from photo-observed surface.
+    """
+    provenance = dict(provenance_by_label or {})
+    protection = dict(stats.get("generated_protection") or {})
+    zeroed_by_view = dict(protection.get("zeroed_by_view") or {})
+    rows: List[Dict[str, Any]] = []
+    for view_row in list(stats.get("observed_view_stats") or []):
+        label = str(view_row.get("label"))
+        generated = bool(view_row.get("generated"))
+        row: Dict[str, Any] = {
+            "label": label,
+            "role": "source" if int(view_row.get("index") or 0) == 1 else "reference",
+            "synthesized": generated,
+            "authority": "protected_completion_only" if generated else "full",
+        }
+        if generated:
+            row["synthesized_source"] = str(
+                provenance.get(label) or "pipeline_generation"
+            )
+            if protection.get("applied"):
+                row["protection"] = {
+                    "mode": protection.get("mode"),
+                    "zeroed_texels": int(zeroed_by_view.get(label) or 0),
+                }
+        rows.append(row)
+    return rows
+
+
 def admit_scarce_witnesses(
     projections: Sequence[Dict[str, Any]],
     *,
@@ -6495,6 +6547,37 @@ def bake_projection_texture(
     surface_mask = np.asarray(positions_texture)[:, :, 3] > 0.0
 
     views = [dict(view) for view in observed_views if view.get("rgba") is not None]
+    # Duplicate-angle poisoning guard (e20 forensics): two SYNTHESIZED
+    # references declared at the same pose register independently (each
+    # against its own alpha bbox) and paint one anatomy twice — measured
+    # 31-64 px vertical content disagreement over 220k-485k co-painted
+    # texels, surfacing as marbled ownership and offset duplicate edges.
+    # Independent synthesis draws of one angle are mutually inconsistent by
+    # construction, so this is never a legitimate witness arrangement:
+    # refuse loudly. Real photos at one angle remain legitimate (two front
+    # photos are two witnesses of the same truth) and are not gated here.
+    seen_generated_angles: Dict[Tuple[float, float], str] = {}
+    for view in views[1:]:
+        if not view.get("generated"):
+            continue
+        angle_key = (
+            round(float(view.get("azimuth_deg", 0.0)), 1),
+            round(float(view.get("elevation_deg", 0.0)), 1),
+        )
+        label = str(view.get("label") or "reference")
+        previous = seen_generated_angles.get(angle_key)
+        if previous is not None:
+            raise ValueError(
+                "bake_projection_texture received two synthesized references "
+                f"at the same pose az={angle_key[0]:g} el={angle_key[1]:g} "
+                f"({previous!r} and {label!r}). Independent synthesis draws "
+                "of one angle paint the same anatomy twice with a vertical "
+                "offset. Pass conditioning-only copies with "
+                "consumer='geometry' (texture_reference_consumers) so they "
+                "never reach the bake, or give each view its own measured "
+                "azimuth."
+            )
+        seen_generated_angles[angle_key] = label
     camera_distance = 1.9
     source_pose: Dict[str, Any] = {"azimuth_deg": 0.0, "elevation_deg": 0.0, "iou": 0.0}
     orthographic = str(projection_model) == "orthographic"

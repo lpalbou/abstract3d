@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pytest
 
@@ -337,6 +339,279 @@ def test_adaptive_volume_decoder_handles_non_power_of_two_final_resolution() -> 
     radii = np.linalg.norm(verts_world, axis=1)
     assert abs(float(radii.mean()) - 0.6) < 0.015
     assert float(radii.std()) < 0.01
+
+
+class _WrinkledSphereDecoder:
+    """Deterministic, irregular analytic field for bit-identity tests.
+
+    The wrinkle keeps the refinement mask non-trivial (neither empty nor
+    full) and the 0.98 radius pushes surface cells against the grid walls
+    so the fine-index clamp (np.minimum against the last vertex) fires.
+    """
+
+    def __call__(self, *, queries, latents):
+        import torch
+
+        del latents
+        radius = torch.linalg.norm(queries, dim=-1)
+        wrinkle = 0.02 * (
+            torch.sin(9.0 * queries[..., 0])
+            * torch.sin(11.0 * queries[..., 1])
+            * torch.sin(13.0 * queries[..., 2])
+        )
+        logit = 165.0 * (0.98 + wrinkle - radius)
+        return torch.clamp(logit, -10.0, 10.0).unsqueeze(-1)
+
+
+def _legacy_adaptive_decode(decoder, latents, geo_decoder, *, octree_resolution, num_chunks):
+    """The pre-2026-07-22 refinement assembly, replicated verbatim.
+
+    Builds the (scale+1)^3 * N fine-index row matrix, clamps it with one
+    np.minimum pass, scatters it in one fancy assignment, re-derives the
+    refinement set with np.argwhere, gathers through strided index columns,
+    and copies the zoom output through a fresh astype. The production
+    decoder replaced these with per-offset scatters, an np.nonzero tuple,
+    and astype(copy=False); this replica is the equality baseline proving
+    the replacement changed no byte of the assembled field.
+    """
+    import torch
+    from scipy import ndimage
+
+    bounds = 1.01
+    bbox_min = np.asarray([-bounds] * 3, dtype=np.float64)
+    bbox_max = np.asarray([bounds] * 3, dtype=np.float64)
+    final_resolution = int(octree_resolution)
+    resolutions = [final_resolution]
+    while resolutions[0] > decoder.coarse_resolution and resolutions[0] % 2 == 0:
+        resolutions.insert(0, resolutions[0] // 2)
+
+    def grid_axes(resolution):
+        xs = np.linspace(bbox_min[0], bbox_max[0], resolution + 1, dtype=np.float64)
+        ys = np.linspace(bbox_min[1], bbox_max[1], resolution + 1, dtype=np.float64)
+        zs = np.linspace(bbox_min[2], bbox_max[2], resolution + 1, dtype=np.float64)
+        return xs, ys, zs
+
+    # _query_points is shared deliberately: the patch only added progress
+    # logging there (accumulation is unchanged list + one torch.cat), so the
+    # legacy-vs-new delta under test is exactly the loop assembly.
+    def query(points):
+        return decoder._query_points(
+            points,
+            latents=latents,
+            geo_decoder=geo_decoder,
+            num_chunks=num_chunks,
+            device=torch.device("cpu"),
+            dtype=torch.float32,
+        )
+
+    coarse_resolution = resolutions[0]
+    xs, ys, zs = grid_axes(coarse_resolution)
+    grid_x, grid_y, grid_z = np.meshgrid(xs, ys, zs, indexing="ij")
+    coarse_points = np.stack([grid_x, grid_y, grid_z], axis=-1).reshape(-1, 3).astype(np.float32)
+    grid = query(coarse_points).numpy().reshape(
+        coarse_resolution + 1, coarse_resolution + 1, coarse_resolution + 1
+    )
+    assert len(resolutions) > 1 and (grid > 0.0).any()
+
+    current_resolution = coarse_resolution
+    for next_resolution in resolutions[1:]:
+        inside = grid > 0.0
+        surface = np.zeros_like(inside)
+        for axis in range(3):
+            changed = np.diff(inside, axis=axis)
+            pad_lo = [(0, 0)] * 3
+            pad_hi = [(0, 0)] * 3
+            pad_lo[axis] = (0, 1)
+            pad_hi[axis] = (1, 0)
+            surface |= np.pad(changed, pad_lo, mode="constant")
+            surface |= np.pad(changed, pad_hi, mode="constant")
+        band = decoder.band
+        if surface.any():
+            shell_scale = float(np.median(np.abs(grid)[surface]))
+            band = max(decoder.band, 1.5 * shell_scale)
+        surface |= np.abs(grid) < band
+        surface = ndimage.binary_dilation(surface, iterations=2)
+
+        scale = next_resolution // current_resolution
+        fine_shape = (next_resolution + 1,) * 3
+        fine_mask = np.zeros(fine_shape, dtype=bool)
+        coarse_idx = np.argwhere(surface)
+        base = coarse_idx * scale
+        block = np.stack(
+            np.meshgrid(np.arange(scale + 1), np.arange(scale + 1), np.arange(scale + 1), indexing="ij"),
+            axis=-1,
+        ).reshape(-1, 3)
+        fine_idx = (base[:, None, :] + block[None, :, :]).reshape(-1, 3)
+        np.minimum(fine_idx, next_resolution, out=fine_idx)
+        fine_mask[fine_idx[:, 0], fine_idx[:, 1], fine_idx[:, 2]] = True
+
+        xs, ys, zs = grid_axes(next_resolution)
+        refine_idx = np.argwhere(fine_mask)
+        refine_points = np.stack(
+            [xs[refine_idx[:, 0]], ys[refine_idx[:, 1]], zs[refine_idx[:, 2]]], axis=-1
+        ).astype(np.float32)
+        refine_logits = query(refine_points).numpy()
+
+        zoom_factor = tuple(fs / cs for fs, cs in zip(fine_shape, grid.shape))
+        next_grid = ndimage.zoom(grid, zoom_factor, order=1, mode="nearest").astype(np.float32)
+        next_grid[refine_idx[:, 0], refine_idx[:, 1], refine_idx[:, 2]] = refine_logits
+        grid = next_grid
+        current_resolution = next_resolution
+    return grid
+
+
+def test_adaptive_volume_decoder_bit_identical_to_legacy_assembly() -> None:
+    """The 2026-07-22 assembly rewrite must not change one byte of the field.
+
+    Same synthetic decoder, same schedule (8 -> 16 -> 32): the production
+    decoder's grid must equal the frozen legacy assembly exactly
+    (np.array_equal on float32 — bit identity, not tolerance), while the
+    refinement must remain non-trivial (the field differs from a pure
+    coarse upsample, so the equality is not vacuous).
+    """
+    import torch
+    from scipy import ndimage
+
+    decoder = runtime._AdaptiveVolumeDecoder(coarse_resolution=8)
+    latents = torch.zeros((1, 4, 8), dtype=torch.float32)
+    geo_decoder = _WrinkledSphereDecoder()
+
+    produced = decoder(
+        latents, geo_decoder, bounds=1.01, num_chunks=97, octree_resolution=32
+    )[0].numpy()
+    legacy = _legacy_adaptive_decode(
+        decoder, latents, geo_decoder, octree_resolution=32, num_chunks=97
+    )
+
+    assert produced.dtype == legacy.dtype == np.float32
+    assert produced.shape == legacy.shape == (33, 33, 33)
+    assert np.array_equal(produced, legacy)
+
+    # Non-vacuousness: refinement genuinely overwrote interpolated cells.
+    coarse_axes = np.linspace(-1.01, 1.01, 9, dtype=np.float64)
+    gx, gy, gz = np.meshgrid(coarse_axes, coarse_axes, coarse_axes, indexing="ij")
+    coarse_points = np.stack([gx, gy, gz], axis=-1).reshape(-1, 3).astype(np.float32)
+    coarse_grid = (
+        decoder._query_points(
+            coarse_points,
+            latents=latents,
+            geo_decoder=geo_decoder,
+            num_chunks=97,
+            device=torch.device("cpu"),
+            dtype=torch.float32,
+        )
+        .numpy()
+        .reshape(9, 9, 9)
+    )
+    upsample_only = ndimage.zoom(
+        ndimage.zoom(coarse_grid, (17 / 9,) * 3, order=1, mode="nearest"),
+        (33 / 17,) * 3,
+        order=1,
+        mode="nearest",
+    )
+    assert not np.array_equal(produced, upsample_only)
+
+
+def test_adaptive_volume_decoder_logs_chunk_progress(caplog) -> None:
+    """Per-chunk INFO progress at a ~5% cadence (operability contract).
+
+    e22v2 ran the 512-octree decode with zero output for its whole
+    duration; the silence was misread as a hang. Every query pass must
+    announce its size and emit chunk lines — bounded, so a 4,000-chunk
+    dense pass logs ~20 lines, not 4,000.
+    """
+    import logging as _logging
+
+    import torch
+
+    caplog.set_level(_logging.INFO, logger="abstract3d.backends.hunyuan3d_runtime")
+    decoder = runtime._AdaptiveVolumeDecoder(coarse_resolution=8)
+    latents = torch.zeros((1, 4, 8), dtype=torch.float32)
+    decoder(
+        latents, _WrinkledSphereDecoder(), bounds=1.01, num_chunks=97, octree_resolution=16
+    )
+
+    messages = [record.getMessage() for record in caplog.records]
+    level_lines = [m for m in messages if m.startswith("adaptive volume decode: level 8 -> 16")]
+    assert len(level_lines) == 1
+    assert "refining" in level_lines[0]
+
+    coarse_chunks = [m for m in messages if m.startswith("volume decode [coarse 8^3]: chunk ")]
+    refine_chunks = [m for m in messages if m.startswith("volume decode [refine 8 -> 16]: chunk ")]
+    # 9^3=729 points at 97/chunk = 8 chunks; every-5% floors to every chunk.
+    assert len(coarse_chunks) == 8
+    assert coarse_chunks[-1].endswith("chunk 8/8 (100%)")
+    # The refine pass must both announce totals and reach 100%.
+    assert any("querying" in m and "[refine 8 -> 16]" in m for m in messages)
+    assert refine_chunks and refine_chunks[-1].endswith("(100%)")
+    # Cadence bound: never more than ~21 progress lines per query pass.
+    assert len(refine_chunks) <= 21
+
+
+def test_adaptive_volume_decoder_logs_are_bounded_at_scale(caplog) -> None:
+    """At a large chunk count the every-5% cadence caps the line count."""
+    import logging as _logging
+
+    import torch
+
+    caplog.set_level(_logging.INFO, logger="abstract3d.backends.hunyuan3d_runtime")
+    decoder = runtime._AdaptiveVolumeDecoder(coarse_resolution=8)
+    points = np.zeros((4200, 3), dtype=np.float32)
+
+    class _ZeroDecoder:
+        def __call__(self, *, queries, latents):
+            del latents
+            return torch.zeros(queries.shape[:-1] + (1,), dtype=torch.float32)
+
+    decoder._query_points(
+        points,
+        latents=torch.zeros((1, 4, 8), dtype=torch.float32),
+        geo_decoder=_ZeroDecoder(),
+        num_chunks=1,
+        device=torch.device("cpu"),
+        dtype=torch.float32,
+        label="volume decode [bounded]",
+    )
+    chunk_lines = [
+        record.getMessage()
+        for record in caplog.records
+        if record.getMessage().startswith("volume decode [bounded]: chunk ")
+    ]
+    # 4200 chunks at every-5% cadence: 20 cadence lines (+1 if the final
+    # chunk is off-cadence; here 4200 % 210 == 0, so exactly 20).
+    assert len(chunk_lines) == 20
+    assert chunk_lines[-1].endswith("chunk 4200/4200 (100%)")
+
+
+def test_ensure_decode_logging_respects_existing_config() -> None:
+    """The visibility helper must never fight an operator's logging setup:
+    it attaches exactly one handler to the ``abstract3d`` namespace, only
+    when the root and package loggers are both handler-free, and is
+    idempotent across decodes."""
+    import logging as _logging
+
+    package_logger = _logging.getLogger("abstract3d")
+    root_logger = _logging.getLogger()
+    saved_package = list(package_logger.handlers)
+    saved_root = list(root_logger.handlers)
+    saved_level = package_logger.level
+    try:
+        # Case 1: operator configured the root logger -> do nothing.
+        package_logger.handlers = []
+        root_logger.handlers = [_logging.NullHandler()]
+        runtime._ensure_decode_logging()
+        assert package_logger.handlers == []
+
+        # Case 2: nothing configured -> exactly one handler, idempotent.
+        root_logger.handlers = []
+        runtime._ensure_decode_logging()
+        runtime._ensure_decode_logging()
+        assert len(package_logger.handlers) == 1
+        assert package_logger.getEffectiveLevel() <= _logging.INFO
+    finally:
+        package_logger.handlers = saved_package
+        root_logger.handlers = saved_root
+        package_logger.setLevel(saved_level)
 
 
 def test_adaptive_volume_decoder_falls_back_to_dense_for_tiny_objects() -> None:
@@ -976,6 +1251,38 @@ def _image_bytes(image) -> bytes:
     return buffer.getvalue()
 
 
+def _stub_view_consistency(monkeypatch, *, verdicts=("consistent",), align=None):
+    """Script the sibling view-consistency stage through the runtime's
+    lazy resolver (`_view_consistency_api`) — the module ships in
+    parallel and may not exist in this checkout, which is exactly why
+    the runtime exposes the resolver seam. `verdicts` are consumed one
+    per report call in order; the last one repeats. Returns a call log
+    of (args...) tuples so tests can pin the frozen argument order."""
+    queue = list(verdicts)
+    log = {"report": [], "align": []}
+
+    def _report(reference, candidate):
+        verdict = queue.pop(0) if len(queue) > 1 else queue[0]
+        report = {
+            "score": {"consistent": 0.93, "correctable": 0.61}.get(verdict, 0.12),
+            "best_shift_rows": 0 if verdict == "consistent" else 9,
+            "shift_frac": 0.0 if verdict == "consistent" else 0.0937,
+            "verdict": verdict,
+        }
+        log["report"].append((reference, candidate, report))
+        return report
+
+    def _align(image, reference, **kwargs):
+        corrected, report = (align or (lambda i, r: (i, {"applied_shift_rows": 9})))(
+            image, reference
+        )
+        log["align"].append((image, reference, corrected))
+        return corrected, report
+
+    monkeypatch.setattr(runtime, "_view_consistency_api", lambda: (_report, _align))
+    return log
+
+
 def test_synthesize_geometry_views_gates_and_side_pair(monkeypatch) -> None:
     """End-to-end gate battery on real images: a mirror-consistent back
     view passes, and a side pair whose silhouettes disagree is dropped
@@ -987,6 +1294,7 @@ def test_synthesize_geometry_views_gates_and_side_pair(monkeypatch) -> None:
     monkeypatch.setattr(
         segmentation, "remove_background_robust", lambda image: image.convert("RGBA")
     )
+    _stub_view_consistency(monkeypatch)
     source = _two_tone_disc_image()
 
     # Same two-tone material as the source (so the material gate passes and
@@ -1037,6 +1345,7 @@ def test_synthesize_geometry_views_rejects_chroma_collapse(monkeypatch) -> None:
     monkeypatch.setattr(
         segmentation, "remove_background_robust", lambda image: image.convert("RGBA")
     )
+    _stub_view_consistency(monkeypatch)
     source = _two_tone_disc_image()
     gray = np.zeros((96, 96, 4), dtype=np.uint8)
     yy, xx = np.mgrid[0:96, 0:96]
@@ -1060,6 +1369,277 @@ def test_synthesize_geometry_views_rejects_chroma_collapse(monkeypatch) -> None:
     assert "subject identity" in records[0]["attempts"][0]["failure"]
     assert "chroma collapse" in records[0]["attempts"][0]["failure"]
     assert len(rejected) == 1
+
+
+# -- row-consistency acceptance stage (the double-mouth defect) ----------------
+
+
+def test_row_consistency_consistent_view_passes_untouched(monkeypatch) -> None:
+    """Verdict 'consistent' accepts exactly as before the stage existed:
+    no alignment runs, and the report lands in the provenance record."""
+    from abstract3d import segmentation
+
+    monkeypatch.setattr(
+        segmentation, "remove_background_robust", lambda image: image.convert("RGBA")
+    )
+    source = _two_tone_disc_image()
+    log = _stub_view_consistency(monkeypatch, verdicts=("consistent",))
+
+    accepted, records, rejected = runtime._synthesize_geometry_views(
+        None,
+        source,
+        subject_noun="disc toy",
+        base_seed=7,
+        labels=(("back", 180.0),),
+        attempts=1,
+        image_generator=lambda prompt, image, **kwargs: _image_bytes(source),
+    )
+
+    assert [view["label"] for view in accepted] == ["back"]
+    # Frozen sibling API argument order: report(reference, candidate),
+    # with the SOURCE PHOTO in the reference slot (no clay exists yet).
+    assert log["report"][0][0] is source
+    assert log["align"] == []  # untouched: no correction ran
+    attempt = records[0]["attempts"][0]
+    assert attempt["row_consistency"]["verdict"] == "consistent"
+    assert "row_corrected" not in attempt
+    assert accepted[0]["row_consistency"]["verdict"] == "consistent"
+    assert accepted[0]["row_corrected"] is False
+    assert records[0]["row_consistency"]["verdict"] == "consistent"
+    assert rejected == []
+
+
+def test_row_consistency_correctable_view_aligned_and_regated(monkeypatch) -> None:
+    """Verdict 'correctable' routes the candidate through align_view_rows
+    and the corrected pixels re-earn acceptance through the existing
+    gates (matte, subject identity, back-mirror) — the conditioner must
+    see the CORRECTED image, with the correction on the record."""
+    from PIL import Image
+
+    from abstract3d import segmentation
+
+    monkeypatch.setattr(
+        segmentation, "remove_background_robust", lambda image: image.convert("RGBA")
+    )
+    source = _two_tone_disc_image()
+
+    def _shift_rows(image, reference):
+        # A genuine row correction: same subject 9 rows lower (still fully
+        # in frame), so matte/material/mirror re-gates legitimately pass.
+        array = np.roll(np.asarray(image.convert("RGBA")), 9, axis=0)
+        return Image.fromarray(array, "RGBA"), {"applied_shift_rows": 9}
+
+    log = _stub_view_consistency(
+        monkeypatch, verdicts=("correctable",), align=_shift_rows
+    )
+
+    accepted, records, rejected = runtime._synthesize_geometry_views(
+        None,
+        source,
+        subject_noun="disc toy",
+        base_seed=7,
+        labels=(("back", 180.0),),
+        attempts=1,
+        image_generator=lambda prompt, image, **kwargs: _image_bytes(source),
+    )
+
+    assert [view["label"] for view in accepted] == ["back"]
+    # align_view_rows(candidate, reference): the aligner receives the exact
+    # image the report judged, with the source photo as the reference.
+    assert log["align"][0][0] is log["report"][0][1]
+    assert log["align"][0][1] is source
+    # The conditioner sees the CORRECTED pixels, not the original.
+    assert accepted[0]["rgba"] is log["align"][0][2]
+    attempt = records[0]["attempts"][0]
+    assert attempt["row_consistency"]["verdict"] == "correctable"
+    assert attempt["row_corrected"] is True
+    assert attempt["row_alignment"] == {"applied_shift_rows": 9}
+    # Re-gate evidence recorded from the corrected image.
+    assert "row_corrected_material" in attempt
+    assert attempt["row_corrected_back_mirror_iou"] > 0.9
+    assert accepted[0]["row_corrected"] is True
+    assert records[0]["row_corrected"] is True
+    assert rejected == []
+
+
+def test_row_consistency_correction_must_repass_existing_gates(monkeypatch) -> None:
+    """A correction is a mutation: corrected pixels that fail the existing
+    gate battery are rejected, not accepted on the original's passes."""
+    from PIL import Image
+
+    from abstract3d import segmentation
+
+    monkeypatch.setattr(
+        segmentation, "remove_background_robust", lambda image: image.convert("RGBA")
+    )
+    source = _two_tone_disc_image()
+    gray = np.zeros((96, 96, 4), dtype=np.uint8)
+    yy, xx = np.mgrid[0:96, 0:96]
+    disc = (yy - 48.0) ** 2 + (xx - 48.0) ** 2 <= (96 * 0.35) ** 2
+    gray[disc] = (128, 128, 128, 255)
+    gray_image = Image.fromarray(gray, "RGBA")
+
+    log = _stub_view_consistency(
+        monkeypatch,
+        verdicts=("correctable",),
+        align=lambda image, reference: (gray_image, {"applied_shift_rows": 9}),
+    )
+
+    accepted, records, rejected = runtime._synthesize_geometry_views(
+        None,
+        source,
+        subject_noun="disc toy",
+        base_seed=7,
+        labels=(("back", 180.0),),
+        attempts=1,
+        image_generator=lambda prompt, image, **kwargs: _image_bytes(source),
+    )
+
+    assert accepted == []
+    assert records[0]["accepted"] is False
+    attempt = records[0]["attempts"][0]
+    assert attempt["row_corrected"] is True
+    assert "row consistency" in attempt["failure"]
+    assert "subject-identity re-gate" in attempt["failure"]
+    assert "chroma collapse" in attempt["failure"]
+    assert len(log["align"]) == 1
+    # The rejected (corrected) candidate is persisted for diagnosis.
+    assert len(rejected) == 1 and rejected[0]["label"] == "back"
+
+
+def test_row_consistency_inconsistent_view_rejected_with_reason(monkeypatch) -> None:
+    """Verdict 'inconsistent' rejects with the reason recorded; the
+    candidate travels back for rejected_geometry_views/ persistence."""
+    from abstract3d import segmentation
+
+    monkeypatch.setattr(
+        segmentation, "remove_background_robust", lambda image: image.convert("RGBA")
+    )
+    source = _two_tone_disc_image()
+    log = _stub_view_consistency(monkeypatch, verdicts=("inconsistent",))
+
+    accepted, records, rejected = runtime._synthesize_geometry_views(
+        None,
+        source,
+        subject_noun="disc toy",
+        base_seed=7,
+        labels=(("back", 180.0),),
+        attempts=1,
+        image_generator=lambda prompt, image, **kwargs: _image_bytes(source),
+    )
+
+    assert accepted == []
+    assert records[0]["accepted"] is False
+    attempt = records[0]["attempts"][0]
+    assert attempt["row_consistency"]["verdict"] == "inconsistent"
+    assert "row consistency" in attempt["failure"]
+    assert "double-mouth" in attempt["failure"]
+    assert log["align"] == []  # inconsistent is never "repaired"
+    assert len(rejected) == 1 and rejected[0]["label"] == "back"
+
+
+def test_row_consistency_unknown_verdict_fails_closed(monkeypatch) -> None:
+    """A verdict outside the frozen contract must reject, never accept
+    (an unverifiable candidate must not condition the checkpoint)."""
+    from abstract3d import segmentation
+
+    monkeypatch.setattr(
+        segmentation, "remove_background_robust", lambda image: image.convert("RGBA")
+    )
+    source = _two_tone_disc_image()
+    _stub_view_consistency(monkeypatch, verdicts=("almost-fine",))
+
+    accepted, records, _rejected = runtime._synthesize_geometry_views(
+        None,
+        source,
+        subject_noun="disc toy",
+        base_seed=7,
+        labels=(("back", 180.0),),
+        attempts=1,
+        image_generator=lambda prompt, image, **kwargs: _image_bytes(source),
+    )
+
+    assert accepted == []
+    failure = records[0]["attempts"][0]["failure"]
+    assert "unrecognized verdict" in failure and "fail closed" in failure
+
+
+def test_generation_metadata_carries_row_consistency_fields(
+    monkeypatch, tmp_path
+) -> None:
+    """The geometry_views metadata rows thread row_consistency (and
+    row_corrected only when a correction actually ran) from the accepted
+    synthesized views; the source-photo front row is never gated."""
+    backend = runtime.Hunyuan3DShapeBackend(owner=_composer_owner())
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere], capture)
+
+    from abstract3d import captioning
+
+    monkeypatch.setattr(
+        captioning, "caption_image", lambda image, **kwargs: "a toy disc"
+    )
+
+    corrected_report = {
+        "score": 0.61,
+        "best_shift_rows": 9,
+        "shift_frac": 0.0937,
+        "verdict": "correctable",
+    }
+    consistent_report = {
+        "score": 0.93,
+        "best_shift_rows": 0,
+        "shift_frac": 0.0,
+        "verdict": "consistent",
+    }
+
+    def _fake_synthesis(owner, source_rgba, *, subject_noun, base_seed, labels, **kwargs):
+        views = [
+            {
+                "label": "back",
+                "azimuth_deg": 180.0,
+                "elevation_deg": 0.0,
+                "rgba": _alpha_disc_image(),
+                "raw_bytes": b"raw-back",
+                "raw_payload_md5": "0" * 32,
+                "seed": base_seed,
+                "row_consistency": corrected_report,
+                "row_corrected": True,
+            },
+            {
+                "label": "side_left",
+                "azimuth_deg": 90.0,
+                "elevation_deg": 0.0,
+                "rgba": _alpha_disc_image(),
+                "raw_bytes": b"raw-left",
+                "raw_payload_md5": "1" * 32,
+                "seed": base_seed + 1,
+                "row_consistency": consistent_report,
+                "row_corrected": False,
+            },
+        ]
+        records = [{"label": view["label"], "accepted": True} for view in views]
+        return views, records, []
+
+    monkeypatch.setattr(runtime, "_synthesize_geometry_views", _fake_synthesis)
+
+    result = backend.i23d(
+        _alpha_disc_image(),
+        device="cpu",
+        texture_mode="none",
+        seed=11,
+        geometry_conditioning="multiview",
+    )
+
+    metadata = result["metadata"]
+    assert metadata["geometry_conditioning"]["applied"] == "multiview"
+    tags = {row["tag"]: row for row in metadata["geometry_views"]}
+    assert tags["back"]["row_consistency"] == corrected_report
+    assert tags["back"]["row_corrected"] is True
+    assert tags["left"]["row_consistency"] == consistent_report
+    assert "row_corrected" not in tags["left"]  # only real corrections land
+    assert "row_consistency" not in tags["front"]  # the user's own photo
 
 
 def test_geometry_person_gate_fails_closed(monkeypatch) -> None:
@@ -1353,6 +1933,87 @@ def test_multiview_path_runs_mv_family_regime(monkeypatch, tmp_path) -> None:
     }
 
 
+def test_caller_synthesized_references_protected_without_ab_gate(
+    monkeypatch, tmp_path
+) -> None:
+    """Explicit references flagged synthesized (backlog 0017) ride the auto
+    lane's in-bake protection (the per-view `generated` flag) WITHOUT arming
+    the auto lane's A/B acceptance machinery: exactly one bake runs, the
+    per-reference authority lands in texture_artifacts, filename inference
+    marks the pipeline's own generated files, and caller files are never
+    re-persisted under the generated naming."""
+    import skimage.color.colorconv as _colorconv
+
+    # Same host-only Accelerate workaround as the texture-stage test above
+    # (torch tensor work + lab conversions in one process).
+    def _convert_einsum(matrix, arr):
+        arr = _colorconv._prepare_colorarray(arr)
+        return np.einsum("...i,ji->...j", arr, matrix.astype(arr.dtype))
+
+    monkeypatch.setattr(_colorconv, "_convert", _convert_einsum)
+
+    backend = runtime.Hunyuan3DShapeBackend(owner=None)
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere], capture)
+
+    # One reference synthesized BY FILENAME (a pipeline-generated file fed
+    # back), one real photo (PIL payload: no filename, never inferred).
+    synthesized_path = tmp_path / "texture_reference_generated_back.png"
+    _alpha_disc_image().save(synthesized_path)
+
+    from abstract3d import texturing
+
+    bake_view_labels: list[list] = []
+    real_bake = texturing.bake_projection_texture
+
+    def spy_bake(mesh, **kwargs):
+        bake_view_labels.append(
+            [(view.get("label"), bool(view.get("generated")))
+             for view in kwargs["observed_views"]])
+        return real_bake(mesh, **kwargs)
+
+    monkeypatch.setattr(texturing, "bake_projection_texture", spy_bake)
+
+    bundle_dir = tmp_path / "bundle"
+    result = backend.i23d(
+        _alpha_disc_image(),
+        device="cpu",
+        texture_mode="baked_basecolor",
+        texture_resolution=64,
+        output_dir=str(bundle_dir),
+        texture_reference_images=[str(synthesized_path), _alpha_disc_image()],
+        texture_reference_angles=["back", "side_left"],
+    )
+
+    # Exactly ONE bake: caller-provided synthesized witnesses are the
+    # operator's explicit request — no baseline A/B second-guesses them.
+    assert bake_view_labels == [
+        [("front", False), ("back", True), ("side_left", False)]
+    ]
+
+    metadata = result["metadata"]
+    artifacts = metadata["texture_artifacts"]
+    authority = {row["label"]: row for row in artifacts["reference_authority"]}
+    assert authority["front"]["authority"] == "full"
+    assert authority["front"]["role"] == "source"
+    assert authority["back"]["authority"] == "protected_completion_only"
+    assert authority["back"]["synthesized"] is True
+    assert authority["back"]["synthesized_source"] == "filename_inference"
+    assert authority["side_left"]["authority"] == "full"
+    assert artifacts["generated_protection"]["applied"] is True
+    assert "back" in artifacts["generated_protection"]["zeroed_by_view"]
+    assert authority["back"]["protection"]["zeroed_texels"] == (
+        artifacts["generated_protection"]["zeroed_by_view"]["back"])
+    # The auto lane's report never appears (nothing was generated).
+    assert "reference_generation" not in artifacts
+    # Inference is provenance-noted for the report.
+    assert any("treated as synthesized" in note for note in metadata["notes"])
+    # Caller files are not re-persisted under the pipeline's generated naming.
+    assert "generated_reference_paths" not in artifacts
+    assert not list(bundle_dir.glob("texture_reference_generated_*.png"))
+
+
 def test_caller_references_also_respect_view_cap(monkeypatch, tmp_path) -> None:
     """Four caller-tagged references hit the same measured 4-view cliff:
     the cap drops the lowest-priority tag with a loud warning (the
@@ -1496,7 +2157,9 @@ def test_list_operations_schema_exposes_geometry_conditioning() -> None:
     backend = runtime.Hunyuan3DShapeBackend(owner=None)
     operations = backend.list_operations()
     schema = operations[-1]["parameter_schema"]["properties"]
-    assert schema["geometry_conditioning"]["enum"] == ["single", "multiview", "auto"]
+    assert schema["geometry_conditioning"]["enum"] == [
+        "single", "multiview", "auto", "loop",
+    ]
 
 
 def test_generate_references_with_replay_serves_synthesized_bytes_first(
@@ -1546,3 +2209,740 @@ def test_generate_references_with_replay_serves_synthesized_bytes_first(
     assert report["accepted"] == 2
     assert report["replayed_labels"] == ["back"]
     assert [row["label"] for row in report["angles"]] == ["back", "top"]
+
+
+# -- loop conditioning (the calibrated two-pass bust recipe) -------------------
+
+
+def _loop_owner():
+    """Composer owner with an explicitly PINNED local image provider (the
+    loop's provider requirement) — loop must never resolve owner=None."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        config={"scene3d_image_provider": "mlx-gen"},
+        vision=SimpleNamespace(
+            t2i=lambda *args, **kwargs: b"",
+            i2i=lambda *args, **kwargs: b"",
+        ),
+    )
+
+
+def _fake_loop_plan(*, side_left_pose_delta: float = 7.5):
+    """Scripted synthesize_loop_views: three accepted views; side_left's
+    measured azimuth is `82.5` (within the pose gate by default). Windowed
+    images are DISTINCT objects from full-span ones so consumer-separation
+    asserts on identity. Returns (fake_fn, state)."""
+    state: dict = {}
+
+    def fake(mesh0, source_rgba, *, owner, angles, seed, subject_hint,
+             person_attested, image_request, view_consistency, **kwargs):
+        state["owner"] = owner
+        state["seed"] = seed
+        state["image_request"] = dict(image_request)
+        state["person_attested"] = person_attested
+        views = []
+        windowed = {}
+        for label, azimuth, _elev in angles:
+            full = _alpha_disc_image()
+            win = _alpha_disc_image(48)
+            windowed[label] = win
+            measured = azimuth
+            eligible = True
+            refusal = None
+            if label == "side_left":
+                measured = azimuth - side_left_pose_delta
+                if side_left_pose_delta > 20.0:
+                    eligible = False
+                    refusal = "pose honesty: measured azimuth off the declared angle"
+            views.append({
+                "label": label,
+                "azimuth_deg": float(azimuth),
+                "elevation_deg": 0.0,
+                "rgba": full,
+                "raw_bytes": f"raw-{label}".encode(),
+                "raw_payload_md5": "f" * 32,
+                "seed": int(seed),
+                "clay_render": None,
+                "conditioning_eligible": eligible,
+                "bake_eligible": True,
+                "measured_azimuth_deg": float(measured),
+                "pose": {"measurable": True, "measured_deg": float(measured),
+                         "delta_deg": abs(float(azimuth) - float(measured))},
+                "row_consistency": {"verdict": "consistent", "score": 0.6},
+                **({"windowed_rgba": win} if eligible else {}),
+                **({"conditioning_refusal": refusal} if refusal else {}),
+            })
+        state["views"] = views
+        state["front_windowed"] = _alpha_disc_image(48)
+        state["windowed"] = windowed
+        return {
+            "views": views,
+            "refgen_report": {"accepted": len(views), "rejected": 0, "angles": []},
+            "front_windowed": state["front_windowed"],
+            "window": {"k": 0.22, "per_view": {}, "kept_ratio_spread": 0.003},
+            "seconds": 1.2,
+        }
+
+    return fake, state
+
+
+def _stub_loop_self_verification(monkeypatch, *, suspect: bool = False):
+    record = {
+        "duplication": {
+            "duplication_suspect": suspect,
+            "peak_ratio": 0.071 if suspect else 0.02,
+            "peak_lag_px": 46 if suspect else None,
+            "threshold": 0.05,
+        },
+        "oblique": {},
+        "textured_rendered": False,
+    }
+    monkeypatch.setattr(
+        "abstract3d.loop_conditioning.self_verification",
+        lambda mesh, *, textured, **kw: (record, {}),
+    )
+    return record
+
+
+def test_loop_mode_two_pass_sequencing_and_windowed_conditioning(
+    monkeypatch, tmp_path
+) -> None:
+    """PASS 1 conditions on the front alone (tagged one-entry dict), PASS 2
+    conditions on the WINDOWED front + windowed survivors (capped at 3
+    tags), and the loop record carries pass-1 stats + both timings."""
+    backend = runtime.Hunyuan3DShapeBackend(owner=_loop_owner())
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere, sphere], capture)
+
+    from abstract3d import captioning
+
+    monkeypatch.setattr(captioning, "caption_image", lambda image, **kw: "a toy disc")
+    fake_plan, state = _fake_loop_plan()
+    monkeypatch.setattr("abstract3d.loop_conditioning.synthesize_loop_views", fake_plan)
+    _stub_loop_self_verification(monkeypatch)
+
+    result = backend.i23d(
+        _alpha_disc_image(),
+        device="cpu",
+        texture_mode="none",
+        seed=11,
+        geometry_conditioning="loop",
+        output_dir=str(tmp_path / "bundle"),
+    )
+
+    # Two DiT invocations: pass 1 (front photo alone, PLAIN image on the
+    # flagship single-view checkpoint — a single-tag 2mv dict was measured
+    # to shred, e22 forensics) then pass 2 (windowed set on 2mv).
+    assert len(capture["images"]) == 2
+    pass1 = capture["images"][0]
+    assert not isinstance(pass1, dict)
+    pass2 = capture["images"][1]
+    assert isinstance(pass2, dict)
+    # Cap at 3 tags: front + back + left (priority order drops "right").
+    assert set(pass2) == {"front", "back", "left"}
+    # THE SPLIT-CONSUMER INVARIANT, conditioning half: pass 2 sees the
+    # WINDOWED image objects, never the full-span ones.
+    assert pass2["front"] is state["front_windowed"]
+    assert pass2["back"] is state["windowed"]["back"]
+    assert pass2["left"] is state["windowed"]["side_left"]
+    full_span = {id(view["rgba"]) for view in state["views"]}
+    assert all(id(image) not in full_span for image in pass2.values())
+    # Both draws at the base seed (different conditioning = different draw).
+    assert capture["seeds"] == [11, 11]
+
+    metadata = result["metadata"]
+    record = metadata["geometry_conditioning"]
+    assert record["requested"] == "loop"
+    assert record["applied"] == "loop"
+    assert record["fallback_reason"] is None
+    assert record["pass1"]["seed"] == 11
+    assert record["pass1"]["inference_s"] >= 0.0
+    assert record["window"]["k"] == 0.22
+    assert len(record["loop_views"]) == 3
+    assert metadata["timings_s"]["pass1_inference"] is not None
+    assert metadata["timings_s"]["geometry_view_synthesis"] == 1.2
+    assert metadata["model_id"].startswith("tencent/Hunyuan3D-2mv")
+    assert metadata["multiview_conditioning"] is True
+    assert metadata["loop_self_verification"]["duplication"]["duplication_suspect"] is False
+    tags = {row["tag"]: row for row in metadata["geometry_views"]}
+    assert tags["front"]["windowed"] is True
+    assert tags["back"]["windowed"] is True
+    assert tags["left"]["measured_azimuth_deg"] == 82.5
+    # Provider pinning: the plan received the owner-resolved request and
+    # the loop seed offset.
+    assert state["image_request"].get("provider") == "mlx-gen"
+    assert state["owner"] is backend._owner
+    assert state["seed"] == 11 + runtime._LOOP_VIEW_SEED_OFFSET
+    # Windowed conditioning pixels persist for diagnosis.
+    assert (tmp_path / "bundle" / "geometry_view_windowed_front.png").exists()
+    assert (tmp_path / "bundle" / "geometry_view_windowed_back.png").exists()
+    # Full-span views persist under the synthesized naming (bake witnesses).
+    assert (tmp_path / "bundle" / "geometry_view_synthesized_back.png").exists()
+
+
+def test_loop_mode_person_gate_refuses_loudly_and_attestation_proceeds(
+    monkeypatch, tmp_path
+) -> None:
+    from abstract3d.errors import InvalidRequestError
+    from abstract3d import captioning
+
+    backend = runtime.Hunyuan3DShapeBackend(owner=_loop_owner())
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere, sphere], capture)
+    monkeypatch.setattr(
+        captioning, "caption_image", lambda image, **kw: "a portrait of a man")
+
+    with pytest.raises(InvalidRequestError, match="person"):
+        backend.i23d(
+            _alpha_disc_image(), device="cpu", texture_mode="none",
+            geometry_conditioning="loop",
+        )
+    # Refused BEFORE any DiT draw (loop must not burn a pass-1 on it).
+    assert capture["seeds"] == []
+
+    fake_plan, state = _fake_loop_plan()
+    monkeypatch.setattr("abstract3d.loop_conditioning.synthesize_loop_views", fake_plan)
+    _stub_loop_self_verification(monkeypatch)
+    result = backend.i23d(
+        _alpha_disc_image(), device="cpu", texture_mode="none",
+        geometry_conditioning="loop", texture_reference_allow_person=True,
+    )
+    assert result["metadata"]["geometry_conditioning"]["applied"] == "loop"
+    assert state["person_attested"] is True
+    assert "person_warning" in result["metadata"]["geometry_conditioning"]["person_check"]
+
+
+def test_loop_mode_requires_local_provider_and_mv_model(monkeypatch, tmp_path) -> None:
+    from abstract3d.errors import InvalidRequestError
+
+    monkeypatch.delenv("ABSTRACT3D_IMAGE_PROVIDER", raising=False)
+    # No provider pin anywhere: loop refuses (never the remote default).
+    from types import SimpleNamespace
+
+    composer_only = SimpleNamespace(
+        config={}, vision=SimpleNamespace(t2i=lambda *a, **k: b""))
+    backend = runtime.Hunyuan3DShapeBackend(owner=composer_only)
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere], capture)
+    with pytest.raises(InvalidRequestError, match="local image provider"):
+        backend.i23d(
+            _alpha_disc_image(), device="cpu", texture_mode="none",
+            geometry_conditioning="loop",
+        )
+    assert capture["seeds"] == []
+
+    # An explicit flagship model contradicts the loop (2mv both passes).
+    backend = runtime.Hunyuan3DShapeBackend(owner=_loop_owner())
+    _install_fake_runtime(monkeypatch, backend, tmp_path / "b", [sphere], capture)
+    with pytest.raises(InvalidRequestError, match="multi-view"):
+        backend.i23d(
+            _alpha_disc_image(), device="cpu", texture_mode="none",
+            model="tencent/Hunyuan3D-2.1", geometry_conditioning="loop",
+        )
+    assert capture["seeds"] == []
+
+
+def test_loop_mode_rejects_explicit_reference_views(monkeypatch, tmp_path) -> None:
+    from abstract3d.errors import InvalidRequestError
+
+    backend = runtime.Hunyuan3DShapeBackend(owner=_loop_owner())
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere], capture)
+
+    with pytest.raises(InvalidRequestError, match="loop"):
+        backend.i23d(
+            _alpha_disc_image(), device="cpu", texture_mode="none",
+            geometry_conditioning="loop",
+            texture_reference_images=[_alpha_disc_image()],
+            texture_reference_angles=["side_left"],
+        )
+    assert capture["seeds"] == []
+
+
+def test_loop_mode_refuses_unwindowable_subject_before_pass1(
+    monkeypatch, tmp_path
+) -> None:
+    """The window law anchors on a head-to-shoulder span; a subject it
+    cannot fit refuses in milliseconds — never after a pass-1 DiT draw."""
+    from abstract3d.errors import InvalidRequestError
+    from abstract3d import captioning
+    from PIL import Image
+
+    backend = runtime.Hunyuan3DShapeBackend(owner=_loop_owner())
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere], capture)
+    monkeypatch.setattr(captioning, "caption_image", lambda image, **kw: "a toy bar")
+
+    # A uniform-width bar: the shoulder anchor lands one row under the
+    # head top (degenerate span).
+    bar = np.zeros((96, 96, 4), dtype=np.uint8)
+    bar[40:60, 8:88] = (180, 160, 140, 255)
+
+    with pytest.raises(InvalidRequestError, match="windowable"):
+        backend.i23d(
+            Image.fromarray(bar, "RGBA"), device="cpu", texture_mode="none",
+            geometry_conditioning="loop",
+        )
+    assert capture["seeds"] == []
+
+
+def test_loop_mode_pose_refused_view_conditions_nothing_but_rides_to_bake(
+    monkeypatch, tmp_path
+) -> None:
+    """A view measured >20 deg off its declared angle may not condition
+    (trained tag positions) but re-declares to the MEASURED azimuth for
+    the texture lane."""
+    backend = runtime.Hunyuan3DShapeBackend(owner=_loop_owner())
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere, sphere], capture)
+
+    from abstract3d import captioning
+
+    monkeypatch.setattr(captioning, "caption_image", lambda image, **kw: "a toy disc")
+    fake_plan, state = _fake_loop_plan(side_left_pose_delta=40.0)
+    monkeypatch.setattr("abstract3d.loop_conditioning.synthesize_loop_views", fake_plan)
+    _stub_loop_self_verification(monkeypatch)
+
+    result = backend.i23d(
+        _alpha_disc_image(),
+        device="cpu",
+        texture_mode="none",
+        seed=11,
+        geometry_conditioning="loop",
+    )
+
+    pass2 = capture["images"][1]
+    # side_left refused from conditioning: back fills its tag; side_right
+    # takes "right" (cap keeps front/back/right when left never claimed).
+    assert "left" not in pass2
+    assert set(pass2) == {"front", "back", "right"}
+    rows = {row["label"]: row
+            for row in result["metadata"]["geometry_conditioning"]["loop_views"]}
+    assert rows["side_left"]["conditioning_eligible"] is False
+    assert rows["side_left"]["bake_eligible"] is True
+    assert rows["side_left"]["measured_azimuth_deg"] == 50.0
+    assert "pose honesty" in rows["side_left"]["conditioning_refusal"]
+
+
+def test_loop_mode_zero_eligible_views_raises_loudly(monkeypatch, tmp_path) -> None:
+    from abstract3d.errors import Abstract3DError
+    from abstract3d import captioning
+
+    backend = runtime.Hunyuan3DShapeBackend(owner=_loop_owner())
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere, sphere], capture)
+    monkeypatch.setattr(captioning, "caption_image", lambda image, **kw: "a toy disc")
+
+    def empty_plan(mesh0, source_rgba, **kwargs):
+        return {
+            "views": [],
+            "refgen_report": {"accepted": 0, "rejected": 3, "angles": []},
+            "front_windowed": _alpha_disc_image(48),
+            "window": {"k": 0.22, "per_view": {}, "kept_ratio_spread": None},
+            "seconds": 0.4,
+        }
+
+    monkeypatch.setattr("abstract3d.loop_conditioning.synthesize_loop_views", empty_plan)
+
+    with pytest.raises(Abstract3DError, match="no eligible"):
+        backend.i23d(
+            _alpha_disc_image(), device="cpu", texture_mode="none",
+            geometry_conditioning="loop",
+        )
+    # Pass 1 ran (its draw is on the record); pass 2 never started.
+    assert len(capture["seeds"]) == 1
+
+
+def test_loop_mode_refusal_persists_forensics_bundle(monkeypatch, tmp_path) -> None:
+    """A loop refusal must leave the evidence on disk AND still raise
+    (e22, 2026-07-21: an ~80-minute run refused with every per-attempt
+    reason only in memory — no bundle, no rejected pixels, no pass-1
+    mesh). The refusal bundle carries the per-attempt refgen report, the
+    plan rows, the pass-1 mesh + its clay renders, and the rejected view
+    images including the raw payloads."""
+    from abstract3d.errors import Abstract3DError
+    from abstract3d import captioning
+
+    backend = runtime.Hunyuan3DShapeBackend(owner=_loop_owner())
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere, sphere], capture)
+    monkeypatch.setattr(captioning, "caption_image", lambda image, **kw: "a toy disc")
+
+    raw_payload = b"\x89PNG-fake-raw-draw"
+
+    def rejecting_plan(mesh0, source_rgba, **kwargs):
+        # Every draw rejected by the ladder: the refgen report carries the
+        # per-attempt gate verdicts and the rejected pixels (downscaled +
+        # raw), exactly what generate_reference_views produces when an
+        # angle exhausts its budget.
+        return {
+            "views": [],
+            "refgen_report": {
+                "accepted": 0,
+                "rejected": 3,
+                "angles": [
+                    {
+                        "label": "back",
+                        "azimuth_deg": 180.0,
+                        "accepted": False,
+                        "attempts": [
+                            {
+                                "seed": 72025,
+                                "silhouette_iou": 0.81,
+                                "failure_family": "speculars",
+                                "speculars": {"passed": False,
+                                              "worst_blob_fraction": 0.041},
+                            }
+                        ],
+                        "rejection_reason": "floor-only candidates",
+                    }
+                ],
+                "rejected_images": [
+                    {
+                        "label": "back",
+                        "attempt": 0,
+                        "image": _alpha_disc_image(64),
+                        "raw_bytes": raw_payload,
+                        "seed": 72025,
+                        "failure_family": "speculars",
+                    }
+                ],
+            },
+            "front_windowed": _alpha_disc_image(48),
+            "window": {"k": 0.22, "per_view": {}, "kept_ratio_spread": None},
+            "seconds": 0.4,
+        }
+
+    monkeypatch.setattr(
+        "abstract3d.loop_conditioning.synthesize_loop_views", rejecting_plan)
+
+    bundle_dir = tmp_path / "refused_bundle"
+    with pytest.raises(Abstract3DError, match="no eligible"):
+        backend.i23d(
+            _alpha_disc_image(), device="cpu", texture_mode="none",
+            geometry_conditioning="loop", output_dir=str(bundle_dir),
+        )
+
+    # The refusal report: status, error, and the full per-attempt record.
+    report_path = bundle_dir / "refusal_report.json"
+    assert report_path.exists()
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["status"] == "refused"
+    assert "no eligible conditioning views" in report["error"]
+    record = report["geometry_conditioning"]
+    angle_row = record["reference_generation"]["angles"][0]
+    assert angle_row["attempts"][0]["failure_family"] == "speculars"
+    assert angle_row["attempts"][0]["speculars"]["worst_blob_fraction"] == 0.041
+    assert record["reference_generation"]["rejected"] == 3
+    assert record["pass1"]["seed"] == runtime._DEFAULT_SEED
+    # No pixel/byte payloads may leak into the JSON.
+    assert "rejected_images" not in record.get("reference_generation", {})
+    assert "raw_bytes" not in json.dumps(report)
+
+    # Pass-1 mesh + the clay renders the gates judged against.
+    assert (bundle_dir / "pass1_mesh.glb").stat().st_size > 0
+    for label in ("front", "side_left", "side_right", "back"):
+        assert (bundle_dir / f"pass1_clay_{label}.png").exists()
+
+    # Rejected pixels: downscaled triage copy + full raw payload.
+    assert (bundle_dir / "rejected_geometry_views" / "back_a0.webp").exists()
+    raw_path = (
+        bundle_dir / "rejected_geometry_views" / "raw" / "back_a0_seed72025.png")
+    assert raw_path.read_bytes() == raw_payload
+
+
+def test_loop_mode_pass1_pinned_to_flagship_checkpoint_and_regime(
+    monkeypatch, tmp_path
+) -> None:
+    """The pass-1 scaffold draw runs the FLAGSHIP single-view checkpoint at
+    its own validated regime (512/50) regardless of the run's knobs: a
+    single-front-tag 2mv draw shreds at every regime (e22 forensics:
+    512/50 → 295-component debris, photo IoU 0.415; 384/30 → 20 bodies,
+    IoU 0.226; flagship → 1 body, IoU 0.776). Pass 2 keeps the run's
+    knobs; the divergence is warned; the pin is recorded."""
+    from abstract3d import captioning
+
+    backend = runtime.Hunyuan3DShapeBackend(owner=_loop_owner())
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere, sphere], capture)
+    monkeypatch.setattr(captioning, "caption_image", lambda image, **kw: "a toy disc")
+    fake_plan, _state = _fake_loop_plan()
+    monkeypatch.setattr("abstract3d.loop_conditioning.synthesize_loop_views", fake_plan)
+    _stub_loop_self_verification(monkeypatch)
+
+    # No explicit knobs: pass 2 resolves the 2mv family defaults (384/30)
+    # while pass 1 pins the flagship regime (512/50) — divergence warned.
+    result = backend.i23d(
+        _alpha_disc_image(), device="cpu", texture_mode="none",
+        geometry_conditioning="loop",
+    )
+    assert capture["settings"][0] == {
+        "num_inference_steps": runtime._DEFAULT_NUM_INFERENCE_STEPS,
+        "octree_resolution": runtime._DEFAULT_OCTREE_RESOLUTION,
+    }
+    assert capture["settings"][1] == {
+        "num_inference_steps": runtime._MV_DEFAULT_NUM_INFERENCE_STEPS,
+        "octree_resolution": runtime._MV_DEFAULT_OCTREE_RESOLUTION,
+    }
+    metadata = result["metadata"]
+    record = metadata["geometry_conditioning"]
+    assert record["pass1"]["model_id"] == runtime._OFFICIAL_MODEL_ID
+    assert record["pass1"]["num_inference_steps"] == (
+        runtime._DEFAULT_NUM_INFERENCE_STEPS)
+    assert any("pass 1 ran the flagship single-view regime" in warning
+               for warning in metadata["postprocess_warnings"])
+    # The shipped mesh's model stays the 2mv checkpoint (pass 2).
+    assert metadata["model_id"].startswith("tencent/Hunyuan3D-2mv")
+    # Scaffold health is measured and recorded on the healthy path too.
+    health = record["scaffold_health"]
+    assert health["measured"] is True
+    assert health["healthy"] is True
+    assert health["photo_vs_front_clay_iou"] >= 0.60
+
+    # e22's exact knobs (512/50): pass 1 and pass 2 coincide — no warning.
+    capture["seeds"].clear()
+    capture["images"] = []
+    capture["settings"] = []
+    result = backend.i23d(
+        _alpha_disc_image(), device="cpu", texture_mode="none",
+        geometry_conditioning="loop",
+        num_inference_steps=50, octree_resolution=512,
+    )
+    assert capture["settings"] == [
+        {"num_inference_steps": 50, "octree_resolution": 512},
+        {"num_inference_steps": 50, "octree_resolution": 512},
+    ]
+    assert not any("pass 1 ran the flagship" in warning
+                   for warning in result["metadata"]["postprocess_warnings"])
+
+
+def test_loop_mode_unhealthy_scaffold_refuses_fast_with_forensics(
+    monkeypatch, tmp_path
+) -> None:
+    """A pass-1 scaffold that cannot register onto its own source photo
+    (the e22 shredding class) refuses BEFORE any i2i draw — with the IoU
+    in the error and the forensics bundle on disk."""
+    from abstract3d.errors import Abstract3DError
+    from abstract3d import captioning
+
+    backend = runtime.Hunyuan3DShapeBackend(owner=_loop_owner())
+    capture: dict = {"seeds": []}
+    # A thin sliver: its front clay cannot register onto the disc photo.
+    sliver = trimesh.creation.box(extents=(0.03, 1.9, 0.03))
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sliver, sliver], capture)
+    monkeypatch.setattr(captioning, "caption_image", lambda image, **kw: "a toy disc")
+
+    def must_not_synthesize(*args, **kwargs):
+        raise AssertionError("no i2i draw may run on an unhealthy scaffold")
+
+    monkeypatch.setattr(
+        "abstract3d.loop_conditioning.synthesize_loop_views", must_not_synthesize)
+
+    bundle_dir = tmp_path / "unhealthy_bundle"
+    with pytest.raises(Abstract3DError, match="scaffold mesh does not match"):
+        backend.i23d(
+            _alpha_disc_image(), device="cpu", texture_mode="none",
+            geometry_conditioning="loop", output_dir=str(bundle_dir),
+        )
+
+    # Only the pass-1 draw ran; the refusal persisted its evidence.
+    assert len(capture["seeds"]) == 1
+    report = json.loads(
+        (bundle_dir / "refusal_report.json").read_text(encoding="utf-8"))
+    assert "scaffold mesh does not match" in report["error"]
+    health = report["geometry_conditioning"]["scaffold_health"]
+    assert health["healthy"] is False
+    assert health["photo_vs_front_clay_iou"] < 0.60
+    assert (bundle_dir / "pass1_mesh.glb").stat().st_size > 0
+
+
+def test_loop_mode_crash_after_pass1_persists_partial_forensics(
+    monkeypatch, tmp_path
+) -> None:
+    """Any later loop failure (not just the no-eligible-views refusal)
+    persists what exists so far: a synthesis crash after pass 1 leaves the
+    pass-1 mesh + record on disk and re-raises the original error."""
+    from abstract3d import captioning
+
+    backend = runtime.Hunyuan3DShapeBackend(owner=_loop_owner())
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere, sphere], capture)
+    monkeypatch.setattr(captioning, "caption_image", lambda image, **kw: "a toy disc")
+
+    def crashing_plan(mesh0, source_rgba, **kwargs):
+        raise RuntimeError("synthesis stack fell over mid-ladder")
+
+    monkeypatch.setattr(
+        "abstract3d.loop_conditioning.synthesize_loop_views", crashing_plan)
+
+    bundle_dir = tmp_path / "crashed_bundle"
+    with pytest.raises(RuntimeError, match="mid-ladder"):
+        backend.i23d(
+            _alpha_disc_image(), device="cpu", texture_mode="none",
+            geometry_conditioning="loop", output_dir=str(bundle_dir),
+        )
+
+    report = json.loads(
+        (bundle_dir / "refusal_report.json").read_text(encoding="utf-8"))
+    assert report["status"] == "refused"
+    assert "mid-ladder" in report["error"]
+    assert report["geometry_conditioning"]["pass1"]["seed"] == runtime._DEFAULT_SEED
+    assert (bundle_dir / "pass1_mesh.glb").stat().st_size > 0
+
+
+def test_loop_mode_self_verification_degrades_on_duplication_flag(
+    monkeypatch, tmp_path
+) -> None:
+    from abstract3d import captioning
+
+    backend = runtime.Hunyuan3DShapeBackend(owner=_loop_owner())
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere, sphere], capture)
+    monkeypatch.setattr(captioning, "caption_image", lambda image, **kw: "a toy disc")
+    fake_plan, _state = _fake_loop_plan()
+    monkeypatch.setattr("abstract3d.loop_conditioning.synthesize_loop_views", fake_plan)
+    _stub_loop_self_verification(monkeypatch, suspect=True)
+
+    result = backend.i23d(
+        _alpha_disc_image(), device="cpu", texture_mode="none",
+        geometry_conditioning="loop",
+    )
+
+    metadata = result["metadata"]
+    assert metadata["quality_verdict"]["verdict"] == "degraded"
+    assert any("duplication autocorrelation" in reason
+               for reason in metadata["quality_verdict"]["reasons"])
+    assert metadata["loop_self_verification"]["duplication"]["duplication_suspect"] is True
+
+
+def test_loop_mode_bake_consumes_fullspan_at_measured_azimuths(
+    monkeypatch, tmp_path
+) -> None:
+    """The texture lane in loop mode: full-span raws replay FIRST at their
+    MEASURED azimuths through the identity route; windowed images never
+    reach the bake's observed views."""
+    import skimage.color.colorconv as _colorconv
+
+    def _convert_einsum(matrix, arr):
+        arr = _colorconv._prepare_colorarray(arr)
+        return np.einsum("...i,ji->...j", arr, matrix.astype(arr.dtype))
+
+    monkeypatch.setattr(_colorconv, "_convert", _convert_einsum)
+
+    backend = runtime.Hunyuan3DShapeBackend(owner=_loop_owner())
+    capture: dict = {"seeds": []}
+    sphere = trimesh.creation.icosphere(subdivisions=2, radius=0.7)
+    _install_fake_runtime(monkeypatch, backend, tmp_path, [sphere, sphere], capture)
+
+    from abstract3d import captioning
+
+    monkeypatch.setattr(captioning, "caption_image", lambda image, **kw: "a toy disc")
+    fake_plan, state = _fake_loop_plan()
+    monkeypatch.setattr("abstract3d.loop_conditioning.synthesize_loop_views", fake_plan)
+    _stub_loop_self_verification(monkeypatch)
+
+    from abstract3d import reference_generation as refgen
+
+    refgen_calls: list = []
+
+    def _fake_generate(mesh, source, *, owner=None, angles=(), image_generator=None, **kwargs):
+        first_payloads = {}
+        if image_generator is not None:
+            for angle in angles:
+                first_payloads[str(angle[0])] = image_generator(
+                    "prompt", b"conditioning", seed=1)
+        refgen_calls.append({
+            "angles": tuple(angles),
+            "conditioning": kwargs.get("conditioning"),
+            "image_request": dict(kwargs.get("image_request") or {}),
+            "first_payloads": first_payloads,
+        })
+        views = [
+            {
+                "label": str(label),
+                "azimuth_deg": float(azimuth),
+                "elevation_deg": float(elevation),
+                "rgba": _alpha_disc_image(),
+                "role": "reference",
+                "generated": True,
+            }
+            for label, azimuth, elevation in angles
+        ]
+        return views, {
+            "angles": [{"label": str(a[0]), "accepted": True} for a in angles],
+            "accepted": len(views), "rejected": 0,
+        }
+
+    monkeypatch.setattr(refgen, "generate_reference_views", _fake_generate)
+    monkeypatch.setattr(
+        refgen, "default_i2i_generator",
+        lambda owner: (lambda prompt, image, **kwargs: b"fresh"))
+
+    from abstract3d import texturing
+
+    bake_views: list = []
+    real_bake = texturing.bake_projection_texture
+
+    def spy_bake(mesh, **kwargs):
+        bake_views.append(list(kwargs["observed_views"]))
+        return real_bake(mesh, **kwargs)
+
+    monkeypatch.setattr(texturing, "bake_projection_texture", spy_bake)
+
+    result = backend.i23d(
+        _alpha_disc_image(),
+        device="cpu",
+        texture_mode="baked_basecolor",
+        texture_resolution=64,
+        texture_reference_angle_planning="static",
+        seed=11,
+        geometry_conditioning="loop",
+    )
+
+    # Every refgen call in loop mode runs the identity route with the
+    # pinned provider request.
+    assert refgen_calls
+    for call in refgen_calls:
+        assert call["conditioning"] == "identity"
+        assert call["image_request"].get("provider") == "mlx-gen"
+    # Loop labels bake at their MEASURED azimuths (side_left 82.5), each
+    # exactly once; the static extra (top) keeps its slot.
+    angle_by_label: dict = {}
+    for call in refgen_calls:
+        for label, azimuth, elevation in call["angles"]:
+            assert label not in angle_by_label  # exactly once across calls
+            angle_by_label[label] = (azimuth, elevation)
+    assert angle_by_label["side_left"] == (82.5, 0.0)
+    assert angle_by_label["back"] == (180.0, 0.0)
+    assert angle_by_label["side_right"] == (-90.0, 0.0)
+    assert angle_by_label["top"] == (0.0, 55.0)
+    # The loop raws replay as each loop angle's FIRST ladder attempt.
+    served = {}
+    for call in refgen_calls:
+        served.update(call["first_payloads"])
+    assert served["back"] == b"raw-back"
+    assert served["side_left"] == b"raw-side_left"
+    assert served["side_right"] == b"raw-side_right"
+    # "top" has no replay: it rides the pending batch with the DEFAULT
+    # generator (no injected replay generator), i.e. a fresh identity draw.
+    assert "top" not in served
+    # THE SPLIT-CONSUMER INVARIANT, bake half: no windowed object is ever
+    # an observed view.
+    windowed_ids = {id(image) for image in state["windowed"].values()}
+    windowed_ids.add(id(state["front_windowed"]))
+    for views in bake_views:
+        for view in views:
+            assert id(view.get("rgba")) not in windowed_ids
+    assert result["metadata"]["texture_artifacts"]["reference_generation"]["accepted"] >= 3

@@ -875,6 +875,34 @@ def default_i2i_generator(owner: Any) -> Callable[..., bytes]:
     return lambda prompt, image, **kwargs: capability.i2i(prompt, image=image, **kwargs)
 
 
+def _normalized_lora_adapters(value: Any) -> Optional[List[Dict[str, Any]]]:
+    """Provenance copy of a request's `lora_adapters`: source path + scale.
+
+    The request itself forwards VERBATIM to the provider (the abstractvision
+    capability owns validation); this copy exists so bundles record which
+    adapter files at which scales were REQUESTED — a silently-unloaded LoRA
+    (viewgen bench 2026-07-21, integration gap 1: 0/1680 keys applied with
+    no error) is only diagnosable when the request side is on the record.
+    """
+
+    if not value:
+        return None
+    entries = value if isinstance(value, (list, tuple)) else [value]
+    rows: List[Dict[str, Any]] = []
+    for item in entries:
+        if isinstance(item, Mapping):
+            source = str(item.get("source") or "")
+            raw_scale = item.get("scale", 1.0)
+        else:
+            source, raw_scale = str(item), 1.0
+        try:
+            scale: Any = float(raw_scale)
+        except Exception:
+            scale = raw_scale
+        rows.append({"source": source, "scale": scale})
+    return rows or None
+
+
 def parse_generation_angles(
     raw: Any,
 ) -> Optional[Tuple[Tuple[str, float, float], ...]]:
@@ -904,6 +932,10 @@ def parse_generation_angles(
         "back": (180.0, 0.0),
         "side_left": (90.0, 0.0),
         "side_right": (-90.0, 0.0),
+        # ~65-degree named slots (viewgen bench 2026-07-21): the angle class
+        # the production conditioning set was measured to contain.
+        "side65_left": (65.0, 0.0),
+        "side65_right": (-65.0, 0.0),
         "front_left": (45.0, 0.0),
         "front_right": (-45.0, 0.0),
         "back_left": (135.0, 0.0),
@@ -972,6 +1004,18 @@ def _view_phrase(label: str) -> str:
         "back": "seen directly from behind",
         "side_left": "seen from its left side profile",
         "side_right": "seen from its right side profile",
+        # ~65-degree strong three-quarter views (viewgen bench 2026-07-21
+        # section 6.1): the pipeline's own fixed conditioning set was
+        # measured at +65/-67.5, but the phrase vocabulary had no 65-class
+        # entry, so the generator could never be ASKED for the angle its
+        # own conditioning uses (arm A's structural gap). Wording is the
+        # bench-measured phrase, subject-neutral like the rest of the table.
+        "side65_left": (
+            "seen from its left side at about 65 degrees from frontal, a "
+            "strong three-quarter view with most of its far side hidden"),
+        "side65_right": (
+            "seen from its right side at about 65 degrees from frontal, a "
+            "strong three-quarter view with most of its far side hidden"),
         "bottom": "seen from directly underneath",
         "top": "seen from a high angle, looking down at its top",
         # Planner lattice labels (plan_reference_angles): explicit phrases
@@ -1029,16 +1073,31 @@ def is_person_subject(subject_text: Optional[str]) -> bool:
     return bool(tokens & _PERSON_WORDS)
 
 
-def _person_clause(subject_noun: Optional[str]) -> str:
+def _person_clause(subject_noun: Optional[str], source_ref: str = "the left photo",
+                   *, expression_pin: bool = False) -> str:
     words = set((subject_noun or "").lower().split())
     if words & _PERSON_WORDS:
-        return (
+        clause = (
             " The subject is a living person, not a statue: real human skin "
-            "with its natural color from the left photo, and real individual "
-            "hair strands with the left photo's hair color. It is the SAME "
-            "person as the left photo: same age, same clean unblemished skin "
+            f"with its natural color from {source_ref}, and real individual "
+            f"hair strands with {source_ref}'s hair color. It is the SAME "
+            f"person as {source_ref}: same age, same clean unblemished skin "
             "complexion, same clothing, and the same clean dry healthy hair."
         )
+        if expression_pin:
+            # EXPRESSION PIN (viewgen bench 2026-07-21 section 6.2): the
+            # clause pins age/skin/hair but not expression, and the
+            # unpinned template fabricated parted lips on a closed-mouth
+            # source (the exact incident class). With this wording the
+            # bench measured closed mouths on 10/10 B+E slots. Prompt-side
+            # generation guidance, general to person subjects — deliberately
+            # NOT a mouth detector. Identity route only for now (the
+            # composite wording ships measured-as-is and stays byte-stable).
+            clause += (
+                " The person has an identical closed mouth with lips "
+                "together and a calm neutral expression."
+            )
+        return clause
     return ""
 
 
@@ -1209,6 +1268,27 @@ def _view_prompt(label: str, subject_noun: Optional[str],
             "single image, on a plain dark background, "
             + finish + _person_clause(noun)
         )
+    if conditioning == "identity":
+        # IDENTITY ROUTE (viewgen audit 2026-07-21, ladder arm L9): the
+        # photo is the PRIMARY edit image and the clay rides as a separate
+        # reference — both reach the model at full resolution. Measured:
+        # every composite two-panel arm on the local editor painted a
+        # DIFFERENT person (any steps/guidance/seed/prompt); separate
+        # references restored identity (right person, best tone). The
+        # proportion clause costs nothing and the decisive variable is the
+        # conditioning LAYOUT, so the wording stays lean and material-free.
+        return (
+            f"Two reference images: the first is a photo of {noun}; the "
+            "second is an untextured gray model of the SAME subject "
+            f"{phrase}. Produce a real photograph of the subject from the "
+            "first image, in exactly the pose, framing and silhouette of "
+            f"the second image: {phrase}. It is the SAME subject: keep its "
+            "identity, proportions, colors, materials and surface detail "
+            "exactly as in the first image, and keep its features at the "
+            "same heights as in the model. Plain dark background, soft "
+            "diffuse lighting."
+            + _person_clause(noun, "the first photo", expression_pin=True)
+        )
     if conditioning == "rotate":
         return (
             f"Rotate the camera to show this exact {noun} {phrase}. Keep the "
@@ -1248,6 +1328,47 @@ def generate_reference_views(
     steps_schedule: Sequence[Optional[int]] = (8, 12, 12),
     image_request: Optional[Mapping[str, Any]] = None,
     person_policy: str = "skip",
+    # Viewgen audit 2026-07-21: the strength kwarg is DEAD on the mlx-gen
+    # flux2 edit route (verified at three layers: never forwarded by the
+    # backend's flux2 branch, and mflux raises on it in edit-reference
+    # mode — same seed produced byte-identical output with and without
+    # it), so recipe iteration needs the PROMPT axis instead. This slot
+    # appends operator wording (identity/proportion pinning clauses) to
+    # every angle's built prompt without forking the template; the
+    # template itself stays material-free and structurally closed.
+    prompt_suffix: Optional[str] = None,
+    # Pose-honesty acceptance gate (viewgen bench 2026-07-21 section 6.3):
+    # a callable measuring a candidate's TRUE azimuth against a clay ruler
+    # (see loop_conditioning.build_pose_acceptance_gate). Called only on
+    # candidates that pass every material gate (the ruler costs ~20 clay
+    # registrations per call); a failing verdict re-rolls the seed within
+    # this ladder exactly like a silhouette failure. None = no ruler is
+    # available for this call and the report records "pose_unmeasured" —
+    # the silhouette-IoU gate alone is pose-blind on busts (it passes
+    # 40-degree-off views; audit section 2, bench-reconfirmed).
+    pose_gate: Optional[Callable[..., Dict[str, Any]]] = None,
+    # Matte-cleanliness acceptance gate (e22v2 forensics 2026-07-22): a
+    # callable judging a candidate's alpha/content cleanliness against the
+    # source photo's own baseline (see view_gates.build_matte_cleanliness_
+    # gate — torn interior alpha + paint-streak/debris edge density). Same
+    # contract and ladder semantics as pose_gate; runs BEFORE it (pure
+    # numpy vs ~20 clay registrations). A failing verdict re-rolls the
+    # seed; None records "matte_ungated".
+    matte_gate: Optional[Callable[..., Dict[str, Any]]] = None,
+    # Same-subject acceptance gate (strategy W3 first slice, e22v2's
+    # wrong-identity side view): embedding-similarity floor vs the source
+    # photo where the subject's front is visible (see view_gates.build_
+    # subject_identity_gate). Runs after the matte gate, before the pose
+    # ruler. None records "identity_ungated".
+    identity_gate: Optional[Callable[..., Dict[str, Any]]] = None,
+    # Progressive per-attempt sink (e22 forensics contract): called with a
+    # JSON-safe copy of every attempt row the moment it completes, and once
+    # per angle with the acceptance verdict. Draws take minutes each, so an
+    # operator (or a crash post-mortem) must be able to read WHY draws are
+    # dying while the ladder still runs — e22 refused after ~80 minutes with
+    # every per-attempt reason held only in memory. The sink is diagnostics:
+    # it is wrapped so it can never break the ladder.
+    on_attempt: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """Synthesize reference views for `mesh` from its own clay renders.
 
@@ -1266,6 +1387,20 @@ def generate_reference_views(
     see `is_person_subject` for why identity cannot currently be defended.
     Explicit opt-in callers may pass "proceed"; the report then records a
     `person_warning`.
+
+    `conditioning` selects the layout the editor sees: "composite" (default;
+    photo | clay two-panel canvas), "rotate" (photo only, meshless), and
+    "identity" — photo as the PRIMARY edit image, clay as a separate
+    `reference_images` entry (viewgen audit 2026-07-21 L9: the composite
+    canvas FLIPS person identity on the local editor; separate references
+    restore it). The identity route requires the provider to consume
+    `reference_images` (the abstractvision mflux backend does); a provider
+    whose callable REJECTS the kwarg degrades loudly to photo-primary
+    conditioning (`report["identity_reference_fallback"]`, #FALLBACK). A
+    provider that silently ignores extra kwargs loses the clay pose guide —
+    undetectable at this layer, but the clay-IoU and pose gates still judge
+    the result, so the failure mode is honest rejection, never silent
+    garbage.
 
     `render_size` is an int (one frame size for every angle — the
     historical behavior, byte-compatible) or "auto": per-angle frame
@@ -1392,17 +1527,39 @@ def generate_reference_views(
         "caption": caption,
         "subject_noun": subject_noun,
         "negative_prompt": negative_prompt,
+        "prompt_suffix": prompt_suffix,
         "conditioning": conditioning,
         "tinted_conditioning": tinted_mesh is not None,
         "base_seed": int(seed),
         "silhouette_iou_min": float(silhouette_iou_min),
+        # Pose-gate provenance: "enabled" when a clay ruler gates this run;
+        # "pose_unmeasured" is the honest record that no ruler was
+        # available (no mesh, no gate — the ruler never runs blind).
+        "pose_gate": "enabled" if pose_gate is not None else "pose_unmeasured",
+        # Matte/identity gate provenance (e22v2 forensics 2026-07-22):
+        # honest records that a run went ungated on these axes.
+        "matte_gate": "enabled" if matte_gate is not None else "matte_ungated",
+        "identity_gate": (
+            "enabled" if identity_gate is not None else "identity_ungated"
+        ),
     }
+    # LoRA provenance (bench gap 5): the adapters ride the request verbatim;
+    # this normalized copy makes the REQUEST side auditable in every bundle.
+    lora_provenance = _normalized_lora_adapters(request.get("lora_adapters"))
+    if lora_provenance:
+        report["lora_adapters"] = lora_provenance
     if person_detected:
         report["person_detected"] = True
         report["person_warning"] = (
             "person subject: generated side/back views may not preserve "
-            "facial identity (no identity gate exists); requested explicitly, "
-            "proceeding"
+            "facial identity"
+            + (
+                " (identity gate enabled: embedding-floor rejection where "
+                "the face is visible; back views abstain)"
+                if identity_gate is not None
+                else " (no identity gate active for this call)"
+            )
+            + "; requested explicitly, proceeding"
         )
     if report_tint_error:
         report["tint_error"] = report_tint_error
@@ -1424,6 +1581,10 @@ def generate_reference_views(
             f"render_size must be an int or 'auto' (got {render_size!r})")
     base_render_size = 768 if auto_render_size else int(render_size)
     report["render_size_mode"] = "auto" if auto_render_size else base_render_size
+    # Identity-route capability latch: once a strict-signature provider
+    # refuses the reference_images kwarg, later attempts (all angles) skip
+    # it instead of burning a TypeError per draw. #FALLBACK stays recorded.
+    identity_reference_fallback = False
     for label, azimuth, elevation in angles:
         entry: Dict[str, Any] = {
             "label": label,
@@ -1432,6 +1593,46 @@ def generate_reference_views(
             "attempts": [],
             "accepted": False,
         }
+
+        def _emit(event: str, row: Mapping[str, Any], *, _label=label,
+                  _azimuth=float(azimuth), _elevation=float(elevation)) -> None:
+            """Feed the progressive attempt sink; a diagnostics failure
+            must never break a multi-minute draw ladder."""
+            if on_attempt is None:
+                return
+            try:
+                on_attempt({"event": event, "label": _label,
+                            "azimuth_deg": _azimuth,
+                            "elevation_deg": _elevation, **dict(row)})
+            except Exception:
+                pass
+
+        # Per-attempt pixel evidence (persist-for-diagnosis, refusal half):
+        # EVERY failed draw keeps a downscaled copy of the exact pixels the
+        # gates judged plus the raw payload bytes — silhouette failures
+        # included (they previously left no pixels at all, so an all-angles
+        # refusal like e22 was undiagnosable without a rerun). Discarded
+        # when the angle accepts; folded into report["rejected_images"]
+        # when it does not.
+        attempt_evidence: List[Dict[str, Any]] = []
+
+        def _keep_evidence(image: Any, raw: Any, attempt_index: int,
+                           attempt_seed: int, family: Optional[str],
+                           *, _label=label) -> None:
+            try:
+                small = image.copy()
+                small.thumbnail((512, 512))
+                attempt_evidence.append({
+                    "label": _label,
+                    "attempt": int(attempt_index),
+                    "image": small,
+                    "raw_bytes": bytes(raw) if raw is not None else None,
+                    "seed": int(attempt_seed),
+                    "failure_family": family,
+                })
+            except Exception:
+                pass
+
         started = time.perf_counter()
         clay = render_mesh_views(
             mesh, size=int(base_render_size), azimuths=[float(azimuth)],
@@ -1473,6 +1674,8 @@ def generate_reference_views(
         base_prompt = _view_prompt(label, subject_noun, conditioning,
                                    tinted=tinted_mesh is not None,
                                    color_anchor=color_anchor)
+        if prompt_suffix and str(prompt_suffix).strip():
+            base_prompt = base_prompt + " " + str(prompt_suffix).strip()
         entry["prompt"] = base_prompt
         entry["conditioning"] = conditioning
 
@@ -1480,9 +1683,18 @@ def generate_reference_views(
         # PHOTO with the clay render so the model transfers the real
         # materials instead of inventing them. Both panels are LETTERBOXED
         # (no anisotropic stretch of the material the model must copy) onto
-        # the same dark background.
+        # the same dark background. "identity" sends the photo as the
+        # PRIMARY edit image and the clay as a separate reference_images
+        # entry — the layout that preserves person identity on the local
+        # editor (viewgen audit L9; the composite canvas flips identity).
+        reference_image_bytes: Optional[bytes] = None
         buffer = io.BytesIO()
-        if conditioning == "composite":
+        if conditioning == "identity":
+            source_rgba.convert("RGB").save(buffer, format="PNG")
+            clay_buffer = io.BytesIO()
+            clay.convert("RGB").save(clay_buffer, format="PNG")
+            reference_image_bytes = clay_buffer.getvalue()
+        elif conditioning == "composite":
             panel = int(view_render_size)
 
             def letterbox(image: Any) -> Any:
@@ -1544,6 +1756,17 @@ def generate_reference_views(
 
         candidates: List[Dict[str, Any]] = []
         escalated = False
+        # Guide-poisoning escape (e22v3 refusal forensics, 2026-07-22): the
+        # identity route's clay reference makes the generator REPRODUCE the
+        # guide's surface — a striated scaffold clay yields paint-streak
+        # debris on essentially every draw (measured: 7/9 matte rejections
+        # with a striated guide vs 5/5 clean on the same recipe without a
+        # clay/with a clean clay — S2 bench arms B/E). A matte failure is
+        # therefore evidence about the GUIDE, not the seed: after the first
+        # one, remaining attempts drop the clay reference and run photo-
+        # primary (the bench's clean arm-B recipe); pose then rides the
+        # prompt and the pose gate still judges the result.
+        clay_dropped_after_matte = False
         # Anchor-class retry ladder (measured): per-seed two-key pass is
         # ~0.44 on the hardest angle, so best-of-6 spaced seeds reaches
         # 97% angle acceptance with 94% rerun agreement (early stop keeps
@@ -1570,22 +1793,69 @@ def generate_reference_views(
                 call_kwargs["steps"] = 8 if attempt % 2 == 0 else 12
             elif attempt < len(steps_schedule) and steps_schedule[attempt]:
                 call_kwargs["steps"] = int(steps_schedule[attempt])
+            if (reference_image_bytes is not None
+                    and not identity_reference_fallback
+                    and not clay_dropped_after_matte):
+                call_kwargs["reference_images"] = [reference_image_bytes]
             attempt_row: Dict[str, Any] = {"seed": attempt_seed,
                                            "escalated": escalated,
                                            "steps": call_kwargs.get("steps")}
+            if reference_image_bytes is not None:
+                attempt_row["identity_references"] = (
+                    "reference_images" in call_kwargs)
+                if clay_dropped_after_matte:
+                    attempt_row["clay_reference_dropped"] = "matte_debris"
             try:
-                payload = generator(prompt, conditioning_bytes,
-                                    seed=attempt_seed, **call_kwargs)
+                try:
+                    payload = generator(prompt, conditioning_bytes,
+                                        seed=attempt_seed, **call_kwargs)
+                except TypeError as exc:
+                    # LOUD capability fallback: a strict-signature provider
+                    # that refuses `reference_images` degrades the identity
+                    # route to photo-primary conditioning WITHOUT the clay
+                    # reference — pose then rides on the prompt alone and
+                    # the clay-IoU/pose gates judge the result. Recorded as
+                    # #FALLBACK; never retried silently for other errors.
+                    if (
+                        "reference_images" not in call_kwargs
+                        or "reference_images" not in str(exc)
+                    ):
+                        raise
+                    identity_reference_fallback = True
+                    report["identity_reference_fallback"] = (
+                        "#FALLBACK: the configured i2i provider rejected the "
+                        "reference_images kwarg; the identity route ran "
+                        "photo-primary WITHOUT the clay reference (pose "
+                        f"guidance degraded): {exc}"
+                    )
+                    call_kwargs.pop("reference_images", None)
+                    attempt_row["identity_references"] = False
+                    payload = generator(prompt, conditioning_bytes,
+                                        seed=attempt_seed, **call_kwargs)
                 data = payload if isinstance(payload, (bytes, bytearray)) else None
+                generation_metadata: Optional[Mapping[str, Any]] = None
                 if data is None and isinstance(payload, Mapping):
                     for key in ("data", "bytes", "content"):
                         if isinstance(payload.get(key), (bytes, bytearray)):
                             data = payload[key]
                             break
+                    # Backend-side generation evidence, when the generator
+                    # surfaces it (the plain capability i2i strips asset
+                    # metadata — bench gap 4): the LoRA application count is
+                    # the only signal that a requested adapter actually
+                    # loaded (gap 1's silent 0/1680 class).
+                    metadata_block = payload.get("metadata")
+                    if isinstance(metadata_block, Mapping):
+                        generation_metadata = metadata_block
                 if data is None:
                     attempt_row["error"] = "generator returned no image bytes"
                     entry["attempts"].append(attempt_row)
+                    _emit("attempt", attempt_row)
                     continue
+                if generation_metadata is not None:
+                    for meta_key in ("lora_applied_file_count", "edit_mode"):
+                        if meta_key in generation_metadata:
+                            attempt_row[meta_key] = generation_metadata[meta_key]
                 generated = Image.open(io.BytesIO(bytes(data)))
                 if conditioning == "composite" and generated.width > generated.height:
                     # Any wider-than-tall echo of the two-panel canvas keeps
@@ -1602,6 +1872,9 @@ def generate_reference_views(
                 if iou < float(silhouette_iou_min):
                     attempt_row["failure_family"] = "silhouette"
                     entry["attempts"].append(attempt_row)
+                    _keep_evidence(matted, data, attempt, attempt_seed,
+                                   "silhouette")
+                    _emit("attempt", attempt_row)
                     continue  # same prompt, next seed
                 # Post-processing BEFORE the texture gate: the gate must
                 # judge the exact pixels the bake will consume.
@@ -1635,7 +1908,11 @@ def generate_reference_views(
                     processed, source_rgba,
                     **({"flat_delta_max": 0.18} if color_anchor else {}))
                 material = part_material_fidelity(processed, source_rgba)
-                specular = gate_baked_speculars(processed)
+                # Source rides along for the 0019 self-calibration: the
+                # subject's own legitimate near-white floor sets the pass
+                # line, so dark-dominant subjects stop mass-rejecting on
+                # honestly lit skin (the e22 refusal's back-view killer).
+                specular = gate_baked_speculars(processed, source=source_rgba)
                 # Diagnosis stats (persist-for-diagnosis contract): the
                 # gray-car class was invisible in the shipped metadata —
                 # foreground chroma makes it readable at a glance.
@@ -1721,6 +1998,90 @@ def generate_reference_views(
                         attempt_row["failure_family"] = "speculars"
                 floor_pass = bool(texture.get("floor", texture["passed"])
                                   and material.get("floor", material["passed"]))
+                # MATTE-CLEANLINESS + SUBJECT-IDENTITY ACCEPTANCE GATES
+                # (e22v2 forensics 2026-07-22): judged only on candidates
+                # every material gate already accepts, BEFORE the pose
+                # ruler (cheapest instrument first: pure numpy, then one
+                # CPU embedding, then ~20 clay registrations). A failure
+                # re-rolls the seed with the SAME prompt (stochastic
+                # failure class, like silhouette); verdicts stay on the
+                # attempt row either way. A crashing gate abstains inside
+                # its own builder (pose_unmeasured doctrine).
+                matte_verdict: Optional[Dict[str, Any]] = None
+                if strict_pass and matte_gate is not None:
+                    try:
+                        matte_verdict = matte_gate(
+                            processed, label=label,
+                            azimuth_deg=float(azimuth),
+                            elevation_deg=float(elevation))
+                    except Exception as exc:
+                        matte_verdict = {
+                            "measured": False, "passed": True,
+                            "note": ("matte_unmeasured: matte gate error "
+                                     f"{type(exc).__name__}: {exc}")}
+                    attempt_row["matte"] = matte_verdict
+                    if not matte_verdict.get("passed", True):
+                        attempt_row["failure_family"] = "matte_debris"
+                        # Guide-poisoning escape (constant's rationale
+                        # above): the remaining attempts run photo-primary.
+                        if (reference_image_bytes is not None
+                                and not clay_dropped_after_matte
+                                and not identity_reference_fallback):
+                            clay_dropped_after_matte = True
+                            report.setdefault(
+                                "clay_reference_dropped",
+                                "matte debris on a clay-guided draw: the "
+                                "identity route reproduces the guide's "
+                                "surface, so remaining attempts for this "
+                                "angle run photo-primary (pose gate still "
+                                "judges)")
+                identity_verdict: Optional[Dict[str, Any]] = None
+                if (strict_pass and identity_gate is not None
+                        and (matte_verdict is None
+                             or matte_verdict.get("passed", True))):
+                    try:
+                        identity_verdict = identity_gate(
+                            processed, label=label,
+                            azimuth_deg=float(azimuth),
+                            elevation_deg=float(elevation))
+                    except Exception as exc:
+                        identity_verdict = {
+                            "measured": False, "passed": True,
+                            "note": ("identity_unmeasured: identity gate "
+                                     f"error {type(exc).__name__}: {exc}")}
+                    attempt_row["identity"] = identity_verdict
+                    if not identity_verdict.get("passed", True):
+                        attempt_row["failure_family"] = "subject_identity"
+                view_gates_ok = (
+                    (matte_verdict is None or matte_verdict.get("passed", True))
+                    and (identity_verdict is None
+                         or identity_verdict.get("passed", True)))
+                # POSE-HONESTY ACCEPTANCE GATE (viewgen bench 2026-07-21
+                # section 6.3): measured only on candidates every material
+                # gate already accepts — the ruler is the expensive
+                # instrument and a materially-failed draw redraws anyway.
+                # A pose rejection re-rolls the seed with the SAME prompt
+                # (pose error is stochastic, like silhouette failure); the
+                # verdict (measurement + loud reason) stays on the attempt
+                # row either way. Skipped when the cheaper view gates
+                # already rejected (the candidate redraws regardless).
+                pose_verdict: Optional[Dict[str, Any]] = None
+                if strict_pass and view_gates_ok and pose_gate is not None:
+                    try:
+                        pose_verdict = pose_gate(
+                            processed, label=label,
+                            azimuth_deg=float(azimuth),
+                            elevation_deg=float(elevation))
+                    except Exception as exc:
+                        # A crashing ruler must not burn the ladder: the
+                        # gate abstains (pose_unmeasured), loudly.
+                        pose_verdict = {
+                            "measured": False, "passed": True,
+                            "note": ("pose_unmeasured: pose gate error "
+                                     f"{type(exc).__name__}: {exc}")}
+                    attempt_row["pose"] = pose_verdict
+                    if not pose_verdict.get("passed", True):
+                        attempt_row["failure_family"] = "pose"
                 # One score to rank candidates: relief fidelity minus
                 # penalties for palette drift and gloss.
                 score = float(texture.get("selection_score") or 0.0)
@@ -1735,11 +2096,29 @@ def generate_reference_views(
                     "floor": floor_pass,
                     "score": score,
                     "seed": attempt_seed,
+                    "pose": pose_verdict,
+                    "pose_ok": (bool(pose_verdict.get("passed", True))
+                                if pose_verdict is not None else True),
+                    "matte": matte_verdict,
+                    "identity": identity_verdict,
+                    "view_gates_ok": bool(view_gates_ok),
+                    "lora_applied_file_count": (
+                        generation_metadata.get("lora_applied_file_count")
+                        if generation_metadata is not None else None),
                     "raw_payload_md5": hashlib.md5(bytes(data)).hexdigest(),
+                    # Raw payload for replay consumers (loop conditioning
+                    # offers accepted views to the texture lane's full
+                    # acceptance machinery via raw-byte replay).
+                    "raw_bytes": bytes(data),
                 })
                 entry["attempts"].append(attempt_row)
-                if strict_pass:
-                    break  # strict pass: stop the ladder
+                _keep_evidence(processed, data, attempt, attempt_seed,
+                               attempt_row.get("failure_family"))
+                _emit("attempt", attempt_row)
+                if (strict_pass and view_gates_ok
+                        and (pose_verdict is None
+                             or pose_verdict.get("passed", True))):
+                    break  # strict (+ clean + honest) pass: stop the ladder
                 # Escalate the literal-copy texture clause only where it
                 # targets the defect: relief smoothing on a relief subject.
                 # On the anchor-marked smooth class the clause re-injects
@@ -1752,6 +2131,7 @@ def generate_reference_views(
             except Exception as exc:
                 attempt_row["error"] = f"{type(exc).__name__}: {exc}"
                 entry["attempts"].append(attempt_row)
+                _emit("attempt", attempt_row)
                 continue
 
         entry["seconds"] = round(time.perf_counter() - started, 1)
@@ -1761,9 +2141,62 @@ def generate_reference_views(
         # leaked stained fabric straight into the bake, and a wrong texture
         # on an unseen angle is a worse product defect than the featureless
         # fill it displaces (fill is dull; wrong material is broken).
-        viable = [c for c in candidates if c["strict"]]
+        viable = [
+            c for c in candidates
+            if c["strict"] and c["pose_ok"] and c.get("view_gates_ok", True)
+        ]
         if not viable:
-            if any(c["floor"] for c in candidates):
+            matte_rejected = [
+                c for c in candidates
+                if c["strict"] and c.get("matte") is not None
+                and not c["matte"].get("passed", True)]
+            identity_rejected = [
+                c for c in candidates
+                if c["strict"] and c.get("identity") is not None
+                and not c["identity"].get("passed", True)]
+            pose_rejected = [
+                c for c in candidates if c["strict"] and not c["pose_ok"]]
+            if identity_rejected:
+                # Most specific failure first: an otherwise-shippable
+                # candidate depicted a DIFFERENT SUBJECT (the e22v2
+                # wrong-man class); per-candidate cosines on attempt rows.
+                entry["rejection_reason"] = (
+                    "subject identity: strict-passing candidates were "
+                    "rejected by the same-subject gate (cosines: "
+                    + ", ".join(
+                        str((c.get("identity") or {}).get("cosine"))
+                        for c in identity_rejected)
+                    + "); redraw budget exhausted. Last verdict: "
+                    + str((identity_rejected[-1].get("identity") or {}).get("reason"))
+                )
+            elif matte_rejected:
+                entry["rejection_reason"] = (
+                    "matte cleanliness: strict-passing candidates were "
+                    "rejected for torn alpha / debris texture "
+                    "(interior_semi, edge_ratio: "
+                    + ", ".join(
+                        "({}, {})".format(
+                            (c.get("matte") or {}).get("interior_semi_frac"),
+                            (c.get("matte") or {}).get("edge_density_ratio"))
+                        for c in matte_rejected)
+                    + "); redraw budget exhausted. Last verdict: "
+                    + str((matte_rejected[-1].get("matte") or {}).get("reason"))
+                )
+            elif pose_rejected:
+                # The most specific failure first: every otherwise-shippable
+                # candidate lied about its azimuth (loud, per-candidate
+                # measurements live on the attempt rows).
+                entry["rejection_reason"] = (
+                    "pose honesty: every strict-passing candidate was "
+                    "rejected by the pose acceptance gate "
+                    "(measured/declared deltas: "
+                    + ", ".join(
+                        str((c.get("pose") or {}).get("delta_deg"))
+                        for c in pose_rejected)
+                    + " deg); redraw budget exhausted. Last verdict: "
+                    + str((pose_rejected[-1].get("pose") or {}).get("reason"))
+                )
+            elif any(c["floor"] for c in candidates):
                 entry["rejection_reason"] = (
                     "floor-only candidates (strict material gates not met); "
                     "floor quality is reported but never baked"
@@ -1771,31 +2204,49 @@ def generate_reference_views(
             # PERSIST-FOR-DIAGNOSIS: the gray-car diagnosis required a
             # full rerun solely because no rejected pixel survived —
             # callers write these small copies to `rejected_refs/`.
-            # The exact pixels the gates judged, downscaled; raw payloads
-            # stay reproducible via seed + md5.
-            # Cap 15 = 5 angles x 3 attempts: the previous 12 silently
-            # dropped a fifth angle's rejects.
+            # The exact pixels the gates judged (silhouette failures
+            # included — e22's all-angles refusal was undiagnosable when
+            # only IoU-passing candidates left evidence), downscaled, plus
+            # the raw payload bytes so refusal bundles can persist the
+            # full-resolution draws; seed rides each row.
+            # Cap 18 = 3 loop angles x 6 anchor-class attempts (and >= 5
+            # angles x 3 attempts for the static sets).
             rejected_images = report.setdefault("rejected_images", [])
-            for attempt_index, candidate in enumerate(candidates):
-                if len(rejected_images) >= 15:
+            for row in attempt_evidence:
+                if len(rejected_images) >= 18:
                     break
-                small = candidate["rgba"].copy()
-                small.thumbnail((512, 512))
-                rejected_images.append({
-                    "label": label,
-                    "attempt": attempt_index,
-                    "image": small,
-                })
+                rejected_images.append(row)
             report["angles"].append(entry)
             report["rejected"] += 1
+            _emit("angle_result", {
+                "accepted": False,
+                "attempts": len(entry["attempts"]),
+                "rejection_reason": entry.get("rejection_reason"),
+                "seconds": entry["seconds"],
+            })
             continue
         best = max(viable, key=lambda c: c["score"])
         entry["accepted"] = True
         entry["silhouette_iou"] = round(best["iou"], 4)
         entry["texture_gate"] = "passed"
         entry["raw_payload_md5"] = best["raw_payload_md5"]
+        if best.get("pose") is not None:
+            entry["pose"] = best["pose"]
+        if best.get("matte") is not None:
+            entry["matte"] = best["matte"]
+        if best.get("identity") is not None:
+            entry["identity"] = best["identity"]
+        if best.get("lora_applied_file_count") is not None:
+            entry["lora_applied_file_count"] = best["lora_applied_file_count"]
         report["angles"].append(entry)
         report["accepted"] += 1
+        _emit("angle_result", {
+            "accepted": True,
+            "attempts": len(entry["attempts"]),
+            "silhouette_iou": entry.get("silhouette_iou"),
+            "seed": int(best["seed"]),
+            "seconds": entry["seconds"],
+        })
         views.append(
             {
                 "rgba": best["rgba"],
@@ -1805,6 +2256,19 @@ def generate_reference_views(
                 "role": "reference",
                 "generated": True,
                 "clay_render": clay,
+                "raw_bytes": best["raw_bytes"],
+                "raw_payload_md5": best["raw_payload_md5"],
+                "seed": int(best["seed"]),
+                # The acceptance ladder's own pose measurement rides the
+                # view so downstream consumers (loop eligibility fold)
+                # reuse it instead of paying the ruler twice.
+                **({"pose": best["pose"]} if best.get("pose") is not None else {}),
+                # Matte/identity verdicts ride the same way (loop fold
+                # provenance; both already passed or the view would not
+                # exist).
+                **({"matte": best["matte"]} if best.get("matte") is not None else {}),
+                **({"identity": best["identity"]}
+                   if best.get("identity") is not None else {}),
             }
         )
     return views, report

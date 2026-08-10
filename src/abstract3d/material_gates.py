@@ -107,34 +107,89 @@ def gate_tile_albedo(generated: Any, source: Any,
 
 
 def gate_baked_speculars(generated: Any,
-                         *, lightness_delta: float = 60.0,
-                         max_blob_fraction: float = 0.005) -> Dict[str, Any]:
-    """G2: no large near-white blobs above the foreground's own median."""
+                         *, source: Any = None,
+                         lightness_delta: float = 60.0,
+                         max_blob_fraction: float = 0.005,
+                         specular_chroma_max: float = 14.0,
+                         source_floor_ratio: float = 2.0) -> Dict[str, Any]:
+    """G2: no large NEAR-WHITE blobs above the foreground's own median.
+
+    A baked specular is bright AND desaturated — the same physical
+    predicate `suppress_specular_highlights` uses ("LIGHTER and LESS
+    SATURATED than the local diffuse body"). The original implementation
+    tested only lightness, which mass-rejected dark-dominant subjects
+    (backlog 0019, root-caused 2026-07-21 on the e22 refusal): with a
+    median L of 15-25, honestly lit SKIN sits 60+ L above the median and
+    formed huge "hot" blobs — measured on the labeled corpus, every
+    plausible dark bust view's hot pixels are CHROMATIC (skin chroma p10
+    17.9-26.5) while true gloss cores are near-white (chroma <= ~5;
+    threshold 14 splits the bands with margin on both sides). Two keys:
+
+    - ACHROMATIC KEY (always on): hot pixels additionally require
+      chroma < `specular_chroma_max`. Measured effect: e11/arm-E dark
+      backs drop from worst blobs 0.006-0.024 (all failing) to
+      0.00004-0.0001 (passing) while synthetic 2%-of-foreground gloss
+      fields — pure white AND warm-white — stay caught at 0.0197.
+    - SOURCE SELF-CALIBRATION (0019's direction, when `source` is given):
+      the source photo's own worst blob under ITS OWN predicate is the
+      subject's legitimate near-white floor (white lettering, bright
+      trim); the pass line is max(`max_blob_fraction`,
+      `source_floor_ratio` x that floor) — the same source-floor idiom
+      the specular suppressor already uses. A generation is only rejected
+      for gloss the source itself does not justify.
+    """
 
     import numpy as np
     from scipy.ndimage import label as cc_label
     from skimage import color as skcolor
 
-    rgba = np.asarray(generated.convert("RGBA"), dtype=np.float32) / 255.0
-    mask = rgba[:, :, 3] > 0.5
-    lab = skcolor.rgb2lab(rgba[:, :, :3])
-    lightness = lab[:, :, 0]
-    if not mask.any():
+    def worst_achromatic_hot_blob(image: Any) -> Optional[Tuple[float, int, float]]:
+        rgba = np.asarray(image.convert("RGBA"), dtype=np.float32) / 255.0
+        mask = rgba[:, :, 3] > 0.5
+        if not mask.any():
+            return None
+        lab = skcolor.rgb2lab(rgba[:, :, :3])
+        lightness = lab[:, :, 0]
+        chroma = np.hypot(lab[:, :, 1], lab[:, :, 2])
+        median_l = float(np.median(lightness[mask]))
+        hot = (mask & (lightness > median_l + float(lightness_delta))
+               & (chroma < float(specular_chroma_max)))
+        labels, count = cc_label(hot)
+        foreground = int(mask.sum())
+        worst = 0.0
+        for index in range(1, count + 1):
+            worst = max(worst, float((labels == index).sum()) / foreground)
+        return worst, count, median_l
+
+    measured = worst_achromatic_hot_blob(generated)
+    if measured is None:
         return {"name": "G2_baked_speculars", "passed": False, "reason": "empty matte"}
-    median_l = float(np.median(lightness[mask]))
-    hot = mask & (lightness > median_l + lightness_delta)
-    labels, count = cc_label(hot)
-    foreground = int(mask.sum())
-    worst = 0.0
-    for index in range(1, count + 1):
-        worst = max(worst, float((labels == index).sum()) / foreground)
-    return {
+    worst, count, median_l = measured
+
+    effective_max = float(max_blob_fraction)
+    source_floor: Optional[float] = None
+    if source is not None:
+        try:
+            source_measured = worst_achromatic_hot_blob(source)
+        except Exception:
+            source_measured = None
+        if source_measured is not None:
+            source_floor = source_measured[0]
+            effective_max = max(effective_max,
+                                float(source_floor_ratio) * source_floor)
+
+    result = {
         "name": "G2_baked_speculars",
-        "passed": worst <= max_blob_fraction,
+        "passed": worst <= effective_max,
         "worst_blob_fraction": round(worst, 5),
         "hot_components": count,
         "median_lightness": round(median_l, 1),
+        "specular_chroma_max": float(specular_chroma_max),
+        "effective_max_blob_fraction": round(effective_max, 5),
     }
+    if source_floor is not None:
+        result["source_floor_blob_fraction"] = round(source_floor, 5)
+    return result
 
 
 def gate_tile_microstructure(generated: Any, source: Any,
@@ -745,7 +800,7 @@ def evaluate_material_fidelity(generated: Any, source: Any) -> Dict[str, Any]:
 
     gates = [
         gate_tile_albedo(generated, source),
-        gate_baked_speculars(generated),
+        gate_baked_speculars(generated, source=source),
         gate_tile_microstructure(generated, source),
         gate_forbidden_modes(generated, source),
     ]

@@ -11,8 +11,8 @@
 ## Current Counts
 
 - Planned: 10
-- Proposed: 1
-- Completed: 3
+- Proposed: 7
+- Completed: 5
 - Deprecated: 0
 - Recurrent: 2
 
@@ -44,6 +44,7 @@ Recommended next proposed follow-up after that:
 - hunyuan3d: delivered the license-gated Hunyuan3D-2.1 shape backend, the shared projection texturing module, and the multi-view geometry path.
   - [0013_hunyuan3d21_license_gated_shape_backend.md](completed/hunyuan3d/0013_hunyuan3d21_license_gated_shape_backend.md)
   - [0014_multiview_geometry_and_reference_view_qa.md](completed/hunyuan3d/0014_multiview_geometry_and_reference_view_qa.md)
+  - [0017_explicit_synthesized_refs_source_protection.md](completed/hunyuan3d/0017_explicit_synthesized_refs_source_protection.md)
 
 ### Proposed Tracks
 
@@ -89,6 +90,12 @@ Recommended next proposed follow-up after that:
 | ID | Title | Path | Status | Promotion criteria |
 |---|---|---|---|---|
 | 0002 | Step1X texture stage research | `docs/backlog/proposed/step1x/0002_step1x_texture_stage_research.md` | Proposed | Promote only if the dependency stack meets the repo license/runtime policy or the policy changes explicitly. |
+| 0016 | Subject-framing preflight for i23d | `docs/backlog/proposed/0016_subject_framing_preflight.md` | Proposed | Promote when the preflight (mask-based border-cut/off-center detection before shape compute) is specified against the measured webcam-frame failure class. |
+| 0018 | Row-correction pair window harmonization | `docs/backlog/proposed/0018_row_correction_pair_window_harmonization.md` | Proposed | Promote when the e12 pair-drop mechanism (independent per-side correction vs pair-mirror gate) is addressed with a shared crop window. |
+| 0019 | Speculars gate dark-subject miscalibration | `docs/backlog/completed/hunyuan3d/0019_speculars_gate_dark_subject_miscalibration.md` | Completed (2026-07-21) | Shipped: achromatic hot-pixel key (chroma < 14) + source self-calibration; validated on the labeled dark-subject corpus + synthetic gloss fields (e22 forensics wave). |
+| 0020 | Eval3D-class normal-agreement + semantic-consistency probes | `docs/backlog/proposed/0020_eval3d_normal_agreement_and_semantic_consistency_probes.md` | Proposed | Promote when a local normal-estimator/DINO tier is accepted; must rank e20/e21 texture failures without the photo before becoming a rank driver. |
+| 0021 | ArcFace identity + CLIP similarity metrics | `docs/backlog/proposed/0021_arcface_identity_and_clip_similarity_metrics.md` | Proposed | Promote when the larger model tier is accepted and the identity metric beats SFace's margin on the calibration poles + a synthetic corruption ladder. |
+| 0022 | Promote v2 mesh metrics into loop quality_verdict | `docs/backlog/proposed/0022_promote_v2_mesh_metrics_into_loop_quality_verdict.md` | Proposed | Promote after the v2 instrument is re-verified on a second subject; ranking is validated, absolute thresholds are not yet. |
 
 ## Completed Ledger
 
@@ -97,6 +104,7 @@ Recommended next proposed follow-up after that:
 | 0001 | Official Step1X-3D geometry backend | `docs/backlog/planned/step1x/0001_step1x_geometry_backend.md` | `docs/backlog/completed/step1x/0001_step1x_geometry_backend.md` | `2026-06-22` | Completed | `pytest -q tests`; targeted `abstractcore` scene3d tests; historical proof assets under `docs/assets/validation/local-step1x/`; refreshed Apple-local reference assets under `docs/assets/validation/local-step1x-label-refresh/` |
 | 0013 | Hunyuan3D-2.1 license-gated shape backend with shared projection texturing | created directly as completed work | `docs/backlog/completed/hunyuan3d/0013_hunyuan3d21_license_gated_shape_backend.md` | `2026-07-04` | Completed | `pytest -q tests` (117 tests); Apple-`mps` four-object proof bundles under `artifacts/validation/final-proof/` |
 | 0014 | Multi-view geometry conditioning (Hunyuan3D-2mv) and reference-view QA | created directly as completed work | `docs/backlog/completed/hunyuan3d/0014_multiview_geometry_and_reference_view_qa.md` | `2026-07-04` | Completed | `pytest -q tests` (121 tests); Apple-`mps` multi-view face proof under `artifacts/validation/iter2-multiview/face-2mv-final/` |
+| 0017 | Source-photo texel protection for explicit synthesized references | `docs/backlog/proposed/0017_explicit_synthesized_refs_source_protection.md` | `docs/backlog/completed/hunyuan3d/0017_explicit_synthesized_refs_source_protection.md` | `2026-07-20` | Completed | `pytest -q tests/test_texturing.py tests/test_reference_flow.py tests/test_cli.py` (124) + backend suites (128); bake-level protection proof on the synthetic sphere fixture; evidence matrix under `out/laurent-bust-redo/` |
 
 ## Deprecated Ledger
 

@@ -1,5 +1,507 @@
 # Changelog
 
+## Unreleased
+
+### Added (e22v2 view-quality forensics 2026-07-22: matte + identity acceptance gates)
+
+- **`view_gates.py` — two new loop-ladder acceptance gates** closing the
+  hole the e22_oneshot_v2 control experiment isolated (pass-2 with
+  proven-clean bench views produced a clean mesh from the same pipeline
+  mechanics; the accepted conditioning views were the defect):
+  `build_matte_cleanliness_gate` (interior semi-transparent alpha tears +
+  content edge-density ratio vs the source photo's own baseline — the
+  debris class is in-gamut by construction after tone matching, so LAB/
+  palette channels measurably cannot carry it) and
+  `build_subject_identity_gate` (DINOv2-base head-crop embedding cosine
+  floor vs the source photo — strategy_v2 C7's named DINO-global
+  fallback; abstains beyond |azimuth| 100° where same-subject views
+  measure at wrong-subject level, and abstains LOUDLY when the embedder
+  is unavailable). Thresholds calibrated on the on-disk evidence
+  (e22v2's five garbage views REJECT; bench E/B + e20 viewgen_fixed all
+  PASS; tables in the module docstring). Both gates run inside
+  `generate_reference_views` before the pose ruler (cheapest first),
+  re-roll the seed on rejection, and land per-attempt verdicts in
+  `loop_refgen_attempts.jsonl`; `synthesize_loop_views` threads them
+  automatically and refuses riding failed verdicts from both consumers.
+- **Conditioning clays are Taubin-smoothed** (`smooth_conditioning_mesh`,
+  30 iterations, volume-preserving; e22v3 refusal forensics): the
+  identity i2i route conditions each draw on the scaffold's own clay
+  render and the generator faithfully REPRODUCES the clay's marching-
+  cubes striation — on a striated pass-1 scaffold every draw inherited
+  paint-streak debris and the new matte gate honestly rejected 7/9
+  attempts (edge ratios 2.6-5.5x vs the 2.5x floor), refusing the run.
+  The ladder (clay guides, registration, pose ruler, row consistency)
+  now measures against a smoothed copy; pass 2 and the bundle keep the
+  raw scaffold. The e22v3 refusal bundle is the calibration evidence
+  (`out/bust/e22_oneshot_v3` first run; rejected draws in
+  `rejected_geometry_views/`). HONEST LIMIT (measured on the same
+  scaffold, probe /tmp/v3_smoothed_probe): smoothing removes the
+  shirt/torso drip class (back edge ratio 5.3-5.5 -> 4.1) but the
+  scaffold's plate-stack HAIR band still reproduces as straw thatch and
+  ghost double-exposures remain generator stochastics — a shredded-hair
+  scaffold can still exhaust the ladder and refuse the run, which is the
+  designed outcome (a loud refusal instead of e22v2's carved debris).
+- **Guide-poisoning escape in the draw ladder**: a matte rejection on a
+  clay-guided (identity-conditioning) draw drops the clay reference for
+  the REMAINING attempts of that angle — photo-primary, the S2 bench's
+  clean arm-B recipe (bench B views are matte-clean must-passes at 0.8-
+  1.5x edge ratio) — because a matte failure is evidence about the GUIDE,
+  not the seed. Recorded on the attempt rows (`clay_reference_dropped`)
+  and in the report; the pose gate and row consistency still judge
+  photo-primary draws.
+
+### Fixed (e22v2 decode forensics 2026-07-22: adaptive-decoder observability + memory)
+
+- **Adaptive volume decode logs progress** (operability defect measured on
+  the e22v2 one-shot: the pass-2 512-octree decode produced ZERO output
+  for its whole duration and the silence was misread as a hang — the
+  wall-clock blow-up was actually macOS **idle sleep** kicking in six
+  minutes after the pass-2 model load, 00:41–02:18, which
+  `time.perf_counter` timers exclude; recorded stage times + sleep match
+  the wall to the second). `_AdaptiveVolumeDecoder` now logs level
+  schedules, per-level refinement sizes, and per-chunk query progress
+  (`volume decode [...]: chunk i/N`) at INFO on a ceiling-bounded ~5%
+  cadence (≤ 20 cadence lines per query pass at any chunk count). When
+  the host process never configured logging, one stderr handler is
+  attached to the `abstract3d` namespace (`_ensure_decode_logging`,
+  idempotent, never fights an existing config) — the same self-configuring
+  precedent the vendored `hy3dgen.shapgen` logger already set.
+- **Refinement bookkeeping transients dropped from O(27·N) to O(N)**:
+  the fine-mask build no longer materializes the `(scale+1)^3 · N × 3`
+  int64 index matrix (648 bytes per surface vertex — 2.4 GB at a
+  bust-scale refinement band) and the refine gather/scatter now uses the
+  `np.nonzero` tuple instead of `np.argwhere` + strided columns.
+  **Byte-identical output pinned two ways**: a unit test replicates the
+  legacy assembly verbatim and asserts `np.array_equal` on the full grid
+  (`test_adaptive_volume_decoder_bit_identical_to_legacy_assembly`), and
+  the standalone bench cross-checks equality at the true 512-octree scale
+  (`scripts/experimental/bench_adaptive_decoder_cpu.py`).
+- **Forensic correction recorded in the bench + decoder docstring**: the
+  suspected `np.concatenate` hot loop was 0.8% of the sampled window; the
+  numpy bookkeeping totals ~5 s per 512-octree decode on a quiet machine
+  (dominated by `ndimage.zoom`, kept: a bit-exact replacement is not worth
+  the last-ulp risk), and chunk accumulation was already list + one
+  `torch.cat` (0.010 s at full scale — preallocation measured no faster).
+- **Docs: measured 512³ loop-recipe stage timings published** — the full
+  stage table (pass-1 2,054 s / view synthesis 1,679 s / pass-2 2,433 s /
+  mesh 195 s / texture 1,770 s; total ~2 h 16 m compute on Apple `mps`)
+  landed in `docs/benchmarks.md`, with runtime expectations and the
+  macOS-sleep operational note (`timings_s` is awake-process time;
+  wrap long unattended runs in `caffeinate -dims`) in `docs/api.md`.
+  Timing decomposition + queued after-fix validation protocol:
+  `docs/backlog/proposed/0023_surface_extraction_performance.md`. The
+  `--octree-resolution`/`--max-facenum` rows in the benchmarks
+  density-control table were also corrected (both flags are CLI-exposed).
+- **Independent adversarial audit of the assembly rewrite** (auditor #2,
+  same night): `tests/test_volume_assembly_equivalence.py` pins the
+  patched decoder bit-exact against the pre-patch class (embedded verbatim
+  from git HEAD `ade2ddd`) across 31 cases — accumulation-kernel edges
+  (empty input, single point, exact-multiple / non-divisible chunkings,
+  33³/65³ odd cubes at the production chunk size 32768), fp16/fp32,
+  fp32-logit preservation under fp16 queries, C/F/non-contiguous memory
+  order, every adaptive branch (dense-single-level, no-interior fallback,
+  ones fallback, mc_level ≠ 0), the CHUNK-TRACE contract (a repartition
+  must fail even when a pointwise synthetic field cannot see it), plus the
+  REAL vendored `VanillaVolumeDecoder` (batch = 2 included) against a
+  frozen replica and an xfail canary documenting the upstream
+  `HierarchicalVolumeDecoding` breakage. Findings, math (quadratic-concat
+  closed form: 1.113 TB ≈ 1–17 min at measured bandwidths, not 2 h),
+  pmset sleep-window verification (87 min Deep Idle matching the timer
+  hole to the minute), and the bench-methodology verdict (small-n
+  quadratic extrapolation understates ~20×; conclusions unaffected) are
+  in `docs/research/volume_assembly_audit.md`.
+
+### Fixed (e22 refusal forensics 2026-07-21: persist-on-refusal + gate recalibrations)
+
+- **Loop refusals persist their evidence** (defect measured on e22: an
+  ~80-minute `geometry_conditioning='loop'` run refused with "no eligible
+  conditioning views" and left NOTHING on disk — every per-attempt gate
+  verdict lived only in memory). Any loop-mode raise after pass 1 now
+  writes the bundle dir with `refusal_report.json` (status, error, the
+  full geometry-conditioning record incl. the per-attempt
+  reference_generation report and the loop plan rows), `pass1_mesh.glb` +
+  `pass1_clay_*.png` (the exact clays the gates judged against),
+  `rejected_geometry_views/` (downscaled triage copies) and
+  `rejected_geometry_views/raw/` (full-resolution raw draw payloads,
+  budget-capped) — then re-raises. Every artifact write is individually
+  best-effort so forensics can never mask the refusal itself.
+- **Progressive per-attempt log**: loop-mode synthesis streams every draw
+  ladder attempt as one JSON line to `<bundle>/loop_refgen_attempts.jsonl`
+  the moment it completes (`generate_reference_views(on_attempt=)`,
+  `synthesize_loop_views(attempt_log_path=)`) — draws take minutes each,
+  so acceptance/rejection is now observable mid-run and survives crashes.
+- **Rejected-draw evidence covers silhouette failures**: the ladder keeps
+  a downscaled copy + raw payload + seed for EVERY failed attempt
+  (silhouette failures previously left no pixels at all), so an
+  all-angles refusal is diagnosable without a rerun.
+- **Pose acceptance gate aligned to the RATIFIED two-key rule**
+  (strategy_v2 §stage contracts, stage E): `POSE_ACCEPT_MAX_DELTA_DEG` is
+  now `POSE_MAX_DELTA_DEG` (20°, decisive iou-gap ≥ 0.10) — the earlier
+  15° acceptance default was stricter than ratified and compounded with
+  in-ladder measurement noise (the ruler reads against the rougher pass-1
+  scaffold clays, not the e20-class instrument the bench calibrated on).
+- **Loop pass 1 moved to the flagship single-view checkpoint** (the ROOT
+  CAUSE of the e22 refusal, all three candidates measured on the failing
+  subject): the 2mv checkpoint fuses MULTIPLE tagged views — every
+  validated bust mesh conditioned it on ≥ 3 tags — and the loop's
+  single-front-tag scaffold draw shreds at EVERY regime (512/50: raw draw
+  decomposed into 295 components, its front clay registered onto its own
+  source photo at IoU 0.415; 384/30: 20 bodies, IoU 0.226 — vs the
+  healthy e20 mesh's 0.883), so every synthesized view honestly died at
+  the silhouette gate (0.60–0.61 vs the 0.75 floor, e22's exact seeds)
+  and the loop refused after ~80 minutes. Pass 1 now runs
+  `tencent/Hunyuan3D-2.1` (the validated single-photo route; measured
+  scaffold: 1 body, photo IoU 0.776) at its own 512/50 regime regardless
+  of the run's knobs; pass 2 keeps the requested model/knobs (the 2mv
+  windowed-set pass, the e18-e20 recipe). The pin is recorded in `pass1`
+  metadata (`model_id`) and warned when it diverges from the run knobs.
+- **Scaffold health fail-fast**: after pass 1 the loop measures the
+  SOURCE PHOTO's registered silhouette IoU against the scaffold's own
+  front clay (the exact instrument the draw ladder gates with) and
+  refuses in seconds — with the numbers and the forensics bundle — when
+  it is below 0.60 (measured bands: shredded scaffold 0.415, healthy
+  e20-class 0.883, synthetic control 0.925). Measurement failures abstain
+  loudly instead of refusing; ~55 minutes of doomed i2i draws are never
+  paid again.
+- **Speculars gate recalibrated for dark-dominant subjects** (backlog
+  0019, a compounding e22-class killer measured on this subject's real
+  back views): a baked specular is
+  bright AND desaturated, so hot pixels now additionally require chroma
+  < 14 (measured corpus split: plausible dark bust views' hot pixels are
+  chromatic lit skin at chroma p10 17.9–26.5; true gloss cores are
+  near-white ≤ ~5), and when the source photo is available the pass line
+  self-calibrates to 2× the source's own worst near-white blob under the
+  same predicate. Validated both ways: every labeled plausible dark view
+  (e11 loop views, bench arm B/E profiles + backs) now passes while
+  synthetic 2%-of-foreground gloss fields — pure white AND warm white —
+  stay rejected; the e18-era garbage SIDE views keep failing on their
+  real defect (pose lies: measured +47.5/−35.0 for declared ±90, decisive
+  gaps 0.16–0.19 — the pose acceptance gate's class). Honest limit,
+  recorded in the 0019 completion note: the e18 back's fabricated
+  head-mount is a content-fabrication class (strategy_v2 §4 C6/C8, work
+  queue) that the old gate only caught by the same accident that rejected
+  every plausible back.
+
+### Added (viewgen winning-recipe integration 2026-07-21: bench §6 into production)
+
+- **65°-class view vocabulary**: `_view_phrase` names `side65_left`/
+  `side65_right` (strong three-quarter wording measured in the bench) and
+  `parse_generation_angles` accepts them as named slots — the pipeline can
+  now request the angle class its own fixed conditioning set was measured
+  to contain (bench arm A could not even ask).
+- **Expression pin (identity route)**: the identity template's person
+  clause appends "identical closed mouth with lips together and a calm
+  neutral expression" — measured 10/10 closed mouths with it; the unpinned
+  template fabricated parted lips on a closed-mouth source. Prompt-side
+  guidance general to person subjects (no mouth detector); the composite
+  route's wording is unchanged.
+- **LoRA request knob + provenance**: `ABSTRACT3D_IMAGE_LORA_ADAPTERS` /
+  `scene3d_image_lora_adapters` (`path[@scale]` list or JSON) resolves into
+  `image_request.lora_adapters` and forwards verbatim through
+  `generate_reference_views` to the local image route (the bench-verified
+  plumbing). Reports record the requested adapters
+  (`reference_generation.lora_adapters`) and, when the generator surfaces
+  asset metadata, per-attempt `lora_applied_file_count`/`edit_mode` — a
+  silently-unloaded LoRA (0/1680 keys applied, bench gap 1) is now visible
+  in provenance.
+- **Pose-honesty acceptance gate**: `generate_reference_views(pose_gate=)`
+  + `loop_conditioning.build_pose_acceptance_gate(mesh)` — inside the draw
+  ladder, a strict-passing candidate measured DECISIVELY more than 15°
+  (`POSE_ACCEPT_MAX_DELTA_DEG`) off its declared azimuth by the audit-grade
+  head-band-IoU ruler is rejected and the seed re-rolls; verdicts (loud
+  reasons) land on the attempt rows. Loop mode gates both halves: view
+  synthesis against the pass-1 mesh and texture-lane regeneration draws
+  against the final mesh. No mesh ruler → no gate, recorded as
+  `pose_unmeasured` (never gating blind); plateau argmaxes (bust backs)
+  still never reject (two-key doctrine unchanged). The eligibility fold
+  reuses the ladder's measurement instead of paying the ruler twice.
+
+### Added (evaluation red-team rebuild 2026-07-21: turntable evidence + validated per-defect regression detectors)
+
+- **`scripts/full_turntable.py`**: full-coverage evidence pass — clay +
+  textured renders at az {0, ±30, ±60, ±90, ±135, 180} × elev {0, 15} at
+  1536 px, face close-ups for all 7 front-hemisphere azimuths, labeled
+  contact sheet + manifest per model under
+  `out/laurent-bust-redo/review/turntable/<model>/`. Both sides always
+  rendered (the e10 left-smear escaped because the old panel never rendered
+  negative azimuths). Azimuth handedness verified with a synthetic colored
+  marker: positive az = subject's anatomical LEFT.
+- **`scripts/defect_detectors.py`**: per-defect regression detectors, each
+  calibrated on the 2026-07-21 operator-verdict set and validated BOTH ways
+  (fires on the named bad model, silent on the named good one): open_mouth,
+  double_mouth, mouth_striation, face_inflation, profile_ripples (all from
+  orthographic depth maps — pure geometry, no shading), side_smear,
+  skin_on_crown, and the ported ghost-glasses band metric at its validated
+  operating point. Rationale for depth maps: the old shading-based
+  duplication autocorrelation ranks the proven single-mouth e10 above the
+  double-mouth e2 (0.093 vs 0.089) — non-discriminative.
+- **`scripts/evaluation_panel.py`**: worst-angle gating — mesh and texture
+  scores are each the MINIMUM over per-angle detector margins, never an
+  average; PASS iff every detector is under threshold at every angle.
+  Re-scored all 8 candidates; only `e20_rebake_fixed` passes both axes,
+  reproducing every operator verdict (details + ranking in
+  `docs/research/evaluation_redteam.md`).
+- **`scripts/validate_detectors.py`**: two-way validation harness (17
+  checks; non-zero exit if any detector stops reproducing an operator
+  verdict). Run it after any threshold or detector change.
+- **`docs/research/evaluation_redteam.md`**: defect→detector map with
+  measured evidence, re-scored ranking, verification of the
+  `e20_rebake_fixed` fixed-texture claim (right-oblique ghost 2.00 → 0.00;
+  left residual fragments visible but sub-threshold, documented), and an
+  honest residual-blind-spot list (single-subject calibration, left-oblique
+  ghost gating, temple-level skin-on-hair, soft-face likeness, head slab,
+  back hemisphere, threshold margins, texture-only mouth state).
+  These detectors are per-defect regression gates for the known failure
+  classes; they complement the general `src/abstract3d/model_evaluation.py`
+  module (which avoids per-defect rules by design).
+
+### Added (general model evaluation 2026-07-21: worst-angle acceptance, no per-defect rules)
+
+- **`src/abstract3d/model_evaluation.py`**: the general evaluation module
+  superseding the per-defect detector approach (operator ruling: no rules
+  built from one example). Texture axis: T1 source-agreement — photo
+  projected onto the mesh through the front camera (feature-row-registered,
+  occlusion-tested) and compared per angle with block-matched gradient
+  structure + a,b-only chroma; T2 height-banded photo palette over the full
+  orbit (self-calibrated thresholds, global exposure normalization). Mesh
+  axis: mirror-symmetry IoU (±az pairs, no alignment; ±90 excluded as
+  degenerate), profile articulation (secondary leading-edge extrema,
+  head-depth units), local-valley cavity mass (mask-normalized neighborhood),
+  registered-silhouette floor. Aggregation is worst-angle min, never mean;
+  verdict JSON carries `accept`/`mesh_ok`/`texture_ok`/`failing_measures`/
+  `worst_angle` for the one-shot loop. Calibrated on the 8-model
+  laurent-bust-redo validation set + 2 legacy failures: reproduces every
+  operator verdict (only `e20_rebake_fixed` accepted); rejected measures
+  documented with the numbers that killed them. Design + validation matrix:
+  `docs/research/evaluation_strategy_v2.md`. CLI:
+  `scripts/evaluate_model.py` (~4–15 s per model, renders its own orbit).
+  Unit tests: `tests/test_model_evaluation.py` (synthetic doctored-render /
+  asymmetric-silhouette / min-aggregation cases).
+
+### Added (evaluation panel v2 2026-07-21: normal-render mesh metrics)
+
+- **`scripts/model_quality_sweep_v2.py`**: replaces v1's failed mesh metrics
+  (clay-vs-photo edge NCC swamped by lighting; striation autocorrelation
+  blinded by headlight shading) with normal-map-render evaluation — a
+  `GeoRenderer` (moderngl; numpy vertex-splat fallback) emits view-space
+  normals + world positions; YuNet landmarks (232 KB ONNX, cached) anchor a
+  mouth band lifted to 3D; `mesh_front_defect`/`mesh_oblique_defect` =
+  coherent-ridge energy (x-smoothed d(ny)/dy — striations survive, isotropic
+  stubble cancels) + a second-crease duplication surcharge (double-mouth
+  class). Texture metrics (`tex_front_dE`, `tex_oblique_ghost`) unchanged
+  from v1. Optional extras behind loud degradation notes: `sface_identity`
+  (OpenCV SFace cosine photo↔render), `lpips_face` (LPIPS-squeeze face
+  crops). Calibration on the 9 laurent-bust-redo bundles reproduces the
+  operator's mesh verdicts on both axes independently (e18/e19/e20/e21
+  above all bad bundles; e2 worst). Research distillation with citations:
+  `docs/research/evaluation_methods_2026.md`. Follow-ups filed: backlog
+  0020 (Eval3D-class probes), 0021 (ArcFace/CLIP tier), 0022 (promote into
+  loop `quality_verdict`).
+
+### Added (loop conditioning 2026-07-21: the calibrated bust recipe as one CLI call)
+
+- **`--geometry-conditioning loop` (hunyuan3d21)**: full automation of the
+  two-pass reconstruction recipe validated on the e18/e19/e20 experiment
+  ladder (`out/laurent-bust-redo/REPORT.md` wave 3). One `abstract3d i23d`
+  call now runs: pass 1 (2mv, front photo alone → scaffold mesh) → view
+  synthesis against the scaffold's own clay renders through the identity
+  i2i route → gates (refgen silhouette/material/specular; row consistency
+  vs the clay guide; a pose-honesty head-band-IoU ruler) → the window law
+  (every conditioning view cut to `head_top → shoulder + 0.22·span`) →
+  pass 2 (2mv on the windowed set) → texture bake on the FULL-SPAN views
+  at their MEASURED azimuths (each angle exactly once, synthesized-ref
+  protection) → self-verification (oblique raking closeups + the
+  duplication-autocorrelation flag → `quality_verdict`). Split-consumer
+  law enforced structurally: windowed variants condition, full-span
+  variants bake, never crossed. New helper module
+  `src/abstract3d/loop_conditioning.py` (window law, pose ruler,
+  duplication flag, plan fold — ports of the calibrated instruments in
+  `scripts/experimental/harmonize_set.py`,
+  `scripts/experimental/viewgen_audit_*.py`, `scripts/bust_assessment.py`,
+  `scripts/oblique_closeups.py`).
+- **Pose-honesty gate calibration (measured on the shipped incident
+  artifacts)**: a view refuses conditioning only when its measured azimuth
+  is BOTH >20° off the declared angle AND decisively better under
+  head-band IoU (`gap >= 0.10`). On the real bundles this refuses exactly
+  the striation-class profiles (deltas 22.5–32.5°, gaps 0.15–0.16) while
+  passing every champion view (gaps 0.03–0.08) and never acting on
+  plateau-argmax noise (bust backs). Pose-refused views re-declare to
+  their measured azimuth for the texture bake (projection is continuous;
+  only the 2mv tag positions are trained).
+- **`generate_reference_views(conditioning="identity")`**: photo-primary +
+  clay-as-`reference_images` conditioning layout (viewgen audit L9 — the
+  composite two-panel canvas flips person identity on the local editor; the
+  separate-reference layout restores it). Providers whose i2i callable
+  rejects `reference_images` degrade LOUDLY to photo-primary conditioning
+  (`report["identity_reference_fallback"]`, `#FALLBACK`); accepted views
+  now carry `raw_bytes`/`raw_payload_md5`/`seed` for replay consumers.
+- **Loop refusals are hard errors, never silent degradation**: missing
+  local image provider (the loop never routes a photo through the remote
+  default — the measured `owner=None` incident class), explicit flagship
+  model, explicit texture reference views, person subjects without
+  `--texture-reference-allow-person`, and zero gate-surviving views all
+  raise with actionable messages. Two DiT passes are recorded honestly
+  (`timings_s.pass1_inference` + `timings_s.inference`, both in `total`).
+- Docs: `docs/api.md` (loop section with the exact one-shot command);
+  tests: `tests/test_loop_conditioning.py` (window law, ruler, duplication
+  flag, plan fold) + loop orchestration/pose/person/provider/split-consumer
+  coverage in `tests/test_hunyuan3d_backend_unit.py`, identity-route
+  coverage in `tests/test_reference_generation.py`, CLI passthrough in
+  `tests/test_cli.py`.
+
+### Added (texture forensics 2026-07-21: duplicate-angle guard + split-consumer references)
+
+- **`bake_projection_texture` refuses duplicate-angle synthesized
+  references**: two synthesized views declared at the same pose register
+  independently (each against its own alpha bbox) and paint one anatomy
+  twice with a vertical offset — measured on the e20 champion: 31-64 px
+  content disagreement over 220k-485k co-painted texels
+  (`docs/research/texture_forensics.md`). The bake now raises a loud
+  `ValueError` naming both views and the sanctioned escapes. Real photos
+  at one angle remain legitimate witnesses (ungated).
+- **Split-consumer reference views**: reference views accept
+  `consumer` = `both|geometry|texture` (mapping key, or positional
+  `texture_reference_consumers` pairing with `texture_reference_images`;
+  unknown tokens fail loudly). `geometry`-only views feed multi-view
+  geometry conditioning and never reach the texture bake; `texture`-only
+  views never claim geometry conditioning tags. This is the split-consumer
+  law (geometry wants same-window views, texture wants full-span views)
+  made expressible in one call instead of passing same-angle twins.
+- **Forensics instruments** (`scripts/experimental/texture_forensics_*.py`):
+  instrumented isolation re-bake with per-view weight capture, per-texel
+  winner/region attribution, head-band azimuth ruler against an arbitrary
+  mesh, and the feature-anchored source row-law preparation. Corrected
+  e20 re-bake shipped at `out/laurent-bust-redo/e20_rebake_fixed/`.
+
+### Added (viewgen audit 2026-07-21: prompt experimentation slot)
+
+- **`generate_reference_views(..., prompt_suffix=...)`**: optional operator
+  wording appended to every angle's built prompt (identity/proportion
+  pinning clauses), recorded in the report (`prompt_suffix` + the final
+  per-angle `prompt`). Default `None` leaves prompts byte-identical. Added
+  because the `strength` kwarg was verified DEAD on the mlx-gen flux2
+  edit-reference route (never forwarded by the backend's flux2 branch;
+  mflux raises on it in edit mode; same-seed byte-identical output with and
+  without it), so prompt wording is the remaining request-side recipe axis.
+  Full audit: `docs/research/viewgen_audit.md`.
+
+### Added (backlog 0017: source-photo texel protection for explicit synthesized references)
+
+- **Per-reference `synthesized` marker on the explicit reference lane**:
+  `--texture-reference-synthesized true|false|auto` (option
+  `texture_reference_synthesized`) pairs positionally with
+  `--texture-reference-image`, exactly like `--texture-reference-angle`.
+  A synthesized-flagged reference bakes under the auto generation lane's
+  exact protection mechanism — the per-view `generated` flag consumed by
+  weight subordination and `protect_observed_texels` (absolute mode) — so it
+  completes unobserved surface but can never overwrite photo-observed texels
+  (the measured e1-vs-e2 front bleed: synthesized side views repainting the
+  chest/face the real photo already observed). Real-photo references keep
+  full paint authority (unchanged default). One mechanism, no fork: the flag
+  reuses the same code path the auto reference-generation lane sets.
+- **Filename inference with provenance**: references whose filenames match
+  the pipeline's own generated outputs (`geometry_view_synthesized_*`,
+  `texture_reference_generated_*`) are inferred synthesized automatically;
+  the inference is recorded as a metadata note and as
+  `synthesized_source: "filename_inference"` (explicit flags record
+  `"explicit_flag"` and always win, including `false` suppressing inference).
+  Unrecognized flag tokens and positional mismatches fail loudly.
+- **Per-reference authority in bundle metadata**:
+  `texture_artifacts.reference_authority` reports, for every view that
+  shipped in the blend, its role, `authority`
+  (`full` vs `protected_completion_only`), synthesized provenance, and the
+  per-view count of protection-zeroed texels;
+  `texture_artifacts.generated_protection` carries the protection stage's
+  stats. Both backends (TripoSR + Hunyuan3D) emit the block.
+- **Scoping**: caller-provided synthesized references do NOT arm the auto
+  lane's whole-bake A/B acceptance gate (they are the operator's explicit
+  witnesses; a second bake would double bake time and could silently drop
+  an explicit request) and are not re-persisted under the bundle's
+  `texture_reference_generated_*` naming. They take the same single-view
+  sanity floors every explicit-reference bake takes.
+
+### Added (AbstractCore integration wave: mesh operations, AI tools, server endpoint)
+
+Abstract3D now covers the full generate / analyze / manipulate / modify loop
+for AbstractCore hosts, not just generation:
+
+- **`abstract3d.mesh_ops`**: deterministic mesh operations over any supported
+  mesh file (GLB/OBJ/STL/PLY/...) — `analyze_mesh` (counts, bounds,
+  watertightness, volume, components, UV/texture presence), `transform_mesh`
+  (TRS + mirror + re-center; scenes stay scenes on GLB/OBJ export),
+  `compose_scene` (multi-part scene assembly with per-part transforms),
+  `convert_mesh`, `repair_mesh` (conservative weld/degenerate/normals/holes
+  cleanup with before/after report), and `render_preview` (turntable PNG
+  contact strip). New lightweight `abstract3d[mesh]` extra (numpy, trimesh,
+  Pillow, matplotlib); every entry point raises actionable install hints when
+  dependencies are missing.
+- **`abstract3d.tools`**: eight AI-facing tools (`generate_3d_object`,
+  `analyze_3d_object`, `transform_3d_object`, `compose_3d_scene`,
+  `convert_3d_object`, `repair_3d_object`, `render_3d_preview`,
+  `list_3d_backends`) returning model-safe JSON with explicit `success`
+  markers. Decorated with AbstractCore's `@tool` when available; exported via
+  the ruled explicit-import contract (`abstract3d_tools()`,
+  `abstract3d_tool_definitions()`, `abstract3d_tool_specs()`) with
+  definition-site classification (`SCENE3D_TOOL_CLASSIFICATION`:
+  mutating / remote_write_capable / downloads_model_weights). There is
+  deliberately no entry-point auto-registration for tools (core ruling:
+  tools are a security surface; callers register consciously).
+- **Hunyuan3D-2.1 capability registration**: the license-gated backend now
+  registers with the AbstractCore plugin (priority below the validated
+  TripoSR default). The Tencent license gate is unchanged and enforced in the
+  backend: without `ABSTRACT3D_HUNYUAN_ACCEPT_LICENSE=1` /
+  `scene3d_hunyuan_license_accepted=true` any generation refuses loudly; the
+  plugin `config_hint` carries the acknowledgment sentence.
+- **AbstractCore server endpoint (drafted in abstractcore, core-owned merge)**:
+  `POST /v1/scene3d/generations` (+ provider-scoped alias) following the
+  `/v1/audio/music` extension-endpoint precedent — JSON in, binary
+  `model/gltf-binary`/`model/obj`/`application/zip` out, 501 with install
+  hint when no scene3d plugin is registered, license refusals map to 403.
+- **Integration proof harness**:
+  `scripts/abstractcore_integration_proof.py` exercises the whole loop
+  end-to-end (core.generate output routing -> ToolRegistry execution ->
+  HTTP endpoint -> optional live-LLM tool call) and writes a PROOF.md with
+  artifacts.
+
+### Fixed (adversarial review wave, 2026-07-19 — 2 subagent passes + MeshVault independent verification)
+
+- **Byte-faithful mesh operations**: all write-path loads use
+  `process=False` (trimesh's default load-time weld re-topologizes inputs on
+  every load), and `compose_scene` keeps each part's stored vertex data
+  verbatim, composing placement into scene NODE transforms instead of baking
+  them into float32 vertices — MeshVault measured 2 -> 6 degenerate triangles
+  through one baked compose pass; now at exact parity with sources.
+- **compose_scene name collisions**: final assigned node names are tracked
+  (not just base-name counts), so parts named `["box", "box_2", "box"]` can
+  no longer collide and silently orphan a part's geometry in the export.
+- **repair_mesh preserves scenes**: multi-part scenes are repaired part by
+  part (structure, names, materials kept); flattening only happens for
+  single-mesh output formats and is reported (`scene`/`part_count`).
+- **Honest analysis metrics**: `connected_components`/`duplicate_faces`/
+  `degenerate_faces` report `None` ("unknown") instead of a fabricated number
+  when trimesh has no graph engine; scipy added to the `[mesh]` extra so the
+  default install computes them for real.
+- **TripoSR option preflight**: unknown options (e.g. `seed` — TripoSR is
+  feed-forward) are rejected in milliseconds BEFORE model load and inference,
+  instead of after minutes of compute; `generate_3d_object` gained
+  `image_seed` (reproducible composed t23d on every backend) and documents
+  per-backend `seed` applicability.
+- **generate_3d_object primary_path contract**: the returned bytes are the
+  primary — bundles resolve `scene.<fmt>` from the bundle dir and `zip`
+  results are persisted by the tool; the old recursive-glob guess could hand
+  back the untextured `geometry.glb` or a stale file from a reused output dir.
+- **Tool argument hygiene**: string booleans (`"false"`) coerce correctly
+  instead of inverting intent via Python truthiness; string vectors
+  (`"123"`) are rejected loudly instead of parsing as `[1, 2, 3]`; corrupt
+  mesh files fail with the path and a "could not be parsed" message; write
+  operations refuse point-cloud-only inputs like analysis already did.
+- **License-gate contract**: `LicenseAcknowledgmentRequiredError` carries a
+  stable machine-readable `error_class` so HTTP hosts map the refusal to 403
+  without keying on message prose (phrase kept as a pinned fallback).
+- **render_preview** moved to `abstract3d.mesh_preview` (re-exported from
+  `mesh_ops`) and stamps the glTF frame marker from the file suffix so
+  composed multi-geometry scenes preview upright.
+
 ## 0.3.0 (2026-07-19)
 
 ### Fixed (TripoSR loading)

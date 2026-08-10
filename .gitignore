@@ -72,5 +72,15 @@ artifacts/validation/generated-reference-completion/**/scene.obj
 # protection, strict-only baking, person policy, whole-bake acceptance)
 !artifacts/validation/generated-references-v3/
 
+# Local experiment / benchmark output (~GB). Certified proofs live under
+# artifacts/validation/. Exception: committed reference asset tree.
+out/*
+!out/x-wing/
+!out/x-wing/**
 
-untracked
+# Agent / IDE local state (not product source)
+.agora/
+.abstractcode/
+
+# Staging notes copy; canonical KnowledgeBase is docs/KnowledgeBase.md
+untracked/

@@ -36,6 +36,24 @@ def register(registry) -> None:
         ),
     )
     registry.register_scene3d_backend(
+        backend_id="abstract3d:hunyuan3d21-local",
+        factory=lambda owner: make_backend("abstract3d:hunyuan3d21-local", owner),
+        priority=8,
+        description=(
+            "License-gated local Hunyuan3D-2.1 shape backend (strongest checked local geometry; slow). "
+            "Requires an explicit Tencent license acknowledgment before any download or run."
+        ),
+        install_hint='pip install "abstract3d[hunyuan3d]" for local i23d, or "abstract3d[apple]" / "abstract3d[gpu]" for local composed t23d. Base "pip install abstract3d" keeps the lightweight AbstractVision composition contract.',
+        config_hint=(
+            "License gate: the Tencent Hunyuan Community License excludes the EU, UK, and South Korea; "
+            "this backend refuses to download or run until you opt in with "
+            "scene3d_hunyuan_license_accepted=true or ABSTRACT3D_HUNYUAN_ACCEPT_LICENSE=1. "
+            "Optional config: scene3d_backend=abstract3d:hunyuan3d21-local, scene3d_device=mps|cpu|cuda, "
+            "scene3d_model_id=tencent/Hunyuan3D-2.1 or tencent/Hunyuan3D-2mv, "
+            "scene3d_image_provider=<configured AbstractVision provider>, scene3d_image_model=<vision model id>."
+        ),
+    )
+    registry.register_scene3d_backend(
         backend_id="abstract3d:trellis2-local",
         factory=lambda owner: make_backend("abstract3d:trellis2-local", owner),
         priority=5,

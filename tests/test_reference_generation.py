@@ -129,6 +129,244 @@ def test_generate_reference_views_rejects_low_iou_and_retries(monkeypatch) -> No
     assert seeds[0] != seeds[1]
 
 
+def test_rejected_ladder_keeps_pixel_evidence_and_streams_attempts(monkeypatch) -> None:
+    """The e22 forensics contract: an exhausted angle leaves per-attempt
+    pixel evidence — silhouette failures INCLUDED (they previously left no
+    pixels at all) — with raw payload bytes + seed on each row, and the
+    on_attempt sink receives every attempt plus the angle verdict as it
+    happens."""
+    mesh = sphere_mesh()
+    wrong = Image.new("RGBA", (96, 96), (0, 0, 0, 0))
+    wrong.paste(Image.new("RGBA", (12, 12), (200, 180, 160, 255)), (2, 2))
+    generator = make_fake_generator([wrong])
+    monkeypatch.setattr(
+        "abstract3d.segmentation.remove_background_robust", lambda img: img.convert("RGBA"))
+
+    events = []
+    views, report = refgen.generate_reference_views(
+        mesh,
+        solid_rgba((120, 90, 60)),
+        image_generator=generator,
+        angles=[("back", 180.0, 0.0)],
+        max_attempts=2,
+        render_size=96,
+        seed=72025,
+        on_attempt=events.append,
+    )
+
+    assert views == []
+    rows = report["rejected_images"]
+    assert len(rows) == 2  # one evidence row per silhouette-failed attempt
+    for index, row in enumerate(rows):
+        assert row["label"] == "back"
+        assert row["attempt"] == index
+        assert row["seed"] == 72025 + index
+        assert row["failure_family"] == "silhouette"
+        assert row["image"].width <= 512
+        assert isinstance(row["raw_bytes"], bytes) and row["raw_bytes"]
+    assert [e["event"] for e in events] == ["attempt", "attempt", "angle_result"]
+    assert events[0]["failure_family"] == "silhouette"
+    assert events[0]["silhouette_iou"] < 0.75
+    assert events[-1]["accepted"] is False
+
+
+def test_accepted_angle_streams_attempt_and_result_events(monkeypatch) -> None:
+    mesh = sphere_mesh()
+    matching = clay_matching_generation(mesh, 180.0)
+    generator = make_fake_generator([matching])
+    monkeypatch.setattr(
+        "abstract3d.segmentation.remove_background_robust", lambda img: img.convert("RGBA"))
+
+    events = []
+    views, report = refgen.generate_reference_views(
+        mesh,
+        solid_rgba((120, 90, 60)),
+        image_generator=generator,
+        angles=[("back", 180.0, 0.0)],
+        seed=7,
+        render_size=96,
+        on_attempt=events.append,
+    )
+    assert len(views) == 1
+    assert [e["event"] for e in events] == ["attempt", "angle_result"]
+    assert events[-1]["accepted"] is True
+    assert events[-1]["seed"] == 7
+    # A crashing sink must never break the ladder.
+    def broken_sink(row):
+        raise RuntimeError("sink fell over")
+
+    views, _ = refgen.generate_reference_views(
+        mesh,
+        solid_rgba((120, 90, 60)),
+        image_generator=make_fake_generator([matching]),
+        angles=[("back", 180.0, 0.0)],
+        seed=7,
+        render_size=96,
+        on_attempt=broken_sink,
+    )
+    assert len(views) == 1
+
+
+def test_generate_reference_views_prompt_suffix_slot(monkeypatch) -> None:
+    """The prompt_suffix knob (viewgen audit 2026-07-21): appended verbatim
+    to every angle's built prompt, recorded in the report, and byte-absent
+    when unset — the strength kwarg is dead on the mlx-gen flux2 edit route
+    (dropped by the backend's flux2 branch; mflux raises on it in
+    edit-reference mode), so the prompt axis is the recipe-iteration knob.
+    """
+    mesh = sphere_mesh()
+    matching = clay_matching_generation(mesh, 180.0)
+    monkeypatch.setattr(
+        "abstract3d.segmentation.remove_background_robust", lambda img: img.convert("RGBA"))
+
+    clause = "Keep the same facial proportions as the left photo."
+    with_suffix = make_fake_generator([matching])
+    _views, report = refgen.generate_reference_views(
+        mesh,
+        solid_rgba((120, 90, 60)),
+        image_generator=with_suffix,
+        angles=[("back", 180.0, 0.0)],
+        render_size=96,
+        prompt_suffix=clause,
+    )
+    assert with_suffix.calls[0]["prompt"].endswith(" " + clause)
+    assert report["prompt_suffix"] == clause
+    assert report["angles"][0]["prompt"].endswith(" " + clause)
+
+    without_suffix = make_fake_generator([matching])
+    _views, default_report = refgen.generate_reference_views(
+        mesh,
+        solid_rgba((120, 90, 60)),
+        image_generator=without_suffix,
+        angles=[("back", 180.0, 0.0)],
+        render_size=96,
+    )
+    assert default_report["prompt_suffix"] is None
+    assert clause not in without_suffix.calls[0]["prompt"]
+    # unset suffix leaves the built prompt byte-identical to the default
+    assert (with_suffix.calls[0]["prompt"]
+            == without_suffix.calls[0]["prompt"] + " " + clause)
+
+
+def test_identity_conditioning_routes_photo_primary_with_clay_reference(
+    monkeypatch,
+) -> None:
+    """The identity route (viewgen audit L9): the PHOTO is the primary edit
+    image, the clay rides as a separate reference_images entry, and the
+    prompt pins pose-from-the-model + identity-from-the-photo. Accepted
+    views carry the raw payload for replay consumers."""
+    mesh = sphere_mesh()
+    matching = clay_matching_generation(mesh, 180.0)
+    generator = make_fake_generator([matching])
+    captured_images = []
+
+    def capture_generator(prompt, image, **kwargs):
+        captured_images.append(image)
+        return generator(prompt, image, **kwargs)
+
+    monkeypatch.setattr(
+        "abstract3d.segmentation.remove_background_robust",
+        lambda img: img.convert("RGBA"))
+
+    source = solid_rgba((120, 90, 60))
+    views, report = refgen.generate_reference_views(
+        mesh,
+        source,
+        image_generator=capture_generator,
+        angles=[("back", 180.0, 0.0)],
+        seed=7,
+        render_size=96,
+        conditioning="identity",
+    )
+
+    assert report["conditioning"] == "identity"
+    assert len(views) == 1
+    call = generator.calls[0]
+    # Clay rides as a separate reference (one PNG payload).
+    references = call["kwargs"]["reference_images"]
+    assert isinstance(references, list) and len(references) == 1
+    assert references[0][:8] == b"\x89PNG\r\n\x1a\n"
+    # The PRIMARY conditioning image is the photo, not a composite canvas.
+    import io as _io
+
+    photo_buffer = _io.BytesIO()
+    source.convert("RGB").save(photo_buffer, format="PNG")
+    assert captured_images[0] == photo_buffer.getvalue()
+    # The prompt is the identity template (pose from the second image,
+    # identity from the first), not the composite panel wording.
+    assert "first image" in call["prompt"]
+    assert "Left panel" not in call["prompt"]
+    # Raw payload rides on the accepted view for replay consumers.
+    assert views[0]["raw_bytes"]
+    assert views[0]["raw_payload_md5"] == report["angles"][0]["raw_payload_md5"]
+    assert views[0]["seed"] == 7
+    assert report["angles"][0]["attempts"][0]["identity_references"] is True
+
+
+def test_identity_conditioning_falls_back_loudly_without_reference_support(
+    monkeypatch,
+) -> None:
+    """A strict-signature provider that rejects reference_images degrades
+    the identity route to photo-primary WITHOUT the clay reference — once,
+    loudly, with #FALLBACK on the report; other TypeErrors still raise
+    into the attempt record."""
+    mesh = sphere_mesh()
+    matching = clay_matching_generation(mesh, 180.0)
+    inner = make_fake_generator([matching])
+    calls = []
+
+    def strict_generator(prompt, image, **kwargs):
+        calls.append(dict(kwargs))
+        if "reference_images" in kwargs:
+            raise TypeError(
+                "i2i() got an unexpected keyword argument 'reference_images'")
+        return inner(prompt, image, **kwargs)
+
+    monkeypatch.setattr(
+        "abstract3d.segmentation.remove_background_robust",
+        lambda img: img.convert("RGBA"))
+
+    views, report = refgen.generate_reference_views(
+        mesh,
+        solid_rgba((120, 90, 60)),
+        image_generator=strict_generator,
+        angles=[("back", 180.0, 0.0)],
+        render_size=96,
+        conditioning="identity",
+    )
+
+    assert len(views) == 1
+    assert report["identity_reference_fallback"].startswith("#FALLBACK")
+    assert "reference_images" in report["identity_reference_fallback"]
+    # First call carried the reference, the loud retry dropped it.
+    assert "reference_images" in calls[0]
+    assert "reference_images" not in calls[1]
+    assert report["angles"][0]["attempts"][0]["identity_references"] is False
+
+
+def test_composite_conditioning_unchanged_by_identity_plumbing(monkeypatch) -> None:
+    """The default composite route never grows a reference_images kwarg
+    (byte-stable contract for every existing caller)."""
+    mesh = sphere_mesh()
+    matching = clay_matching_generation(mesh, 180.0)
+    generator = make_fake_generator([matching])
+    monkeypatch.setattr(
+        "abstract3d.segmentation.remove_background_robust",
+        lambda img: img.convert("RGBA"))
+
+    views, report = refgen.generate_reference_views(
+        mesh,
+        solid_rgba((120, 90, 60)),
+        image_generator=generator,
+        angles=[("back", 180.0, 0.0)],
+        render_size=96,
+    )
+    assert len(views) == 1
+    assert "reference_images" not in generator.calls[0]["kwargs"]
+    assert "identity_reference_fallback" not in report
+    assert views[0]["raw_bytes"]  # raw payloads ride every route
+
+
 def test_generator_errors_are_reported_not_raised(monkeypatch) -> None:
     mesh = sphere_mesh()
 
@@ -1017,3 +1255,252 @@ def test_rebake_bundle_rejects_unknown_planning_mode(tmp_path) -> None:
         bundle_api.rebake_bundle(
             bundle_dir, reference_angle_planning="clever",
             texture_resolution=64, write_outputs=False)
+
+
+# -- viewgen bench integration (2026-07-21): 65-degree vocabulary, the
+# -- expression pin, LoRA request provenance, and the pose acceptance gate.
+
+
+def test_view_phrase_names_the_65_degree_side_class() -> None:
+    """Bench section 6.1: the pipeline's own conditioning set was measured
+    at ~65 degrees but the phrase vocabulary could not ASK for it (arm A's
+    structural gap) — the fall-through wording was meaningless."""
+    left = refgen._view_phrase("side65_left")
+    right = refgen._view_phrase("side65_right")
+    assert "65 degrees" in left and "left side" in left
+    assert "65 degrees" in right and "right side" in right
+    assert "three-quarter" in left
+    # No fall-through to the generic "seen from the ... view" wording.
+    assert "side65" not in left and "side65" not in right
+
+    named = refgen.parse_generation_angles("side65_left, side65_right")
+    assert named == (("side65_left", 65.0, 0.0), ("side65_right", -65.0, 0.0))
+
+
+def test_identity_person_clause_pins_closed_mouth_expression() -> None:
+    """Bench section 6.2: the identity template's person clause pins
+    age/skin/hair but not expression; without the pin a closed-mouth source
+    got parted-lips profiles (10/10 closed with it). The pin is prompt-side
+    guidance for person subjects on the IDENTITY route only — the composite
+    wording ships measured-as-is and stays byte-stable."""
+    pin = "identical closed mouth with lips together and a calm neutral expression"
+    identity_prompt = refgen._view_prompt("side65_left", "a man", "identity")
+    assert pin in identity_prompt
+
+    # Composite route: unchanged wording (no pin).
+    composite_prompt = refgen._view_prompt("side_left", "a man", "composite")
+    assert pin not in composite_prompt
+    # Non-person subjects never grow a person clause at all.
+    object_prompt = refgen._view_prompt("side65_left", "an owl", "identity")
+    assert "living person" not in object_prompt
+    assert pin not in object_prompt
+
+
+def test_lora_adapters_forward_verbatim_and_are_recorded(monkeypatch) -> None:
+    """Bench gap 3/5: `image_request.lora_adapters` must reach the i2i
+    callable VERBATIM (the plumbing production relies on), and the request
+    side lands in the report so a silently-unloaded LoRA is diagnosable."""
+    mesh = sphere_mesh()
+    matching = clay_matching_generation(mesh, 180.0)
+    generator = make_fake_generator([matching])
+    monkeypatch.setattr(
+        "abstract3d.segmentation.remove_background_robust",
+        lambda img: img.convert("RGBA"))
+
+    adapters = [{"source": "/loras/Flux2-Klein-9B-consistency-V2.safetensors",
+                 "scale": 1.0}]
+    views, report = refgen.generate_reference_views(
+        mesh,
+        solid_rgba((120, 90, 60)),
+        image_generator=generator,
+        angles=[("back", 180.0, 0.0)],
+        seed=7,
+        render_size=96,
+        image_request={"provider": "mlx-gen", "model": "klein",
+                       "lora_adapters": adapters},
+    )
+    assert len(views) == 1
+    assert generator.calls[0]["kwargs"]["lora_adapters"] == adapters
+    assert report["lora_adapters"] == [
+        {"source": "/loras/Flux2-Klein-9B-consistency-V2.safetensors",
+         "scale": 1.0}]
+
+
+def test_lora_application_count_recorded_when_backend_reports_it(
+    monkeypatch,
+) -> None:
+    """A generator that surfaces asset metadata (Mapping payload) gets the
+    LoRA application count into the attempt row AND the accepted entry —
+    the only signal that a requested adapter actually loaded (the
+    0-of-1680-keys class applied silently)."""
+    mesh = sphere_mesh()
+    matching = clay_matching_generation(mesh, 180.0)
+    monkeypatch.setattr(
+        "abstract3d.segmentation.remove_background_robust",
+        lambda img: img.convert("RGBA"))
+
+    def metadata_generator(prompt, image, **kwargs):
+        buffer = io.BytesIO()
+        matching.save(buffer, format="PNG")
+        return {"data": buffer.getvalue(),
+                "metadata": {"lora_applied_file_count": 1,
+                             "edit_mode": "multi_reference"}}
+
+    views, report = refgen.generate_reference_views(
+        mesh,
+        solid_rgba((120, 90, 60)),
+        image_generator=metadata_generator,
+        angles=[("back", 180.0, 0.0)],
+        render_size=96,
+        image_request={"provider": "mlx-gen",
+                       "lora_adapters": [{"source": "/loras/x.safetensors",
+                                          "scale": 1.0}]},
+    )
+    assert len(views) == 1
+    entry = report["angles"][0]
+    assert entry["attempts"][0]["lora_applied_file_count"] == 1
+    assert entry["attempts"][0]["edit_mode"] == "multi_reference"
+    assert entry["lora_applied_file_count"] == 1
+
+
+def make_scripted_pose_gate(verdicts):
+    calls = []
+
+    def gate(rgba, *, label, azimuth_deg, elevation_deg):
+        calls.append({"label": label, "azimuth_deg": azimuth_deg,
+                      "elevation_deg": elevation_deg})
+        return dict(verdicts[min(len(calls) - 1, len(verdicts) - 1)])
+
+    gate.calls = calls
+    return gate
+
+
+def test_pose_gate_rejects_then_redraws_within_the_ladder(monkeypatch) -> None:
+    """Bench section 6.3: a strict-passing candidate measured decisively
+    off its declared azimuth is rejected and the SAME ladder redraws (seed
+    re-roll); the verdicts stay on the attempt rows and the accepted view
+    carries its own pose measurement."""
+    mesh = sphere_mesh()
+    matching = clay_matching_generation(mesh, 180.0)
+    generator = make_fake_generator([matching, matching])
+    monkeypatch.setattr(
+        "abstract3d.segmentation.remove_background_robust",
+        lambda img: img.convert("RGBA"))
+
+    gate = make_scripted_pose_gate([
+        {"measured": True, "passed": False, "decisive": True,
+         "measured_deg": 140.0, "delta_deg": 40.0, "iou_gap": 0.15,
+         "reason": "pose honesty: measured azimuth 140.0 deg is 40.0 deg off"},
+        {"measured": True, "passed": True, "decisive": True,
+         "measured_deg": 175.0, "delta_deg": 5.0, "iou_gap": 0.12},
+    ])
+    views, report = refgen.generate_reference_views(
+        mesh,
+        solid_rgba((120, 90, 60)),
+        image_generator=generator,
+        angles=[("back", 180.0, 0.0)],
+        seed=7,
+        max_attempts=3,
+        render_size=96,
+        pose_gate=gate,
+    )
+    assert report["pose_gate"] == "enabled"
+    assert len(views) == 1
+    entry = report["angles"][0]
+    assert len(entry["attempts"]) == 2  # rejection redrew once
+    assert entry["attempts"][0]["failure_family"] == "pose"
+    assert entry["attempts"][0]["pose"]["passed"] is False
+    assert "pose honesty" in entry["attempts"][0]["pose"]["reason"]
+    assert entry["attempts"][1]["pose"]["passed"] is True
+    # The redraw is a different seed (same-prompt seed re-roll).
+    seeds = [a["seed"] for a in entry["attempts"]]
+    assert seeds[0] != seeds[1]
+    # Accepted provenance: the winning candidate's own measurement rides
+    # the entry and the view (downstream consumers reuse it).
+    assert entry["pose"]["delta_deg"] == 5.0
+    assert views[0]["pose"]["delta_deg"] == 5.0
+    # The gate saw declared angle + elevation for every attempt.
+    assert gate.calls[0] == {"label": "back", "azimuth_deg": 180.0,
+                             "elevation_deg": 0.0}
+
+
+def test_pose_gate_exhausted_ladder_rejects_with_loud_reason(monkeypatch) -> None:
+    mesh = sphere_mesh()
+    matching = clay_matching_generation(mesh, 180.0)
+    generator = make_fake_generator([matching, matching])
+    monkeypatch.setattr(
+        "abstract3d.segmentation.remove_background_robust",
+        lambda img: img.convert("RGBA"))
+
+    always_off = make_scripted_pose_gate([
+        {"measured": True, "passed": False, "decisive": True,
+         "measured_deg": 140.0, "delta_deg": 40.0, "iou_gap": 0.16,
+         "reason": "pose honesty: measured azimuth 140.0 deg is 40.0 deg off"},
+    ])
+    views, report = refgen.generate_reference_views(
+        mesh,
+        solid_rgba((120, 90, 60)),
+        image_generator=generator,
+        angles=[("back", 180.0, 0.0)],
+        max_attempts=2,
+        render_size=96,
+        pose_gate=always_off,
+    )
+    assert views == []
+    assert report["rejected"] == 1
+    entry = report["angles"][0]
+    assert len(entry["attempts"]) == 2  # the full ladder was spent
+    assert "pose honesty" in entry["rejection_reason"]
+    assert "40.0" in entry["rejection_reason"]
+
+
+def test_pose_gate_absent_records_pose_unmeasured(monkeypatch) -> None:
+    """No mesh ruler, no gate: the report says so instead of gating blind."""
+    mesh = sphere_mesh()
+    matching = clay_matching_generation(mesh, 180.0)
+    generator = make_fake_generator([matching])
+    monkeypatch.setattr(
+        "abstract3d.segmentation.remove_background_robust",
+        lambda img: img.convert("RGBA"))
+
+    views, report = refgen.generate_reference_views(
+        mesh,
+        solid_rgba((120, 90, 60)),
+        image_generator=generator,
+        angles=[("back", 180.0, 0.0)],
+        render_size=96,
+    )
+    assert len(views) == 1
+    assert report["pose_gate"] == "pose_unmeasured"
+    assert "pose" not in report["angles"][0]["attempts"][0]
+
+
+def test_pose_gate_crash_abstains_instead_of_burning_the_ladder(
+    monkeypatch,
+) -> None:
+    """A crashing ruler must not reject a materially-good candidate: the
+    gate abstains loudly (pose_unmeasured note on the attempt row)."""
+    mesh = sphere_mesh()
+    matching = clay_matching_generation(mesh, 180.0)
+    generator = make_fake_generator([matching])
+    monkeypatch.setattr(
+        "abstract3d.segmentation.remove_background_robust",
+        lambda img: img.convert("RGBA"))
+
+    def broken_gate(rgba, **kwargs):
+        raise RuntimeError("ruler exploded")
+
+    views, report = refgen.generate_reference_views(
+        mesh,
+        solid_rgba((120, 90, 60)),
+        image_generator=generator,
+        angles=[("back", 180.0, 0.0)],
+        render_size=96,
+        pose_gate=broken_gate,
+    )
+    assert len(views) == 1
+    pose_row = report["angles"][0]["attempts"][0]["pose"]
+    assert pose_row["measured"] is False
+    assert pose_row["passed"] is True
+    assert "pose_unmeasured" in pose_row["note"]
+    assert "ruler exploded" in pose_row["note"]

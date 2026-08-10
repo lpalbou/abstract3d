@@ -47,6 +47,16 @@ def _parser() -> argparse.ArgumentParser:
     common.add_argument("--texture-completion", default=None, choices=["none", "mirror_symmetry", "auto"])
     common.add_argument("--texture-reference-image", action="append", default=[])
     common.add_argument("--texture-reference-angle", action="append", default=[])
+    common.add_argument("--texture-reference-synthesized", action="append", default=[],
+                        help="Pairs positionally with --texture-reference-image (like "
+                             "--texture-reference-angle): 'true' marks that reference as "
+                             "synthesized — it completes unobserved surface but may never "
+                             "overwrite photo-observed texels; 'false' pins it as a real "
+                             "photo (full paint authority); 'auto' defers to filename "
+                             "inference. When omitted, references whose filenames match the "
+                             "pipeline's own generated outputs (geometry_view_synthesized_*, "
+                             "texture_reference_generated_*) are inferred synthesized "
+                             "automatically (a metadata note records the inference).")
     common.add_argument("--texture-reference-remove-background", dest="texture_reference_remove_background", action="store_true")
     common.add_argument("--no-texture-reference-remove-background", dest="texture_reference_remove_background", action="store_false")
     common.set_defaults(texture_reference_remove_background=None)
@@ -88,15 +98,24 @@ def _parser() -> argparse.ArgumentParser:
                              "standard=1, high=2, best=3. An explicit --shape-candidates "
                              "overrides the preset.")
     common.add_argument("--geometry-conditioning", default=None,
-                        choices=["single", "multiview", "auto"],
+                        choices=["single", "multiview", "auto", "loop"],
                         help="Shape-stage conditioning for single-photo flows (hunyuan3d21). "
                              "'multiview' synthesizes the missing canonical views (back, both "
                              "sides) from the source photo, gates them, and conditions the "
                              "Hunyuan3D-2mv checkpoint on the survivors — falling back loudly "
                              "to single-view when none survive. 'auto' does the same only when "
-                             "an explicitly configured image provider exists. Person subjects "
-                             "are refused without --texture-reference-allow-person. Default: "
-                             "single (unchanged historical path).")
+                             "an explicitly configured image provider exists. 'loop' is the "
+                             "calibrated two-pass bust recipe: pass 1 reconstructs a scaffold "
+                             "mesh from the photo alone, views are synthesized against its clay "
+                             "renders (identity i2i route), gated (silhouette/material + row "
+                             "consistency + pose ruler), windowed to one anatomical span for "
+                             "conditioning, and pass 2 reconstructs from the windowed set; the "
+                             "texture bake uses the full-span views at measured azimuths "
+                             "(~2x generation time, both pass timings recorded). Loop requires "
+                             "a configured LOCAL image provider and refuses person subjects "
+                             "without --texture-reference-allow-person. Person subjects "
+                             "are refused without --texture-reference-allow-person in every "
+                             "synthesis mode. Default: single (unchanged historical path).")
     common.add_argument("--octree-resolution", type=int, default=None,
                         help="Shape-VAE octree resolution (hunyuan3d21/step1x): higher = denser mesh.")
     common.add_argument("--max-facenum", type=int, default=None,
@@ -209,6 +228,10 @@ def main(argv: list[str] | None = None) -> int:
             if args.texture_reference_image:
                 options["texture_reference_images"] = list(args.texture_reference_image)
                 options["texture_reference_angles"] = list(args.texture_reference_angle or [])
+                if args.texture_reference_synthesized:
+                    options["texture_reference_synthesized"] = list(
+                        args.texture_reference_synthesized
+                    )
             options["texture_reference_remove_background"] = args.texture_reference_remove_background
         else:
             options.update(

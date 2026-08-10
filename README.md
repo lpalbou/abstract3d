@@ -29,6 +29,12 @@ The repository also ships an experimental local Step1X backend:
 - An experimental local Step1X geometry backend: `abstract3d:step1x-local`
 - An experimental, license-gated Hunyuan3D-2.1 shape backend: `abstract3d:hunyuan3d21-local`
 - An experimental local TRELLIS.2 backend: `abstract3d:trellis2-local`
+- Deterministic mesh operations (`abstract3d.mesh_ops`): analyze, transform,
+  compose scenes, convert formats, repair, and render previews for any
+  supported mesh file — no model runtime needed (`abstract3d[mesh]` extra)
+- An AI tool set (`abstract3d.tools`): eight LLM-callable tools
+  (generate/analyze/transform/compose/convert/repair/preview/catalog) with
+  AbstractCore `ToolDefinition`s and definition-site classification
 - A shared projection texture bake (`abstract3d.texturing`) with canonical-frame orthographic or perspective projection, strict first-surface visibility, crop-aware photo registration, multi-view blending with per-texel conflict resolution, mirror completion, and crease-aware harmonic fill
 - AbstractCore capability plugin registration through `abstractcore.capabilities_plugins`
 - Bundle outputs with `scene.glb`, `scene.obj`, `input.png`, `preview.png`, `contact_sheet.png`, and `metadata.json`
@@ -417,6 +423,15 @@ ABSTRACT3D_HUNYUAN_ACCEPT_LICENSE=1 abstract3d i23d ./portrait.png \
   --texture-reference-image ./portrait-right-profile.png \
   --texture-reference-angle side_right
 ```
+
+When a reference view is synthesized rather than photographed (for example a
+pipeline-generated unseen angle fed back in), mark it with
+`--texture-reference-synthesized true` (paired positionally, like
+`--texture-reference-angle`): it then completes unobserved surface but can
+never overwrite texels the real photo observed. References whose filenames
+match the pipeline's own generated outputs (`geometry_view_synthesized_*`,
+`texture_reference_generated_*`) get this treatment automatically; per-view
+authority is recorded in `texture_artifacts.reference_authority`.
 
 Generate a mesh from text through AbstractVision composition:
 

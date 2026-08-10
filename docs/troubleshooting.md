@@ -237,3 +237,17 @@ Fix:
 - reduce `mc_resolution`
 - keep the source image to one centered object
 - for Step1X, remember that the backend already falls back to `float32` on `mps`
+
+## A long run looks hung: hours of wall time with no output
+
+Cause:
+
+- high-resolution shape stages are long by nature (see the measured 512³ stage table in [Benchmarks](benchmarks.md)); the diffusion phases print no progress bars
+- on macOS, an unattended machine can idle-sleep mid-run: the process pauses until wake, wall-clock time inflates, and the run's `timings_s` (awake-process time) will not account for the gap
+
+Fix:
+
+- check the run log for the volume-decode progress lines (`volume decode [...]: chunk N/M`) — advancing chunk lines mean a working decode, not a hang
+- check `pmset -g log | grep -E "Sleep|Wake"` for sleep entries inside the run window before profiling anything
+- wrap long unattended runs in `caffeinate -dims <command>` so the machine stays awake
+- expect on the order of 2¼ hours of compute for the full loop recipe at `512` octree / 50 steps on Apple `mps` (measured 2026-07-22)

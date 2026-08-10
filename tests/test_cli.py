@@ -235,6 +235,48 @@ def test_i23d_passes_texture_reference_options(monkeypatch, tmp_path, capsys) ->
     assert calls["texture_reference_images"] == ["side.png"]
     assert calls["texture_reference_angles"] == ["side_right"]
     assert calls["texture_reference_remove_background"] is True
+    # Strict option contract: --texture-reference-synthesized was not given,
+    # so the key must be ABSENT (filename inference decides in the backend).
+    assert "texture_reference_synthesized" not in calls
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["ok"] is True
+
+
+def test_i23d_pairs_texture_reference_synthesized_with_images(monkeypatch, tmp_path, capsys) -> None:
+    """--texture-reference-synthesized pairs positionally with
+    --texture-reference-image exactly like --texture-reference-angle does."""
+    calls: dict[str, object] = {}
+
+    class _FakeManager:
+        def __init__(self, backend_id=None) -> None:
+            calls["backend_id"] = backend_id
+
+        def i23d(self, image, **kwargs):
+            calls["image"] = image
+            calls.update(kwargs)
+            return {"metadata": {"ok": True}}
+
+    monkeypatch.setattr(cli, "Scene3DManager", _FakeManager)
+
+    exit_code = cli.main(
+        [
+            "i23d",
+            "face.png",
+            "--output-dir",
+            str(tmp_path),
+            "--texture-reference-image", "left.png",
+            "--texture-reference-angle", "side_left",
+            "--texture-reference-synthesized", "true",
+            "--texture-reference-image", "right.png",
+            "--texture-reference-angle", "side_right",
+            "--texture-reference-synthesized", "false",
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["texture_reference_images"] == ["left.png", "right.png"]
+    assert calls["texture_reference_angles"] == ["side_left", "side_right"]
+    assert calls["texture_reference_synthesized"] == ["true", "false"]
     summary = json.loads(capsys.readouterr().out)
     assert summary["ok"] is True
 
@@ -395,6 +437,32 @@ def test_i23d_passes_geometry_conditioning(monkeypatch, tmp_path) -> None:
 
     assert exit_code == 0
     assert _CaptureManager.calls["geometry_conditioning"] == "multiview"
+
+
+def test_i23d_passes_geometry_conditioning_loop_with_person_attestation(
+    monkeypatch, tmp_path
+) -> None:
+    """The one-shot bust recipe surface: loop mode + the person
+    attestation ride through the strict option contract verbatim."""
+    monkeypatch.setattr(cli, "Scene3DManager", _CaptureManager)
+
+    exit_code = cli.main(
+        [
+            "i23d",
+            "photo.png",
+            "--output-dir",
+            str(tmp_path),
+            "--backend",
+            "hunyuan3d21",
+            "--geometry-conditioning",
+            "loop",
+            "--texture-reference-allow-person",
+        ]
+    )
+
+    assert exit_code == 0
+    assert _CaptureManager.calls["geometry_conditioning"] == "loop"
+    assert _CaptureManager.calls["texture_reference_allow_person"] is True
 
 
 def test_geometry_conditioning_combines_with_quality_preset(monkeypatch, tmp_path) -> None:

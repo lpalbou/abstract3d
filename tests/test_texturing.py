@@ -2048,6 +2048,346 @@ def test_protect_observed_texels_absolute_mode_zeroes_under_any_evidence() -> No
     assert 0.0 < np.asarray(ramped["weight"])[1, 0] < 0.6
 
 
+# ---------------------------------------------------------------------------
+# explicit synthesized references (backlog 0017): a caller-provided reference
+# flagged synthesized rides the auto lane's exact protection mechanism — the
+# per-view `generated` flag consumed by protect_observed_texels — so it can
+# complete unobserved surface but never overwrite photo-observed texels.
+# ---------------------------------------------------------------------------
+
+def _synthesized_reference_bake_views():
+    """Source photo (horizontal red gradient) + a same-pose checkered
+    reference: every texel the reference could claim is photo-observed, so
+    any checker reaching the texture IS synthesis overwriting the photo."""
+    size = 128
+    xs = np.linspace(0.55, 0.75, size, dtype=np.float32)
+    grad = np.zeros((size, size, 4), dtype=np.float32)
+    grad[:, :, 0] = xs[None, :]
+    grad[:, :, 1] = 0.30
+    grad[:, :, 2] = 0.25
+    grad[:, :, 3] = 1.0
+    source = Image.fromarray((grad * 255).astype(np.uint8), mode="RGBA")
+
+    checker = np.zeros((size, size, 4), dtype=np.float32)
+    cell = ((np.arange(size)[:, None] // 8
+             + np.arange(size)[None, :] // 8) % 2).astype(np.float32)
+    checker[:, :, 0] = 0.50 + 0.30 * cell
+    checker[:, :, 1] = 0.30
+    checker[:, :, 2] = 0.25
+    checker[:, :, 3] = 1.0
+    reference = Image.fromarray((checker * 255).astype(np.uint8), mode="RGBA")
+    return source, reference
+
+
+def test_bake_synthesized_flagged_reference_cannot_overwrite_observed_texels() -> None:
+    import trimesh
+
+    source, reference = _synthesized_reference_bake_views()
+
+    def bake(views):
+        mesh = trimesh.creation.icosphere(subdivisions=3, radius=0.5)
+        return texturing.bake_projection_texture(
+            mesh, observed_views=views, texture_resolution=128)
+
+    _, stats_src = bake([
+        {"rgba": source, "azimuth_deg": 0.0, "elevation_deg": 0.0, "label": "front"},
+    ])
+    _, stats_flagged = bake([
+        {"rgba": source, "azimuth_deg": 0.0, "elevation_deg": 0.0, "label": "front"},
+        {"rgba": reference, "azimuth_deg": 0.0, "elevation_deg": 0.0,
+         "label": "ref", "generated": True},
+    ])
+
+    # The auto lane's protection mechanism engaged on the flagged reference.
+    protection = stats_flagged["generated_protection"]
+    assert protection["applied"] is True
+    assert protection["mode"] == "absolute"
+    assert protection["protected_texels"] > 0
+    assert protection["zeroed_by_view"]["ref"] > 0
+    ref_row = stats_flagged["observed_view_stats"][1]
+    assert ref_row["label"] == "ref"
+    assert ref_row["generated"] is True
+    # Same pose as the source: every texel it could claim is photo-observed,
+    # so the lock leaves it zero shipped coverage...
+    assert ref_row["coverage_ratio"] == 0.0
+    # ...and the baked texture stays the photo's (tolerances absorb the
+    # multi-view compositing path, not paint: the unprotected bake below
+    # measures >1.0/255 on the same fixture).
+    src_tex = np.asarray(stats_src["texture_image"], dtype=np.float32)
+    flagged_tex = np.asarray(stats_flagged["texture_image"], dtype=np.float32)
+    assert float(np.abs(flagged_tex - src_tex).mean()) < 0.5
+
+
+def test_bake_real_reference_keeps_full_paint_authority() -> None:
+    import trimesh
+
+    source, reference = _synthesized_reference_bake_views()
+
+    def bake(views):
+        mesh = trimesh.creation.icosphere(subdivisions=3, radius=0.5)
+        return texturing.bake_projection_texture(
+            mesh, observed_views=views, texture_resolution=128)
+
+    _, stats_src = bake([
+        {"rgba": source, "azimuth_deg": 0.0, "elevation_deg": 0.0, "label": "front"},
+    ])
+    _, stats_real = bake([
+        {"rgba": source, "azimuth_deg": 0.0, "elevation_deg": 0.0, "label": "front"},
+        {"rgba": reference, "azimuth_deg": 0.0, "elevation_deg": 0.0, "label": "ref"},
+    ])
+
+    # No generated views -> the protection stage never arms (unchanged
+    # real-photo default), and the reference's paint reaches photo-observed
+    # texels (the measured checker delta).
+    assert stats_real["generated_protection"]["applied"] is False
+    assert stats_real["observed_view_stats"][1]["generated"] is False
+    src_tex = np.asarray(stats_src["texture_image"], dtype=np.float32)
+    real_tex = np.asarray(stats_real["texture_image"], dtype=np.float32)
+    assert float(np.abs(real_tex - src_tex).mean()) > 1.0
+
+
+def test_bake_refuses_duplicate_angle_synthesized_references() -> None:
+    """Two SYNTHESIZED references at one declared pose register
+    independently (each against its own alpha bbox) and paint the same
+    anatomy twice with a vertical offset (e20 forensics: 31-64 px content
+    disagreement on 220k-485k co-painted texels). The bake refuses the
+    arrangement loudly; real photos at one angle stay legitimate."""
+    import trimesh
+
+    source, reference = _synthesized_reference_bake_views()
+    mesh = trimesh.creation.icosphere(subdivisions=3, radius=0.5)
+
+    twin_views = [
+        {"rgba": source, "azimuth_deg": 0.0, "elevation_deg": 0.0, "label": "front"},
+        {"rgba": reference, "azimuth_deg": 90.0, "elevation_deg": 0.0,
+         "label": "side_left_windowed", "generated": True},
+        {"rgba": reference, "azimuth_deg": 90.0, "elevation_deg": 0.0,
+         "label": "side_left_fullspan", "generated": True},
+    ]
+    with pytest.raises(ValueError, match="same pose az=90"):
+        texturing.bake_projection_texture(
+            mesh, observed_views=twin_views, texture_resolution=64)
+
+    # Distinct measured azimuths for the same anatomy are the sanctioned
+    # arrangement and bake normally.
+    distinct_views = [
+        {"rgba": source, "azimuth_deg": 0.0, "elevation_deg": 0.0, "label": "front"},
+        {"rgba": reference, "azimuth_deg": 65.0, "elevation_deg": 0.0,
+         "label": "side_left", "generated": True},
+        {"rgba": reference, "azimuth_deg": -67.5, "elevation_deg": 0.0,
+         "label": "side_right", "generated": True},
+    ]
+    _, stats = texturing.bake_projection_texture(
+        mesh, observed_views=distinct_views, texture_resolution=64)
+    assert [row["azimuth_deg"] for row in stats["observed_view_stats"]] == [
+        0.0, 65.0, -67.5]
+
+    # REAL photos at one angle are two witnesses of the same truth: allowed.
+    real_views = [
+        {"rgba": source, "azimuth_deg": 0.0, "elevation_deg": 0.0, "label": "front"},
+        {"rgba": reference, "azimuth_deg": 90.0, "elevation_deg": 0.0, "label": "a"},
+        {"rgba": reference, "azimuth_deg": 90.0, "elevation_deg": 0.0, "label": "b"},
+    ]
+    _, stats = texturing.bake_projection_texture(
+        mesh, observed_views=real_views, texture_resolution=64)
+    assert len(stats["observed_view_stats"]) == 3
+
+
+def test_texture_reference_consumer_normalization_and_prepare_filter(monkeypatch) -> None:
+    """`consumer` declares which stage a reference feeds: geometry-only
+    views must never reach a texture bake (the split-consumer law from the
+    e20 forensics), texture-only views must never claim geometry tags."""
+    from abstract3d.backends import triposr_runtime as runtime
+
+    views = runtime._tripo_normalize_texture_reference_views(
+        raw_images=["/views/win_side_left.png", "/views/side_left.png"],
+        raw_angles=["side_left", "side_left"],
+        raw_consumers=["geometry", "texture"],
+    )
+    assert [view["consumer"] for view in views] == ["geometry", "texture"]
+
+    # Mapping payloads carry the key directly; absent means "both".
+    views = runtime._tripo_normalize_texture_reference_views(
+        raw_views=[
+            {"image": b"x", "angle": "back", "consumer": "geometry"},
+            {"image": b"y", "angle": "side_left"},
+        ])
+    assert [view["consumer"] for view in views] == ["geometry", "both"]
+
+    # Loud contracts: unknown consumer tokens and positional mismatch fail.
+    with pytest.raises(ValueError, match="consumer"):
+        runtime._tripo_normalize_texture_reference_views(
+            raw_images=["a.png"], raw_consumers=["conditioning"])
+    with pytest.raises(ValueError, match="texture_reference_consumers"):
+        runtime._tripo_normalize_texture_reference_views(
+            raw_images=["a.png", "b.png"], raw_consumers=["geometry"])
+
+    # The TripoSR bake-view assembly drops geometry-only references (no
+    # reference-driven geometry stage exists there; declared not-for-texture
+    # must not paint).
+    monkeypatch.setattr(
+        runtime,
+        "_prepare_triposr_image",
+        lambda image, **kwargs: (
+            Image.new("RGB", (16, 16), "gray"),
+            Image.new("RGB", (16, 16), "gray"),
+            False,
+            Image.new("RGBA", (16, 16), (255, 0, 0, 255)),
+        ),
+    )
+    prepared = runtime._prepare_texture_reference_views(
+        source_observed_rgba=Image.new("RGBA", (16, 16), (0, 255, 0, 255)),
+        source_preview=Image.new("RGB", (16, 16), "gray"),
+        texture_reference_views=runtime._tripo_normalize_texture_reference_views(
+            raw_images=["/views/win_side_left.png", "/views/side_left.png"],
+            raw_angles=["side_left", "side_left"],
+            raw_consumers=["geometry", "texture"],
+        ),
+        texture_reference_remove_background=None,
+        foreground_ratio=0.85,
+        artifact_store=None,
+    )
+    assert [view["label"] for view in prepared] == ["front", "side_left"]
+
+
+def test_reference_view_authority_reports_protection_limited_references() -> None:
+    stats = {
+        "observed_view_stats": [
+            {"index": 1, "label": "front", "generated": False},
+            {"index": 2, "label": "back", "generated": True},
+            {"index": 3, "label": "side_left", "generated": False},
+        ],
+        "generated_protection": {
+            "applied": True,
+            "mode": "absolute",
+            "protected_texels": 2218,
+            "zeroed_by_view": {"back": 2218},
+        },
+    }
+
+    rows = texturing.reference_view_authority(
+        stats, provenance_by_label={"back": "filename_inference"})
+
+    assert [row["label"] for row in rows] == ["front", "back", "side_left"]
+    front, back, side = rows
+    assert front == {
+        "label": "front", "role": "source",
+        "synthesized": False, "authority": "full",
+    }
+    assert back["role"] == "reference"
+    assert back["synthesized"] is True
+    assert back["authority"] == "protected_completion_only"
+    assert back["synthesized_source"] == "filename_inference"
+    assert back["protection"] == {"mode": "absolute", "zeroed_texels": 2218}
+    assert side["authority"] == "full"
+    assert "protection" not in side
+
+    # Auto-lane generated views (no provenance entry) self-describe.
+    auto_rows = texturing.reference_view_authority(stats)
+    assert auto_rows[1]["synthesized_source"] == "pipeline_generation"
+    # No protection stats (e.g. the stage never armed): rows still render,
+    # without protection blocks.
+    bare = texturing.reference_view_authority(
+        {"observed_view_stats": stats["observed_view_stats"]})
+    assert bare[1]["authority"] == "protected_completion_only"
+    assert "protection" not in bare[1]
+
+
+def test_texture_reference_synthesized_filename_inference_and_explicit_flag() -> None:
+    from abstract3d.backends.triposr_runtime import (
+        _tripo_normalize_texture_reference_views,
+    )
+
+    # Inference: the pipeline's own generated-file naming marks a reference
+    # synthesized; ordinary photo paths keep full authority.
+    views = _tripo_normalize_texture_reference_views(
+        raw_images=[
+            "/bundle/geometry_view_synthesized_back.png",
+            "/bundle/texture_reference_generated_side_left.png",
+            "/photos/left_profile.png",
+        ],
+        raw_angles=["back", "side_left", "side_right"],
+    )
+    assert [view["synthesized"] for view in views] == [True, True, False]
+    assert views[0]["synthesized_source"] == "filename_inference"
+    assert views[1]["synthesized_source"] == "filename_inference"
+    assert views[2]["synthesized_source"] is None
+
+    # Explicit flags pair positionally and always win over inference —
+    # including an explicit false on a generated-named file ("this really is
+    # a photo") and an explicit true on a photo-named file.
+    views = _tripo_normalize_texture_reference_views(
+        raw_images=[
+            "/bundle/geometry_view_synthesized_back.png",
+            "/photos/left_profile.png",
+        ],
+        raw_angles=["back", "side_left"],
+        raw_synthesized=["false", "true"],
+    )
+    assert [view["synthesized"] for view in views] == [False, True]
+    assert all(view["synthesized_source"] == "explicit_flag" for view in views)
+
+    # "auto" defers one position to inference; bytes payloads have no
+    # filename and never infer.
+    views = _tripo_normalize_texture_reference_views(
+        raw_images=["/bundle/geometry_view_synthesized_back.png", b"rawbytes"],
+        raw_angles=["back", "side_left"],
+        raw_synthesized=["auto", "auto"],
+    )
+    assert [view["synthesized"] for view in views] == [True, False]
+
+    # Loud contracts: positional mismatch and unrecognized tokens fail.
+    with pytest.raises(ValueError, match="texture_reference_synthesized"):
+        _tripo_normalize_texture_reference_views(
+            raw_images=["a.png", "b.png"],
+            raw_synthesized=["true"],
+        )
+    with pytest.raises(ValueError, match="texture_reference_synthesized"):
+        _tripo_normalize_texture_reference_views(
+            raw_images=["a.png"],
+            raw_synthesized=["definitely"],
+        )
+
+
+def test_prepare_texture_reference_views_threads_generated_flag(monkeypatch) -> None:
+    """The prepared views handed to the bake carry the `generated` key —
+    the exact key the auto lane sets and protect_observed_texels consumes."""
+    from abstract3d.backends import triposr_runtime as runtime
+
+    monkeypatch.setattr(
+        runtime,
+        "_prepare_triposr_image",
+        lambda image, **kwargs: (
+            Image.new("RGB", (16, 16), "gray"),
+            Image.new("RGB", (16, 16), "gray"),
+            False,
+            Image.new("RGBA", (16, 16), (255, 0, 0, 255)),
+        ),
+    )
+
+    prepared = runtime._prepare_texture_reference_views(
+        source_observed_rgba=Image.new("RGBA", (16, 16), (0, 255, 0, 255)),
+        source_preview=Image.new("RGB", (16, 16), "gray"),
+        texture_reference_views=runtime._tripo_normalize_texture_reference_views(
+            raw_images=[
+                "/bundle/geometry_view_synthesized_back.png",
+                "/photos/left_profile.png",
+            ],
+            raw_angles=["back", "side_left"],
+        ),
+        texture_reference_remove_background=None,
+        foreground_ratio=0.85,
+        artifact_store=None,
+    )
+
+    assert [view.get("generated") for view in prepared[1:]] == [True, False]
+    assert prepared[1]["synthesized_source"] == "filename_inference"
+    assert prepared[2]["synthesized_source"] is None
+    # The source view is never synthesized.
+    assert prepared[0]["role"] == "source"
+    assert not prepared[0].get("generated")
+
+
 def test_equalize_projection_tone_ranked_gate_prefers_photo_agreement() -> None:
     """Witness-RANKED gate: a correction that improves agreement with the
     REAL photo ships even when generated-mutual agreement pays for it.

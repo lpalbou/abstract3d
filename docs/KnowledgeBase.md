@@ -6,6 +6,84 @@ section with an explanation.
 
 ## Critical insights
 
+### Overnight wall-clock blow-ups: check pmset sleep logs BEFORE profiling code (e22v2, 2026-07-22)
+
+The e22v2 pass-2 "2 hours in volume→mesh with zero output" decomposed as:
+~40.6 min of real pipeline compute (recorded by `perf_counter`, which
+EXCLUDES suspension) + ~97 min of macOS **idle sleep** (Entering Sleep
+00:41:23, six minutes after the pass-2 model load; keyboard wake
+02:18:33; `pmset -g log` has the transitions, including "Dark Wake
+Thermal Emergency" cycles from the hot SoC). Recorded stage times + sleep
+matched the wall to the second. Diagnostics: when `timings_s.total` ≪
+(last artifact mtime − process launch), suspect sleep, not code. A `sample`
+taken "when CPU looks high" is selection-biased toward the rare CPU-bound
+bursts of a mostly-GPU-bound stage — the 3 s window caught the decoder's
+~5 s of numpy bookkeeping inside a ~23 min decode, and `array_concatenate`
+in it was 0.8%, not the hot loop. Long unattended runs should hold a power
+assertion (`caffeinate -dims <cmd>`); decode progress logging now makes a
+frozen-timestamp gap self-evident in the run log.
+
+### Adaptive-decoder assembly rewrites must pin bit-identity against a frozen legacy replica
+
+The 2026-07-22 refinement rewrite (per-offset scatter for the 27N index
+matrix, nonzero tuple for argwhere columns, astype(copy=False) after
+zoom) is byte-identical BY CONSTRUCTION (same index sets, same C-order,
+same float ops) and pinned twice: `np.array_equal` against a verbatim
+legacy replica in the unit test, and at true 512-octree scale in
+`scripts/experimental/bench_adaptive_decoder_cpu.py`. What was NOT done,
+deliberately: replacing `ndimage.zoom` (70% of the ~5 s bookkeeping) with
+a manual exact-doubling upsample — scipy accumulates per-point in double
+with its own support-iteration order, so a numpy reimplementation can
+land on the other side of a float32 rounding boundary in the last ulp.
+~3 s of a ~23 min stage does not buy that risk. Also measured: the chunk
+accumulation was ALREADY list + one `torch.cat` (0.010 s at 4,121 chunks
+of 32768); preallocation is not faster; even a pathological per-chunk
+`np.concatenate` would cost only ~23 s at this scale — quadratic-copy
+fears need the copy-volume arithmetic done before they justify a patch.
+
+### Opposite orthographic views are mirror-degenerate: ±90 silhouette pairs match for ANY mesh
+
+Found calibrating mirror-symmetry (2026-07-21): the silhouette rendered at
+az +90 is EXACTLY the horizontal mirror of the az −90 silhouette for every
+mesh — both are the same occluding contour projected along ±y (verified:
+`mask == mirrored_other` exact on real data). A ±90 "symmetry check" is a
+tautology scoring 1.0 for asymmetric meshes; symmetry pairs must use angles
+where the two views see different geometry (30/60/135). Corollary: one ±90
+profile view carries ALL profile-silhouette information — measuring both
+sides is redundant.
+
+### Evaluation measures die at renderer/lighting boundaries — recalibrate, never port thresholds
+
+The duplication-autocorrelation detector calibrated at 0.05 on matplotlib
+renders (bust_assessment 2026-07-20) reads 0.18–0.40 with NO good/bad
+separation on moderngl headlight clay shading (2026-07-21, same meshes).
+The instrument itself became non-discriminative, not just mis-thresholded.
+Any measure computed on rendered pixels is a property of (measure ×
+renderer × lighting); porting it across that boundary requires re-running
+the full separation study, not copying the cut.
+
+### Worst-angle (min) aggregation is load-bearing for defect evaluation
+
+e10's disqualifying white smear lives at az −90 while its front texture is
+near-clean; e21's ghost frames average into a large agreeing shirt. Any
+mean-aggregated score declares both models good (this is one of the two
+root causes of the 2026-07-21 "evaluation kept passing bad models"
+incident; the other was rendering only 2 angles). A model's score must be
+its worst angle over both sides and the back.
+
+### Local-contrast beats absolute thresholds for shading-based geometry statistics
+
+"Deep cavity = dark pixels" fails at elevation 0: the under-jaw/under-chin
+region of every bust faces downward and is uniformly dark under any light —
+absolute-darkness cavity measures score GOOD meshes worst. Carved defects
+(open-mouth slot, doubled-lip valleys, striations) are LOCAL deficits:
+darker than their mask-normalized Gaussian neighborhood. The same principle
+killed the round-1 palette measure: L-discounted color distance made an
+ACHROMATIC white smear indistinguishable from gray shirt highlights;
+exposure must be handled by one GLOBAL normalization (estimated at the
+front pose, where correspondence is guaranteed), never by discounting the
+channel that carries the defect.
+
 ### The pipeline's generation lane historically gated at source_pose (0,0); threading the estimated pose is a gate-accuracy fix with measured acceptance-set shifts
 
 Found while landing adaptive angle planning (2026-07-15, /tmp/cov1):
@@ -1780,8 +1858,102 @@ route for spurious handles (genus 67 -> 9, 5 bodies -> 1, 0.57%
 chamfer, 80s CPU); screened Poisson is the wrong tool (slower, genus
 56, roughness UP — screening amplifies noise).
 
+### The e20 texture misplacement was source-frame misregistration first, pose error second, twins third (texture forensics 2026-07-21)
+
+Full numeric attribution in `docs/research/texture_forensics.md` (exact
+isolated re-bake of the shipped call: per-view stats match to the 4th
+decimal, texture MAE 0.001/255). Three lessons that outlive the incident:
+
+1. **"The canonical recenter IS the registration" holds only when the
+   mesh reconstructs the source's own frame.** On a 2mv
+   multiview-conditioned (windowed-set) mesh, the face's canonical rows
+   diverge from the photo's by +25..+42 px (8-13% of head height,
+   feature-anchor table in the doc) and the recenter-only source path can
+   absorb none of it — the FRONT photo painted its mustache/lip rows onto
+   the mesh's nose tip, glasses onto the forehead (the "ghost face in the
+   lens"), and neck shadow onto the jaw, winning 75-100% of those texels.
+   Grade source registration against the MESH'S feature rows, not by
+   doctrine.
+2. **Full-bust silhouette instruments are pose-blind on busts — in both
+   directions.** The bake's reference pose refinement (disabled on the
+   orthographic path anyway) would have KEPT the wrong 90° declared pose:
+   whole-silhouette IoU is maximized near 90° (0.957) while the head-band
+   ruler puts the true azimuth at 65-67.5° (IoU 0.92-0.95 vs 0.84-0.86 at
+   declared). Any future pose refiner for busts must score a head band,
+   never the full silhouette.
+3. **Never hand the bake two synthesized views of one declared angle.**
+   Each registers independently against its own alpha bbox: measured
+   31-64 px vertical content disagreement over 220k-485k co-painted
+   texels (windowed vs full-span twins; two of the e20 pairs were even
+   different draws, NCC 0.20-0.68). The bake now refuses this loudly;
+   conditioning-only copies ride `consumer="geometry"`
+   (`texture_reference_consumers`) and never reach the bake.
+
+### Wall-clock forensics on macOS (e22v2 audit, 2026-07-22)
+
+1. **`time.perf_counter` excludes system sleep on macOS** (it is
+   `CLOCK_UPTIME_RAW`): stage timers that sum to less than the wall span
+   between two file mtimes are not necessarily missing timed regions —
+   the machine may have slept. `pmset -g log` (Sleep/DarkWake/Wake
+   entries) is the ground truth; on e22v2 the 88-minute timer hole matched
+   the Deep Idle window 00:41–02:18 to the minute. Long unattended runs
+   need `caffeinate`; a `nice`d compute job holds no power assertion.
+2. **A stack sample is a window, not a distribution**: the 02:34 sample
+   caught the adaptive decoder's `zoom`/`argwhere`/`dilation` bookkeeping
+   (~10 s per 512-decode uncontended) because contention stretched it,
+   and it was sampled when the operator was investigating. Attribution
+   requires reconciling samples against the pipeline's own stage timers
+   and hard anchors (log timestamps, file mtimes) before naming a hot
+   loop. The concatenate hypothesis died on three independent measures:
+   code reading (list + one cat, linear), the sample tally (0.8 %), and
+   the closed form (1.113 TB ≈ 1–17 min at measured bandwidth, not 2 h).
+3. **Quadratic-cost extrapolations must be fitted in the DRAM regime**:
+   fitting the n² constant at n ≤ 512 chunks (≤ 67 MB working set,
+   cache-adjacent) understated the hypothetical repeated-concat cost ~20×
+   vs a direct n = 2048 measurement (540 MB running array). Fit large-n or
+   label the result a lower bound.
+4. **Equivalence harnesses must pin the CHUNK TRACE, not just outputs**:
+   pointwise synthetic decoders cannot see a chunk-partition change, but
+   the real cross-attention decoder can (batched matmul reduction order).
+   `tests/test_volume_assembly_equivalence.py` asserts the recorded
+   `(shape, dtype)` call sequence alongside grid bytes for exactly this
+   reason.
+
 ## Validated practices
 
+- AbstractCore integration facts (2026-07-19 wave): the capability seam
+  (Scene3dCapability protocol, `_Scene3dFacade`, `scene3d_selectors`,
+  `generate(output={"modality": "scene3d"})` dispatch, residency routing)
+  already existed core-side; the real gaps were the server generation
+  endpoint and the tools story. Core's rulings to live by: tools are a
+  security surface — explicit-import registration only (no entry-point
+  auto-registration; `abstract3d_tool_definitions()` is the durable
+  contract); server endpoints for missing OpenAI surfaces follow the
+  `/v1/audio/music` precedent (JSON in, binary out, 501 + install hint,
+  provider = backend selector); new classification tag strings pass the
+  semantics desk before engraving (decision:domain-tool-classification-tags:
+  predicate-style snake_case boolean, extends-never-shadows core vocabulary,
+  semantics sentence at the declaration site).
+- TripoSR is feed-forward: it takes NO `seed` — determinism of composed
+  t23d rides `image_seed` (the composition stage). Passing `seed` to the
+  TripoSR backend fails loudly via `reject_unknown_options`; per-backend
+  option applicability is deliberate, not a bug.
+- AbstractCore's `@tool` decorator caps descriptions at 200 chars — put
+  detail into `when_to_use`. Global tool registration
+  (`abstractcore.tools.register_tool`) is deprecated; require an explicit
+  registry.
+- The AbstractCore server refuses all routes with 503 unless
+  `ABSTRACTCORE_AUTH_TOKEN` is set or
+  `ABSTRACTCORE_SERVER_ALLOW_UNAUTHENTICATED=1` (local/dev only).
+- Editable-install metadata staleness (camera's gotcha, confirmed here):
+  after pyproject/entry-point changes run
+  `pip install --no-deps --no-build-isolation -e .` or importlib.metadata
+  serves stale versions; source-only changes are live immediately.
+- trimesh `load(..., process=False)` is required when reporting a file's
+  TRUE vertex counts (default processing silently welds vertices before
+  you measure). `trimesh.Trimesh.apply_transform` re-winds faces on
+  negative-determinant (mirror) transforms, so mirrored watertight meshes
+  keep positive volume.
 - Prove bugs with minimal numerical ground-truth tests before fixing;
   keep the test as a regression harness.
 - Bisect visual regressions by rebaking saved intermediate states before
@@ -2053,6 +2225,176 @@ chamfer, 80s CPU); screened Poisson is the wrong tool (slower, genus
   exists in that family; the countermeasure is generator quality
   (FLUX.2-klein-9B produced strict-passing hair where 4B floor-accepted
   wet-look). Budget rule of thumb: 4B for objects, 9B for people.
+
+### Paint authority is a property of the CONTENT CLASS, not the ingestion lane (backlog 0017)
+
+- The protect-observed-texels doctrine ("synthesis completes, never
+  revises") was keyed on the auto generation lane's `generated` view flag
+  — but the same synthesized pixels fed back through the EXPLICIT
+  reference lane (`--texture-reference-image`) carried full photo
+  authority, and the 2026-07-20 bust matrix measured the cost: e2's
+  synthesized side views bled paint onto the front the real photo already
+  observed (chest smudges, softened face vs e1's photo-only front) while
+  its back was far better. The lesson generalizes: any doctrine keyed on
+  HOW content entered the pipeline silently lapses when the same content
+  class arrives through another door.
+- Fix shape: thread the class marker (per-reference `synthesized` flag +
+  filename inference on the pipeline's own generated outputs) into the
+  SAME mechanism the auto lane uses — the per-view `generated` flag.
+  Never fork a second protection implementation; every downstream stage
+  (subordination, delight/tone classing, `protect_observed_texels`,
+  scarcity keying on real references, the photo-anchor pin) follows from
+  the one flag.
+- Scoping judgment worth keeping: in-bake protection transfers to the
+  explicit lane, but the auto lane's whole-bake A/B acceptance does NOT —
+  an operator's explicit witnesses must not be silently replaced by a
+  baseline bake (and the second bake would double bake time). Explicit
+  synthesized refs keep the explicit lane's single-view sanity floors.
+- Provenance discipline: every authority decision lands in metadata
+  (`texture_artifacts.reference_authority` rows with
+  `full`/`protected_completion_only`, `explicit_flag`/`filename_inference`
+  provenance, zeroed-texel counts) so a bundle report explains which
+  references were protection-limited without reading code.
+
+### The double-mouth class: multi-view conditioning is only as good as cross-view ROW agreement (2026-07-20, measured + fixed)
+
+The user-visible double mouth (features carved twice in 2mv geometry AND
+painted twice in texture) traced to one measurable violation: the
+meshless geometry-view lane synthesized side/back views whose facial
+features sat 3–15% of subject height away from the front photo's rows.
+For same-elevation turntable views under near-orthographic projection,
+the epipolar constraint DEGENERATES to same-image-row (Era3D Proposition
+1; verified at elevation 0 with derived shift bound 2·r·sin(e) off-zero).
+The 2mv DiT recenters each view by its own alpha bbox and trusts its
+tags, so row-disagreeing views carve BOTH hypotheses — sometimes doubled
+features, sometimes smearing (stochastic across seeds).
+
+Controlled A/B (same seed 2025, same knobs, ONLY the views changed):
+unregistered views → double mouth (e2); clay-registered views → single
+mouth, watertight, 1 body (e10). The quality ladder that followed:
+mesh0 → clay renders → i2i guided views (register_matte_to_clay) →
+condition mesh1 (e11/e13) is the IM-3D-class reconstruct→re-render→
+re-generate loop, and it works with the pipeline's EXISTING refgen
+machinery. Fixes shipped: `view_consistency.py` (row-profile law,
+verdicts consistent/correctable/inconsistent, calibrated floors),
+row-consistency gate in `_synthesize_geometry_views` (fail-closed,
+correction re-gated, provenance recorded), texture source-protection for
+synthesized refs (0017). Follow-ups filed: pair-window harmonization
+after row correction (0018 — independent per-side crops break the
+side-pair mirror gate), speculars gate dark-subject miscalibration
+(0019).
+
+Verification lesson: the incident shipped because verification used
+256px thumbnails. Assessment now renders 1024px clay + textured views
+per angle plus a face close-up pair (`scripts/bust_assessment.py`). The
+harness's autocorrelation duplication detector fires on legitimate
+paired structures too (lips, glasses edges) — treat it as a flag for
+human review of the face crop, never as a sole gate.
+
+### Viewgen anatomy audit: pose, framing, and identity are three separate infidelities — and `strength` is not a knob (2026-07-21, measured)
+
+Adversarial audit of the bust view sets (full numbers:
+`docs/research/viewgen_audit.md`; tools
+`scripts/experimental/viewgen_audit_*.py`). Durable findings:
+
+- **`strength` is DEAD on the mlx-gen flux2 edit route.** FLUX.2-klein
+  edit-reference mode has no denoise-strength axis (full denoise from
+  seed noise, reference as attention tokens): abstractvision's flux2
+  branch never forwards `image_strength`, and mflux RAISES on it in edit
+  mode. Byte-identical same-seed proof (ladder L1≡L2). Any "lower the
+  denoise strength" hypothesis is unanswerable on this route; the real
+  axes are conditioning layout, steps, guidance, prompt, acceptance.
+- **Full-bust silhouette IoU is pose-blind on busts**: a ~50° 3/4 view
+  scores 0.76+ against a 90° profile clay (torso dominates). The set A
+  "profiles" were 40° under-rotated and passed every gate; measure head
+  pose with HEAD-BAND IoU sweeps (rows above the shoulder flare), which
+  separate 50° from 90° by ~0.15 IoU.
+- **The composite two-panel canvas destroys person identity on the
+  local editor** (klein-9b): every composite arm — any steps (8/12/16),
+  guidance (1/2.5/4), seed, or prompt clause — painted a DIFFERENT
+  person (the photo is a third of a half-panel; the editor regenerates
+  the canvas from its prior). Passing the photo as the PRIMARY image and
+  the clay as a second `reference_images` entry restores identity
+  locally (L9) — but then face placement follows the photo, not the
+  clay. Identity adherence and clay-geometry adherence traded off across
+  every tested route; the working recipe is identity route + production
+  registration + feature-anchored piecewise row alignment + a <2%
+  per-feature acceptance gate with redraws.
+- **CFG on klein edit hurts everything**: guidance 2.5/4.0 made anatomy
+  worse (+13→24% mouth row), identity worse, and cost 5–10× (two
+  passes/step + MPS pressure). Keep distilled guidance 1.0. Steps are
+  anatomy-non-monotonic (12 best, 16 worse and 17 min under MPS
+  pressure); per-draw variance dominates steps.
+- **Empty `image_request` routes to the configured REMOTE default**
+  (openai/gpt-image-1 here): `owner=None` scripting of
+  `generate_reference_views` bypasses `auto_generation_ready` and
+  silently sends a person's photo (and money) to a remote provider,
+  ignores seeds/steps (placebo provenance in the report), and has no
+  draw reproducibility. The loop-regen views (set B) were made this way;
+  their recorded seeds mean nothing. Persist every raw draw — an
+  unpersisted good draw is unrecoverable (billing hard limits are real:
+  one landed mid-audit).
+- **Feature-row offsets vs the clay guide are the striation ruler**: set
+  B faces sat 9.5–21.4% of head height LOW after whole-bust
+  registration (side_right ~pure shift, residuals ≤2.8%; side_left real
+  +6.6% jaw elongation). Rows that disagree with the mesh land mouth
+  texels on chin/neck geometry and hand the 2mv DiT a second mouth row.
+  Acceptance line that ships clean views: every contour feature
+  (nose_tip/nose_base/mouth/chin) within 2% of clay head height +
+  IoU ≥ 0.75 after alignment.
+
+### Hunyuan3D-Paint on Apple Silicon: the CUDA wall is build-script-only (2026-07-21, spike-verified)
+
+Adversarial research pass over the generative process
+(`docs/research/generative_process_2026.md`) with a run spike
+(`scripts/experimental/hy3dpaint_mps_spike.py`, all stages green):
+
+- The official hy3dpaint `custom_rasterizer` fails on macOS ONLY because its
+  `setup.py` unconditionally declares a `CUDAExtension` — the C++ sources carry
+  full CPU implementations and device-dispatch at runtime. Built as a plain
+  `CppExtension` (agenticvibes fork `3d8e931` layout), it compiles on macOS
+  and rasterizes correctly on CPU tensors. `mesh_inpaint_processor` compiles
+  too (needs `pybind11` installed for the build).
+- The 2B paint UNet + DINOv2-giant LOAD on MPS fp16 (9 s). Integration
+  gotchas found by loading, not reading: diffusers 0.38 demands
+  `trust_remote_code=True` for the model-dir custom UNet (vendor the class
+  instead — abstractmusic precedent); the paint VAE ships pickle-only
+  weights (convert to safetensors at bootstrap); the fork mutates the HF
+  snapshot by copying patched unet modules into it (load from a copy).
+- hy3dpaint does not replace projection baking — its final stage IS weighted
+  back-projection + UV inpaint. What it replaces is the weak INPUT: views are
+  generated conditioned on the mesh's own normal+position renders (pixel-
+  registered by construction), which structurally kills our misregistration
+  defect class. Face identity through its reference-attention is UNPROVEN —
+  keep the photo-anchored front + protect-observed-texels as the authority
+  layer and give paint output completion-only authority.
+- Flagship-2.1-on-MPS shredding is environment-, not model-inherent: a
+  community port runs the same DiT clean on MPS fp16, and our torch 2.10.0
+  sits inside a documented window of silent-garbage MPS SDPA bugs
+  (non-contiguous fast path, 2^32 score overflow). Diagnosis ladder filed
+  as backlog 0020; MV-Adapter ig2mv (Apache-2.0 weights confirmed) filed
+  as backlog 0021.
+
+### The winning view recipe is conditioning-layout + LoRA, not wording; gate pose at DRAW time (2026-07-21, bench §6 integrated)
+
+The S2 bench (docs/research/viewgen_bench.md) measured the durable levers
+for same-subject angle views: (1) the identity conditioning layout with the
+clay reference at the target azimuth (arm E, mean pose error 9.5° vs 29.2°
+baseline), (2) the consistency LoRA at scale 1.0 (halves pose error,
+eliminates identity flips), (3) one expression pin sentence (closed mouths
+10/10 with it; parted-lips fabrication without). Prompt WORDING iteration
+beyond that is per-angle noise (B_prompt_iter moved one slot +5° and
+another −17.5°). Integration facts worth keeping: `image_request` forwards
+verbatim through `generate_reference_views`, so LoRAs ride the existing
+request chain (`ABSTRACT3D_IMAGE_LORA_ADAPTERS` resolves alongside
+provider/model); the capability i2i strips asset metadata, so
+`lora_applied_file_count` reaches provenance only from generators that
+surface a `metadata` mapping — record the REQUEST side always, the applied
+count when reported. The pose gate belongs INSIDE the draw ladder
+(reject >15° decisive, re-roll the seed) because silhouette IoU is
+pose-blind on busts; it must stay two-key (decisiveness floor) or plateau
+backs get rejected on noise, and it must abstain as `pose_unmeasured`
+(never gate blind) when no clay ruler exists.
 
 ## DEPRECATED
 

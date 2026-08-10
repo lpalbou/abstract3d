@@ -150,6 +150,13 @@ The CLI provides:
 
 `--num-inference-steps` is exposed for Step1X generation and validation.
 
+Runtime expectations: the full Hunyuan3D loop recipe at `512` octree / 50
+steps on Apple `mps` takes on the order of 2¼ hours of compute (measured
+stage table in `docs/benchmarks.md`). The volume decode logs level
+schedules and ~5% chunk progress at INFO; `timings_s` values are
+awake-process time (macOS sleep excluded) — wrap long unattended runs in
+`caffeinate -dims <command>`.
+
 ---
 
 ## docs/methodology.md
@@ -248,6 +255,13 @@ Step1X-specific benchmark settings:
 - Apple `mps` dtype: `float32`
 - current published dynamic reference lane: `docs/assets/validation/local-step1x-dynamic/`
 
+Loop recipe stage timing at 512³ (2026-07-22, Apple `mps`, measured):
+
+- pass-1 shape `2,054 s`, view synthesis `1,679 s`, pass-2 shape `2,433 s`,
+  mesh postprocess `195 s`, texture `1,770 s` — total ~2 h 16 m compute
+- chunked decode assembly measures `0.010 s` at full 513³ scale; decode
+  time is dominated by the accelerator queries
+
 Aggregate comparison:
 
 - TripoSR average total time: `6.3624 s`
@@ -323,3 +337,4 @@ Main symptom-oriented fixes:
 - review the Tencent license and set `ABSTRACT3D_HUNYUAN_ACCEPT_LICENSE=1` if the Hunyuan3D-2.1 backend refuses to run with a license acknowledgment error
 - request official access or point `ABSTRACT3D_TRELLIS2_DINO_MODEL` at a valid local authorized snapshot if TRELLIS.2 fails on DINOv3
 - retry on CPU, reduce `mc_resolution`, and keep one centered object if MPS behaves poorly
+- if a long run looks hung, check the run log for advancing `volume decode [...]: chunk N/M` lines and `pmset -g log` for mid-run sleep; keep long unattended runs awake with `caffeinate -dims`

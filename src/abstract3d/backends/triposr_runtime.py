@@ -85,6 +85,7 @@ _TRIPOSR_GENERATION_OPTION_KEYS = frozenset(
         "texture_reference_views",
         "texture_reference_images",
         "texture_reference_angles",
+        "texture_reference_synthesized",
         "texture_reference_remove_background",
     }
 )
@@ -289,11 +290,138 @@ def _tripo_parse_texture_reference_angle(raw: Any) -> Tuple[float, float, str]:
     return float(text), 0.0, f"{float(text):g},0"
 
 
+# The pipeline's own generated-reference outputs, by bundle naming
+# convention: `_synthesize_geometry_views` persists conditioning views as
+# geometry_view_synthesized_<label>.png and the texture reference-generation
+# lane persists accepted witnesses as texture_reference_generated_<label>.png.
+# A caller feeding those files back as explicit references is feeding
+# synthesis, not photographs, and gets the protect-observed-texels doctrine
+# automatically (backlog 0017).
+_SYNTHESIZED_REFERENCE_FILENAME_PREFIXES = (
+    "geometry_view_synthesized_",
+    "texture_reference_generated_",
+)
+
+
+def _texture_reference_filename_implies_synthesized(image: Any) -> bool:
+    """True when a reference payload names one of the pipeline's own
+    generated files. Only path-carrying payloads (str/Path, or mappings with
+    a `path`) have a usable basename; raw bytes and PIL images never infer."""
+    candidate: Optional[str] = None
+    if isinstance(image, Path):
+        candidate = image.name
+    elif isinstance(image, str) and image.strip():
+        candidate = Path(image.strip()).name
+    elif isinstance(image, Mapping) and isinstance(image.get("path"), str):
+        candidate = Path(str(image.get("path")).strip()).name
+    if not candidate:
+        return False
+    return candidate.strip().lower().startswith(
+        _SYNTHESIZED_REFERENCE_FILENAME_PREFIXES
+    )
+
+
+def _parse_texture_reference_synthesized(value: Any) -> Optional[bool]:
+    """Tri-state parse of a per-reference synthesized declaration.
+
+    None (or "auto"/"") means "not declared" — filename inference decides.
+    Tool-call transports routinely deliver booleans as strings, so string
+    spellings are accepted; anything unrecognized fails loudly rather than
+    silently granting or revoking paint authority.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and float(value) in (0.0, 1.0):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in {"", "auto"}:
+        return None
+    if text in {"true", "1", "yes", "on"}:
+        return True
+    if text in {"false", "0", "no", "off"}:
+        return False
+    raise ValueError(
+        "texture_reference_synthesized entries must be true/false (or 'auto' "
+        f"to defer to filename inference); got {value!r}."
+    )
+
+
+def _resolve_texture_reference_synthesized(
+    image: Any,
+    declared: Optional[bool],
+) -> tuple[bool, Optional[str]]:
+    """(synthesized, provenance) for one reference: an explicit declaration
+    always wins (including an explicit False suppressing inference); absent
+    a declaration, the pipeline's own generated-file naming marks the view
+    synthesized with "filename_inference" provenance."""
+    if declared is not None:
+        return bool(declared), "explicit_flag"
+    if _texture_reference_filename_implies_synthesized(image):
+        return True, "filename_inference"
+    return False, None
+
+
+def _texture_reference_synthesized_notes(
+    texture_reference_views: Sequence[Mapping[str, Any]],
+) -> List[str]:
+    """Metadata provenance notes for synthesized-treated explicit references.
+
+    Every reference whose paint authority differs from the real-photo
+    default gets a note naming WHY (explicit flag vs filename inference) and
+    WHAT the treatment means, so a bundle report explains itself without
+    reading the code.
+    """
+    notes: List[str] = []
+    for view in texture_reference_views:
+        if not view.get("synthesized"):
+            continue
+        label = str(view.get("label") or "reference")
+        if view.get("synthesized_source") == "filename_inference":
+            reason = (
+                "its filename matches the pipeline's own generated-reference "
+                "naming; pass texture_reference_synthesized=false to override"
+            )
+        else:
+            reason = "texture_reference_synthesized was set"
+        notes.append(
+            f"Texture reference '{label}' is treated as synthesized ({reason}): "
+            "it completes unobserved surface but may never overwrite "
+            "photo-observed texels (protect_observed_texels absolute mode)."
+        )
+    return notes
+
+
+# Which pipeline stage a reference view feeds. "both" is the historical
+# behavior; "geometry" views condition multi-view geometry ONLY and never
+# reach the texture bake (the e20 forensics measured that passing a windowed
+# conditioning copy AND a full-span texture copy of one angle to the bake
+# registers them independently — 31-64 px vertical content disagreement on
+# 220k-485k co-painted texels; docs/research/texture_forensics.md). "texture"
+# views paint but are excluded from geometry conditioning tags.
+_TEXTURE_REFERENCE_CONSUMERS = ("both", "geometry", "texture")
+
+
+def _parse_texture_reference_consumer(raw: Any) -> str:
+    if raw is None:
+        return "both"
+    text = str(raw).strip().lower()
+    if text in _TEXTURE_REFERENCE_CONSUMERS:
+        return text
+    raise ValueError(
+        "texture reference consumer must be one of "
+        f"{', '.join(_TEXTURE_REFERENCE_CONSUMERS)} (got {raw!r})."
+    )
+
+
 def _tripo_append_texture_reference_view(
     out: List[Dict[str, Any]],
     raw: Any,
     *,
     angle_override: Optional[Any] = None,
+    synthesized_override: Optional[Any] = None,
+    consumer_override: Optional[Any] = None,
 ) -> None:
     if raw is None:
         return
@@ -315,22 +443,43 @@ def _tripo_append_texture_reference_view(
             elevation_deg = float(raw.get("elevation_deg", raw.get("elevation")))
         if raw.get("azimuth") is not None or raw.get("azimuth_deg") is not None:
             azimuth_deg = float(raw.get("azimuth_deg", raw.get("azimuth")))
+        declared = _parse_texture_reference_synthesized(
+            synthesized_override
+            if synthesized_override is not None
+            else raw.get("synthesized", raw.get("generated"))
+        )
+        # `image` is the extracted payload (raw["path"] when only a path was
+        # given), so filename inference sees whatever basename exists.
+        synthesized, synthesized_source = _resolve_texture_reference_synthesized(
+            image, declared
+        )
+        consumer = _parse_texture_reference_consumer(
+            consumer_override if consumer_override is not None else raw.get("consumer")
+        )
         out.append(
             {
                 "image": image,
                 "label": str(raw.get("label") or label),
                 "azimuth_deg": float(azimuth_deg),
                 "elevation_deg": float(elevation_deg),
+                "synthesized": synthesized,
+                "synthesized_source": synthesized_source,
+                "consumer": consumer,
             }
         )
         return
     azimuth_deg, elevation_deg, label = _tripo_parse_texture_reference_angle(angle_override)
+    declared = _parse_texture_reference_synthesized(synthesized_override)
+    synthesized, synthesized_source = _resolve_texture_reference_synthesized(raw, declared)
     out.append(
         {
             "image": raw,
             "label": label,
             "azimuth_deg": float(azimuth_deg),
             "elevation_deg": float(elevation_deg),
+            "synthesized": synthesized,
+            "synthesized_source": synthesized_source,
+            "consumer": _parse_texture_reference_consumer(consumer_override),
         }
     )
 
@@ -340,6 +489,8 @@ def _tripo_normalize_texture_reference_views(
     raw_views: Optional[Any] = None,
     raw_images: Optional[Any] = None,
     raw_angles: Optional[Any] = None,
+    raw_synthesized: Optional[Any] = None,
+    raw_consumers: Optional[Any] = None,
 ) -> List[Dict[str, Any]]:
     normalized: List[Dict[str, Any]] = []
     if raw_views is not None:
@@ -359,8 +510,42 @@ def _tripo_normalize_texture_reference_views(
         raise ValueError("texture_reference_angles must be empty or match texture_reference_images length.")
     if not angles:
         angles = [None] * len(images)
-    for image, angle in zip(images, angles):
-        _tripo_append_texture_reference_view(normalized, image, angle_override=angle)
+    # Per-reference synthesized declarations pair positionally with the
+    # images, exactly like the angles above; a scalar broadcasts to all.
+    if raw_synthesized is None:
+        synthesized_flags: List[Any] = [None] * len(images)
+    elif isinstance(raw_synthesized, (bool, str, int)):
+        synthesized_flags = [raw_synthesized] * len(images)
+    else:
+        synthesized_flags = list(raw_synthesized)
+    if len(synthesized_flags) not in {0, len(images)}:
+        raise ValueError(
+            "texture_reference_synthesized must be empty or match texture_reference_images length."
+        )
+    if not synthesized_flags:
+        synthesized_flags = [None] * len(images)
+    # Per-reference consumer declarations pair positionally too; a scalar
+    # broadcasts. Absent means "both" (historical behavior).
+    if raw_consumers is None:
+        consumers: List[Any] = [None] * len(images)
+    elif isinstance(raw_consumers, (str, bytes)):
+        consumers = [raw_consumers] * len(images)
+    else:
+        consumers = list(raw_consumers)
+    if len(consumers) not in {0, len(images)}:
+        raise ValueError(
+            "texture_reference_consumers must be empty or match texture_reference_images length."
+        )
+    if not consumers:
+        consumers = [None] * len(images)
+    for image, angle, synthesized, consumer in zip(images, angles, synthesized_flags, consumers):
+        _tripo_append_texture_reference_view(
+            normalized,
+            image,
+            angle_override=angle,
+            synthesized_override=synthesized,
+            consumer_override=consumer,
+        )
     return normalized
 
 
@@ -726,6 +911,10 @@ def _prepare_texture_reference_views(
             }
         )
     for index, view in enumerate(texture_reference_views, start=1):
+        if str(view.get("consumer") or "both") == "geometry":
+            # Declared conditioning-only: TripoSR has no reference-driven
+            # geometry stage, and a geometry-only view must never paint.
+            continue
         preview, _prepared_rgb, background_removed, processed_rgba = _prepare_triposr_image(
             view["image"],
             remove_background=texture_reference_remove_background,
@@ -741,6 +930,13 @@ def _prepare_texture_reference_views(
                 "source_preview": preview,
                 "background_removed": bool(background_removed),
                 "role": "reference",
+                # Synthesized-flagged explicit references ride the bake's
+                # generated-view doctrine (weight subordination + the
+                # protect_observed_texels absolute lock): the same key the
+                # auto reference-generation lane sets, so there is exactly
+                # one protection mechanism (backlog 0017).
+                "generated": bool(view.get("synthesized")),
+                "synthesized_source": view.get("synthesized_source"),
             }
         )
     return prepared
@@ -3003,6 +3199,19 @@ class TripoSRBackend:
                         "remove_background": {"type": "boolean"},
                         "texture_reference_images": {"type": "array", "items": {"type": "string"}},
                         "texture_reference_angles": {"type": "array", "items": {"type": "string"}},
+                        "texture_reference_synthesized": {
+                            "type": "array",
+                            "items": {"type": ["boolean", "string"]},
+                            "description": (
+                                "Pairs positionally with texture_reference_images: true marks "
+                                "that reference as synthesized (completion-only — it may never "
+                                "overwrite photo-observed texels), false pins it as a real "
+                                "photo (full paint authority), 'auto' defers to filename "
+                                "inference. Absent: references named like the pipeline's own "
+                                "generated outputs (geometry_view_synthesized_*, "
+                                "texture_reference_generated_*) are inferred synthesized."
+                            ),
+                        },
                         "texture_reference_remove_background": {"type": "boolean"},
                         "texture_completion": {"type": "string", "enum": ["none", "mirror_symmetry", "auto"]},
                         "device": {"type": "string"},
@@ -3165,10 +3374,15 @@ class TripoSRBackend:
         raw_texture_reference_views = kwargs.pop("texture_reference_views", None)
         raw_texture_reference_images = kwargs.pop("texture_reference_images", None)
         raw_texture_reference_angles = kwargs.pop("texture_reference_angles", None)
+        raw_texture_reference_synthesized = kwargs.pop("texture_reference_synthesized", None)
         texture_reference_views = _tripo_normalize_texture_reference_views(
             raw_views=raw_texture_reference_views,
             raw_images=raw_texture_reference_images,
             raw_angles=raw_texture_reference_angles,
+            raw_synthesized=raw_texture_reference_synthesized,
+        )
+        texture_reference_notes = _texture_reference_synthesized_notes(
+            texture_reference_views
         )
         texture_reference_remove_background = _tripo_texture_reference_remove_background(
             self._owner,
@@ -3216,6 +3430,19 @@ class TripoSRBackend:
             except Exception as exc:
                 raise Abstract3DError(f"Failed to bake TripoSR texture atlas: {type(exc).__name__}: {exc}") from exc
             texture_s = round(time.perf_counter() - texture_started, 4)
+        # Per-view paint-authority report (which references baked with full
+        # photo authority vs the synthesized protection lock), folded from
+        # the shipped bake's own stats.
+        from ..texturing import reference_view_authority
+
+        texture_reference_authority = reference_view_authority(
+            texture_artifacts,
+            provenance_by_label={
+                str(view.get("label")): view.get("synthesized_source")
+                for view in prepared_texture_reference_views
+                if view.get("generated")
+            },
+        )
         glb_bytes = _mesh_export_bytes(mesh, file_type="glb")
         if texture_requested:
             obj_bytes, obj_texture_sidecars = _tripo_export_obj_with_textures(mesh)
@@ -3295,6 +3522,8 @@ class TripoSRBackend:
                 "texture_completion": texture_artifacts.get("texture_completion"),
                 "symmetry_completion": dict(texture_artifacts.get("symmetry_completion") or {}),
                 "reference_view_count": max(0, len(prepared_texture_reference_views) - 1),
+                "reference_authority": texture_reference_authority,
+                "generated_protection": dict(texture_artifacts.get("generated_protection") or {}),
                 "uv_vertex_count": texture_artifacts.get("uv_vertex_count"),
                 "vertex_mapping_count": texture_artifacts.get("vertex_mapping_count"),
                 "reference_view_paths": [],
@@ -3306,6 +3535,7 @@ class TripoSRBackend:
                 runtime_meta["notes"].append(
                     "TripoSR mirror_symmetry texture completion reflects front-view texels across the left-right object plane and fills only uncovered front-side regions."
                 )
+            runtime_meta["notes"].extend(texture_reference_notes)
         runtime_meta["notes"].extend(postprocess_warnings)
         if isinstance(metadata, dict) and metadata:
             runtime_meta["request_metadata"] = dict(metadata)
@@ -3356,6 +3586,8 @@ class TripoSRBackend:
                     "texture_completion": texture_artifacts.get("texture_completion"),
                     "symmetry_completion": dict(texture_artifacts.get("symmetry_completion") or {}),
                     "reference_view_count": max(0, len(prepared_texture_reference_views) - 1),
+                    "reference_authority": texture_reference_authority,
+                    "generated_protection": dict(texture_artifacts.get("generated_protection") or {}),
                     "uv_vertex_count": texture_artifacts.get("uv_vertex_count"),
                     "vertex_mapping_count": texture_artifacts.get("vertex_mapping_count"),
                     "reference_view_paths": reference_view_paths,
@@ -3412,6 +3644,8 @@ class TripoSRBackend:
                         "texture_completion": texture_artifacts.get("texture_completion"),
                         "symmetry_completion": dict(texture_artifacts.get("symmetry_completion") or {}),
                         "reference_view_count": max(0, len(prepared_texture_reference_views) - 1),
+                        "reference_authority": texture_reference_authority,
+                        "generated_protection": dict(texture_artifacts.get("generated_protection") or {}),
                         "uv_vertex_count": texture_artifacts.get("uv_vertex_count"),
                         "vertex_mapping_count": texture_artifacts.get("vertex_mapping_count"),
                         "reference_view_paths": reference_view_paths,

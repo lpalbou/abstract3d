@@ -125,17 +125,46 @@ Reading the ranges honestly:
 | backend | density control (default) | time control (default) | Python kwarg | CLI flag |
 | --- | --- | --- | --- | --- |
 | triposr | `mc_resolution` (256); `cleanup` profile also reduces faces (raw->clean rocket: 26.9k -> 18.0k) | `mc_resolution`, `texture_mode`, `texture_resolution` (2048) | yes | `--mc-resolution`, `--cleanup`, `--texture-mode`, `--texture-resolution` |
-| hunyuan3d21 | `octree_resolution` (384), `max_facenum` (120,000) | `num_inference_steps` (50; proofs used 30), `guidance_scale` (5.0) | yes | steps/guidance only — `--octree-resolution` / `--max-facenum` are **not** CLI-exposed yet |
-| step1x | `octree_resolution` (128 on `mps`, 384 elsewhere), `max_facenum` (device-tuned) | `num_inference_steps` | yes | steps only — octree/facenum are **not** CLI-exposed yet |
+| hunyuan3d21 | `octree_resolution` (384), `max_facenum` (120,000) | `num_inference_steps` (50; proofs used 30), `guidance_scale` (5.0) | yes | `--num-inference-steps`, `--guidance-scale`, `--octree-resolution`, `--max-facenum` |
+| step1x | `octree_resolution` (128 on `mps`, 384 elsewhere), `max_facenum` (device-tuned) | `num_inference_steps` | yes | `--num-inference-steps`, `--octree-resolution`, `--max-facenum` |
 
 All three backends also honor owner-config/env equivalents
 (`scene3d_<backend>_octree_resolution`, `ABSTRACT3D_*`). The observed face
 medians match the caps: Hunyuan meshes sit exactly at `max_facenum`
 (120k/160k depending on run configuration), TripoSR at what `mc_resolution
-256` plus cleanup yields (~87k). So density is controllable today from
-Python and config; the CLI gap (octree/facenum flags) is tracked as a
-known exposure defect — kwargs pass through `Scene3DManager.i23d(...)`
-unvalidated, per the v0.2.0 review finding on silent kwargs.
+256` plus cleanup yields (~87k). Density is controllable from Python,
+config, and the CLI (`--octree-resolution` / `--max-facenum`).
+
+## Loop Recipe Stage Timing at 512³ (2026-07-22, measured)
+
+One full `--geometry-conditioning loop` run at the validated bust settings
+(`--num-inference-steps 50 --mc-resolution 512`, Apple M5 Max `mps`,
+Klein-9B view synthesis through `mlx-gen`), stage times as recorded by the
+run's own `timings_s` (awake-process seconds, `time.perf_counter`):
+
+| stage | `timings_s` key | measured |
+| --- | --- | --- |
+| pass-1 shape (50-step diffusion + 512³ decode + marching cubes + postprocess) | `pass1_inference` | 2,054 s |
+| view synthesis (3 accepted i2i views incl. clay renders and gates) | `geometry_view_synthesis` | 1,679 s |
+| pass-2 model load | `load` | 42 s |
+| pass-2 shape (50-step diffusion + 512³ decode + marching cubes) | `inference` | 2,433 s |
+| mesh postprocess (components, decimation, normals) | `mesh` | 195 s |
+| texture (reference generation + bake + acceptance) | `texture` | 1,770 s |
+| **total compute** | `total` | **8,133 s (~2 h 16 m)** |
+
+Reading the numbers:
+
+- The diffusion-vs-decode split inside the two shape stages is visible in
+  the run log through the volume-decode progress lines (level schedule +
+  ~5% chunk cadence at INFO); the diffusion phases print no progress bars.
+- `timings_s` measures awake-process time. On macOS this excludes system
+  sleep: if the machine idle-sleeps mid-run, wall-clock time inflates while
+  `timings_s` does not, and the run pauses until wake. Keep long unattended
+  runs awake with `caffeinate -dims <command>`.
+- Chunked decode assembly is not a cost factor: accumulating the 513³ field
+  (135M float32, 4,122 chunks of 32,768) measures 0.010 s
+  (`scripts/experimental/bench_adaptive_decoder_cpu.py`); decode time is
+  dominated by the accelerator queries themselves.
 
 ## Bake Performance Program (2026-07-08, outputs bit-identical)
 

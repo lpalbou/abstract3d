@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import os
+from pathlib import Path
 from typing import Any, Callable, Dict, MutableMapping, Optional, Tuple
 
 from .errors import DependencyUnavailableError
@@ -60,6 +61,59 @@ def _first_int(*values: Any) -> Optional[int]:
     return None
 
 
+def parse_lora_adapters(value: Any) -> Optional[list]:
+    """Parse a LoRA-adapter declaration into `[{"source", "scale"}, ...]`.
+
+    Accepted forms (config `scene3d_image_lora_adapters` / env
+    `ABSTRACT3D_IMAGE_LORA_ADAPTERS`, or an already-structured value):
+      * a JSON list: `[{"source": "/path/a.safetensors", "scale": 1.0}]`
+      * plain text: `;`-separated `path` or `path@scale` entries
+        (`~` expands; `@` never occurs in adapter paths, unlike `:`).
+      * a Python list of dicts/paths (programmatic callers).
+
+    The result is the abstractvision `lora_adapters` request shape
+    (`source` required, `scale` defaulting to 1.0); validation of the
+    files themselves stays with the provider. Malformed declarations
+    raise: a LoRA the operator asked for must never be dropped silently
+    (the 0-of-1680-keys class is invisible enough already).
+    """
+
+    if value is None:
+        return None
+    entries: Any
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        if text.startswith("["):
+            import json
+
+            entries = json.loads(text)
+        else:
+            entries = [part.strip() for part in text.split(";") if part.strip()]
+    elif isinstance(value, (list, tuple)):
+        entries = list(value)
+    else:
+        entries = [value]
+    adapters = []
+    for entry in entries:
+        if isinstance(entry, dict):
+            source = str(entry.get("source") or "").strip()
+            scale = entry.get("scale", 1.0)
+        else:
+            text = str(entry).strip()
+            source, _, scale_text = text.partition("@")
+            scale = scale_text or 1.0
+        if not source:
+            raise ValueError(
+                f"lora_adapters entry {entry!r} has no 'source' path")
+        adapters.append({
+            "source": str(Path(source).expanduser()),
+            "scale": float(scale),
+        })
+    return adapters or None
+
+
 def resolve_image_generation_request(
     owner: Any,
     *,
@@ -113,6 +167,25 @@ def resolve_image_generation_request(
     )
     if resolved_seed is not None:
         resolved["seed"] = resolved_seed
+    # LoRA adapters (viewgen bench 2026-07-21 section 6: the winning view
+    # recipe is klein + the consistency LoRA at scale 1.0). One knob for
+    # both synthesis stages, like provider/model above; the value forwards
+    # verbatim to the abstractvision request (`lora_adapters`), which every
+    # local mlx route consumes. The config value may be structured (a list)
+    # — read it raw, never through the text coercion. Parse errors raise:
+    # an operator-declared adapter must never be silently dropped.
+    raw_lora: Any = None
+    try:
+        config = getattr(owner, "config", None)
+        if isinstance(config, dict):
+            raw_lora = config.get("scene3d_image_lora_adapters")
+    except Exception:
+        raw_lora = None
+    if raw_lora is None:
+        raw_lora = os.environ.get("ABSTRACT3D_IMAGE_LORA_ADAPTERS")
+    resolved_lora = parse_lora_adapters(raw_lora)
+    if resolved_lora:
+        resolved["lora_adapters"] = resolved_lora
     return resolved
 
 

@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from abstract3d.image_composition import (
     default_image_generator,
     describe_image_binding,
+    parse_lora_adapters,
     pop_image_generation_request,
     resolve_image_generation_request,
 )
@@ -80,6 +83,57 @@ def test_pop_image_generation_request_consumes_generic_keys() -> None:
         "seed": 42,
     }
     assert kwargs == {"other": "keep"}
+
+
+def test_parse_lora_adapters_accepts_json_paths_and_structured_lists() -> None:
+    json_form = parse_lora_adapters(
+        '[{"source": "/loras/consistency.safetensors", "scale": 1.0}]')
+    assert json_form == [
+        {"source": "/loras/consistency.safetensors", "scale": 1.0}]
+
+    text_form = parse_lora_adapters(
+        "/loras/a.safetensors; /loras/b.safetensors@0.8")
+    assert text_form == [
+        {"source": "/loras/a.safetensors", "scale": 1.0},
+        {"source": "/loras/b.safetensors", "scale": 0.8},
+    ]
+
+    structured = parse_lora_adapters(
+        [{"source": "/loras/c.safetensors"}, "/loras/d.safetensors@0.5"])
+    assert structured == [
+        {"source": "/loras/c.safetensors", "scale": 1.0},
+        {"source": "/loras/d.safetensors", "scale": 0.5},
+    ]
+
+    assert parse_lora_adapters(None) is None
+    assert parse_lora_adapters("") is None
+    # A declared adapter without a source path is a loud error — an
+    # operator-requested LoRA must never be dropped silently.
+    with pytest.raises(ValueError, match="source"):
+        parse_lora_adapters([{"scale": 1.0}])
+
+
+def test_resolve_image_generation_request_carries_lora_adapters(monkeypatch) -> None:
+    """The LoRA knob rides the same config/env chain as provider/model
+    (viewgen bench section 6: klein + consistency LoRA is the winning view
+    recipe) and is byte-absent when unset."""
+    monkeypatch.delenv("ABSTRACT3D_IMAGE_LORA_ADAPTERS", raising=False)
+    assert "lora_adapters" not in resolve_image_generation_request(owner=None)
+
+    monkeypatch.setenv(
+        "ABSTRACT3D_IMAGE_LORA_ADAPTERS", "/loras/env.safetensors@0.9")
+    out = resolve_image_generation_request(owner=None)
+    assert out["lora_adapters"] == [
+        {"source": "/loras/env.safetensors", "scale": 0.9}]
+
+    # Owner config (structured value allowed) wins over env.
+    owner = SimpleNamespace(config={
+        "scene3d_image_lora_adapters": [
+            {"source": "/loras/owner.safetensors", "scale": 1.0}],
+    })
+    out = resolve_image_generation_request(owner)
+    assert out["lora_adapters"] == [
+        {"source": "/loras/owner.safetensors", "scale": 1.0}]
 
 
 def test_default_image_generator_prefers_owner_vision() -> None:
