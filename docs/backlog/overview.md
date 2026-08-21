@@ -10,7 +10,7 @@
 
 ## Current Counts
 
-- Planned: 10
+- Planned: 11
 - Proposed: 7
 - Completed: 5
 - Deprecated: 0
@@ -30,6 +30,7 @@ Active planned work:
 8. [0007_step1x_mlx_conditioning_autoencoder_and_mesh_decode.md](planned/step1x-mlx/0007_step1x_mlx_conditioning_autoencoder_and_mesh_decode.md)
 9. [0008_step1x_mlx_runtime_integration_validation_and_promotion_gate.md](planned/step1x-mlx/0008_step1x_mlx_runtime_integration_validation_and_promotion_gate.md)
 10. [0003_step1x_quality_tuning_on_apple_silicon.md](planned/step1x/0003_step1x_quality_tuning_on_apple_silicon.md)
+11. [0024_pixal3d_pixel_aligned_i23d_backend.md](planned/0024_pixal3d_pixel_aligned_i23d_backend.md) — Phase 1 is a cheap feasibility spike that can be run ahead of the rest of this list.
 
 Recommended next proposed follow-up after that:
 
@@ -70,6 +71,12 @@ Recommended next proposed follow-up after that:
   - [0007_step1x_mlx_conditioning_autoencoder_and_mesh_decode.md](planned/step1x-mlx/0007_step1x_mlx_conditioning_autoencoder_and_mesh_decode.md)
   - [0008_step1x_mlx_runtime_integration_validation_and_promotion_gate.md](planned/step1x-mlx/0008_step1x_mlx_runtime_integration_validation_and_promotion_gate.md)
 
+### Untracked Planned Items
+
+- [0024_pixal3d_pixel_aligned_i23d_backend.md](planned/0024_pixal3d_pixel_aligned_i23d_backend.md):
+  stands alone until its Phase 1 spike lands. Promote it to a `planned/pixal3d/` track if the
+  backend and PBR-export phases split into separate items.
+
 ## Planned Ledger
 
 | ID | Title | Path | Status | Comment |
@@ -84,6 +91,7 @@ Recommended next proposed follow-up after that:
 | 0006 | Step1X MLX denoiser and attention port | `docs/backlog/planned/step1x-mlx/0006_step1x_mlx_denoiser_attention_port.md` | Planned | Ports the geometry denoiser off the fragile PyTorch `mps` SDPA path and onto MLX-owned execution. |
 | 0007 | Step1X MLX conditioning, autoencoder, and mesh decode | `docs/backlog/planned/step1x-mlx/0007_step1x_mlx_conditioning_autoencoder_and_mesh_decode.md` | Planned | Extends the MLX lane beyond denoising so final meshes can be traced through conditioning and decode diagnostics. |
 | 0008 | Step1X MLX runtime integration, validation, and promotion gate | `docs/backlog/planned/step1x-mlx/0008_step1x_mlx_runtime_integration_validation_and_promotion_gate.md` | Planned | Wires the MLX lane into `abstract3d` and preserves proof discipline before any promotion decision. |
+| 0024 | Pixal3D pixel-aligned i23d backend with native PBR texture stage | `docs/backlog/planned/0024_pixal3d_pixel_aligned_i23d_backend.md` | Planned | MIT-licensed TRELLIS.2-backbone fork with pixel back-projection and the catalog's first native PBR texture stage; reuses the existing TRELLIS.2 vendoring, DINOv3 gate, and Apple shims. Phase 1 is a fail-closed feasibility spike on the CUDA-only `flex_gemm` texture path. |
 
 ## Proposed Ledger
 
@@ -155,3 +163,11 @@ No deprecated backlog items are recorded yet.
   inside the PyTorch `mps` denoiser/attention path.
 - The MLX track is intended to coexist with the current PyTorch Step1X lane until there is proof
   that the MLX route is materially better on quality, completion rate, and memory safety.
+- Pixal3D (item 0024) is the first candidate that would give the catalog a natively generated PBR
+  texture stage rather than a projection bake, and it carries the cleanest license posture of any
+  high-quality backend considered so far (MIT weights and code, no territory restriction, no
+  acknowledgment gate — only the already-handled DINOv3 companion). It is admitted as its own
+  backend kind, never by widening ADR 0003's TRELLIS.2 official-asset rule, even though it forks
+  the TRELLIS.2 backbone this repository already vendors. Its risk is concentrated in one place:
+  the texture decode path imports CUDA-only `flex_gemm`, which our TRELLIS.2 lane has never had to
+  exercise. Phase 1 exists to answer that before any runtime work starts.
