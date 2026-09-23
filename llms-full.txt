@@ -150,6 +150,18 @@ The CLI provides:
 
 `--num-inference-steps` is exposed for Step1X generation and validation.
 
+Mesh operations (`abstract3d.mesh_ops`, requires the `abstract3d[mesh]`
+extra, no model runtime): `analyze_mesh`, `transform_mesh`, `compose_scene`,
+`convert_mesh`, `repair_mesh`, `render_preview`.
+
+AI tools (`abstract3d.tools`): eight LLM-callable tools returning JSON with an
+explicit `success` field — `generate_3d_object`, `analyze_3d_object`,
+`transform_3d_object`, `compose_3d_scene`, `convert_3d_object`,
+`repair_3d_object`, `render_3d_preview`, `list_3d_backends`. Accessors:
+`abstract3d_tools()`, `abstract3d_tool_definitions()` (requires AbstractCore),
+`abstract3d_tool_specs()`, `register_tools(registry)`, and
+`SCENE3D_TOOL_CLASSIFICATION` for approval layers.
+
 Runtime expectations: the full Hunyuan3D loop recipe at `512` octree / 50
 steps on Apple `mps` takes on the order of 2¼ hours of compute (measured
 stage table in `docs/benchmarks.md`). The volume decode logs level

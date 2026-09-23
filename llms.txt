@@ -6,7 +6,7 @@
 - [README.md](README.md): project overview, installation, validated scope, experimental Step1X status, and the license-gated Hunyuan3D-2.1 backend
 - [docs/getting-started.md](docs/getting-started.md): setup profiles, first successful runs, texture defaults, portrait symmetry option, and proof commands
 - [docs/architecture.md](docs/architecture.md): runtime shape, backend boundaries, and artifact contract
-- [docs/api.md](docs/api.md): Python manager, CLI surface, and validation entry points
+- [docs/api.md](docs/api.md): Python manager, CLI surface, mesh operations (`abstract3d.mesh_ops`), AI tools (`abstract3d.tools`), and validation entry points
 - [docs/faq.md](docs/faq.md): scope, backend status, and hardware questions
 - [docs/troubleshooting.md](docs/troubleshooting.md): symptom-oriented fixes for TripoSR, Step1X, and TRELLIS.2
 

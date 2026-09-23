@@ -12,7 +12,7 @@ __all__ = [
     "tools",
 ]
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 _LAZY_BACKEND_EXPORTS = {
     "Hunyuan3DShapeBackend",

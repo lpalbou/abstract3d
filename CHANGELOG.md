@@ -1,6 +1,24 @@
 # Changelog
 
-## Unreleased
+## 0.3.1 (2026-09-23)
+
+Summary of what this release adds for users (details follow):
+
+- Deterministic mesh operations in `abstract3d.mesh_ops` (analyze, transform,
+  compose scenes, convert, repair, render previews) behind the lightweight
+  `abstract3d[mesh]` extra.
+- Eight AI-facing tools in `abstract3d.tools` with AbstractCore
+  `ToolDefinition`s when AbstractCore is installed (`abstract3d_tools()`,
+  `abstract3d_tool_definitions()`, `abstract3d_tool_specs()`,
+  `register_tools(registry)`); `abstract3d_tool_definitions()` raises a clear
+  error when AbstractCore is not installed.
+- Hunyuan3D-2.1 registers with the AbstractCore capability plugin (the
+  license gate is unchanged).
+- `--geometry-conditioning loop` for the Hunyuan3D backend, view-quality
+  acceptance gates, model-evaluation helpers, and synthesized-reference
+  texel protection (`--texture-reference-synthesized`).
+- Dependency floor unchanged: `abstractvision>=0.3.27`.
+
 
 ### Added (e22v2 view-quality forensics 2026-07-22: matte + identity acceptance gates)
 
