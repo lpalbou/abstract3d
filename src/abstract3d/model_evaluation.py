@@ -719,7 +719,9 @@ class BufferRenderer:
             axis=1,
         ).astype(np.float32)
 
-        ctx = moderngl.create_context(standalone=True)
+        from .rendering import _create_standalone_context
+
+        ctx = _create_standalone_context(moderngl)
         self.ctx = ctx
         self.prog = ctx.program(vertex_shader=self._VERT, fragment_shader=self._FRAG)
         self.vbo = ctx.buffer(packed.tobytes())

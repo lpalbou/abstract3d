@@ -17,6 +17,9 @@ Summary of what this release adds for users (details follow):
 - `--geometry-conditioning loop` for the Hunyuan3D backend, view-quality
   acceptance gates, model-evaluation helpers, and synthesized-reference
   texel protection (`--texture-reference-synthesized`).
+- Texture bakes, atlas rasterization and model-evaluation renders retry
+  standalone OpenGL context creation, so a transient context failure no
+  longer changes the baked texture between identical runs.
 - Dependency floor unchanged: `abstractvision>=0.3.27`.
 
 

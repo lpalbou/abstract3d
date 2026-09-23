@@ -97,6 +97,30 @@ def test_rebake_bundle_is_deterministic(tmp_path, offline_matte) -> None:
     assert hashes[0] == hashes[1]
 
 
+def test_rebake_absorbs_transient_gl_context_failure(tmp_path, offline_matte, monkeypatch) -> None:
+    # A transient standalone-context failure used to switch one view to
+    # facing-only visibility and silently change the baked texture.
+    moderngl = pytest.importorskip("moderngl")
+    bundle_dir = make_bundle(tmp_path)
+    bundle_api.rebake_bundle(bundle_dir, output_dir=tmp_path / "clean", texture_resolution=64)
+    clean = json.loads((tmp_path / "clean" / "metadata.json").read_text())["texture_png_md5"]
+
+    real_create = moderngl.create_context
+    calls = {"n": 0}
+
+    def flaky_create(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise Exception("simulated transient GL context failure")
+        return real_create(*args, **kwargs)
+
+    monkeypatch.setattr(moderngl, "create_context", flaky_create)
+    bundle_api.rebake_bundle(bundle_dir, output_dir=tmp_path / "flaky", texture_resolution=64)
+    flaky = json.loads((tmp_path / "flaky" / "metadata.json").read_text())["texture_png_md5"]
+    assert calls["n"] > 1, "bake never created a GL context; the check proves nothing"
+    assert flaky == clean
+
+
 def test_memory_sampler_records_rss() -> None:
     sampler = MemorySampler(interval_s=0.01, sample_mps=False).start()
     _ = [np.zeros((256, 256)) for _ in range(20)]

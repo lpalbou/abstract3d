@@ -1319,7 +1319,9 @@ def _tripo_rasterize_vec3_atlas_moderngl(
     import moderngl
     import numpy as np
 
-    ctx = moderngl.create_context(standalone=True)
+    from ..rendering import _create_standalone_context
+
+    ctx = _create_standalone_context(moderngl)
     basic_prog = ctx.program(
         vertex_shader="""
             #version 330
@@ -1634,8 +1636,13 @@ def _tripo_render_camera_depth_map(
     # Depth occlusion is an accuracy refinement, not a hard requirement:
     # hosts without a standalone GL context (or with GL failures mid-render)
     # fall back to facing-only visibility instead of failing the whole bake.
+    # Context creation retries first: a transient creation failure on one
+    # view would otherwise silently switch that view to facing-only
+    # visibility and change the bake output between identical runs.
+    from ..rendering import _create_standalone_context
+
     try:
-        ctx = moderngl.create_context(standalone=True)
+        ctx = _create_standalone_context(moderngl)
     except Exception:
         return None
     try:
