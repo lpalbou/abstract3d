@@ -1,6 +1,6 @@
 # CRITIC 2 — cycle-5 mathematical review (M1/M2/M3, single solver)
 
-Date: 2026-07-07 08:34–09:2x. Repo `/Users/albou/abstract3d`. Prior:
+Date: 2026-07-07 08:34–09:2x. Repo `<workspace>/abstract3d`. Prior:
 REVIEW.md (c1), REVIEW_CYCLE2.md (c2). Tools:
 `/tmp/critic2/tools/attack_c5_m1.py`, `attack_c5_m2.py`,
 `attack_c5_m3_bound.py`; evidence `/tmp/critic2/c5/`. Tree STABLE

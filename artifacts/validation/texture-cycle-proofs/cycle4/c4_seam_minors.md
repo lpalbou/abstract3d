@@ -3,7 +3,7 @@
 **Scope:** Critic 1's cycle-4 ORDER 3 (FACE-05 pale seam column — S1
 compositing lane) and the ORDER-4 minors (FACE-07 ear chips, FACE-09
 rectangle residual, FACE-11 chest straps, FACE-12 bust disc, FACE-13
-crown, SHIP-05 glow). Repo `/Users/albou/abstract3d`, work under
+crown, SHIP-05 glow). Repo `<workspace>/abstract3d`, work under
 `/tmp/c4_3/`. Date: 2026-07-07.
 
 **SHARED-TREE NOTE:** two other solvers work film_band_gradient.py

@@ -338,8 +338,8 @@ Both, in different proportions per set — with numbers:
 ## 7. Reproduce
 
 ```bash
-cd /Users/albou/tmp/abstractframework/abstract3d
-PY=/Users/albou/tmp/abstractframework/.venv/bin/python
+cd <workspace>/abstract3d
+PY=<workspace>/.venv/bin/python
 
 # clay guides for set B (e11 mesh, byte-faithful to the loop run)
 $PY scripts/experimental/viewgen_audit_render_clays.py

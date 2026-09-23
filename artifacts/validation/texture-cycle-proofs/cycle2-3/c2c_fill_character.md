@@ -1,7 +1,7 @@
 # SOLVER C (cycle 2) — ship/owl single-view: smears provenance, honest brightness reference, fill-character restoration
 
 Targets: Critic 1 ORDERS 3 + 7 for the single-view assets (SHIP-04/SHIP-08,
-OWL-01/02/03). Repo: `/Users/albou/abstract3d` (shared tree, single commit +
+OWL-01/02/03). Repo: `<workspace>/abstract3d` (shared tree, single commit +
 uncommitted cycle work; my edits listed in §5). All bakes in this report are
 MY OWN fresh bakes on the current tip unless labeled "shipped". Repro:
 `python /tmp/c2c/bake_one.py {ship|owl|face} {1024|2048} OUT [--pin AZ EL]`

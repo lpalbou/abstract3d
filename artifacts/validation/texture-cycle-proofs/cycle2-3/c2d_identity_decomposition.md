@@ -1,6 +1,6 @@
 # SOLVER D (cycle 2) — front-identity gap decomposition + ORDER 8 (elf-ear texture half)
 
-Repo: `/Users/albou/abstract3d`, tree as of 2026-07-05 ~23:00 (texturing.py
+Repo: `<workspace>/abstract3d`, tree as of 2026-07-05 ~23:00 (texturing.py
 untracked/shared; no texturing edits shipped by me — see D1c). All scripts,
 bundles, crops, JSON under `/tmp/c2d/`. Harness = `/tmp/verdict1/qa.py`
 exact protocol (render at declared pose az+20 el+8 through

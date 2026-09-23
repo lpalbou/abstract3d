@@ -2,7 +2,7 @@
 
 **Scope:** Critic 1 orders 5 (integrate `mirror_rescue_disc` into the current-stack
 bake, FACE-15) and 6 (FACE-03/04/05 trace-ghost family: B2 side_right worst window,
-B3 dark_debris marginals). Repo: `/Users/albou/abstract3d`, work under `/tmp/c2b/`.
+B3 dark_debris marginals). Repo: `<workspace>/abstract3d`, work under `/tmp/c2b/`.
 Date: 2026-07-06 (post-midnight session). All numbers measured with
 `/tmp/verdict1/qa.py` (896) and `scripts/texture_qa.py` on same-tip 2048 bakes;
 bakes are deterministic (pose gate pins az+20 el+8 at NCC 0.0152 every run).

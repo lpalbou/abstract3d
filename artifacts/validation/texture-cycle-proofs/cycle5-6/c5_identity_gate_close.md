@@ -5,7 +5,7 @@ identity gate (comp >= 0.70 SSIM / <= 15.0 MAE) from the freshly published
 baseline (comp 0.688/14.42), attacking the ruling's own decomposition in
 order: L1 neck/jaw wash (0.0102), L2 curtain/temple (0.0086 + 0.0060 +
 FACE-09), L3 mouth-complex formation at 2048 (0.0026). Repo
-`/Users/albou/abstract3d`, work under `/tmp/c5/`. Date: 2026-07-07.
+`<workspace>/abstract3d`, work under `/tmp/c5/`. Date: 2026-07-07.
 Harnesses: `/tmp/verdict1/qa.py` (raw), `/tmp/c2d/qa_shadecomp.py`
 (comp, authoritative gate), `scripts/texture_qa.py`.
 

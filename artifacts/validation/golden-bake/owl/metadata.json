@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "kind": "rebake",
- "source_bundle": "/Users/albou/abstract3d/artifacts/validation/final-proof/hunyuan-owl",
+ "source_bundle": "<workspace>/abstract3d/artifacts/validation/final-proof/hunyuan-owl",
  "texture_resolution": 2048,
  "texture_completion": "auto",
  "projection_model": "orthographic",

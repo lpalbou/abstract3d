@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
 
-REPO = Path("/Users/albou/tmp/abstractframework/abstract3d")
+REPO = Path(__file__).resolve().parents[2]
 REDO = REPO / "out" / "laurent-bust-redo"
 OUT = Path("/tmp/striation_audit")
 OUT.mkdir(exist_ok=True)

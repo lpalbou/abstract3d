@@ -98,9 +98,9 @@ Queued command (run only when `pgrep -f "abstract3d i23d"` is empty and no mlx/k
 GPU pytest processes are live; `caffeinate` so sleep never contaminates wall time again):
 
 ```bash
-cd /Users/albou/tmp/abstractframework/abstract3d && \
+cd <workspace>/abstract3d && \
 ABSTRACT3D_HUNYUAN_ACCEPT_LICENSE=1 \
-caffeinate -dims nice -n 5 /Users/albou/tmp/abstractframework/.venv/bin/abstract3d i23d \
+caffeinate -dims nice -n 5 <workspace>/.venv/bin/abstract3d i23d \
   out/bust/control_cleanviews/inputs/windowed_front.png \
   --output-dir out/bust/e23_decode_timing_512 \
   --backend hunyuan3d21 --model tencent/Hunyuan3D-2mv --device mps \

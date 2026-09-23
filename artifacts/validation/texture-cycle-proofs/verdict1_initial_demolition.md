@@ -20,7 +20,7 @@ in the docs (0.74 / 0.89 / 0.91) do not match the shipped bundle's own metadata
 ## How to reproduce
 
 ```bash
-cd /Users/albou/abstract3d && source .venv/bin/activate
+cd <workspace>/abstract3d && source .venv/bin/activate
 python /tmp/verdict1/qa.py artifacts/validation/iter3-multiview-fixed/face-2mv
 # exit code 0 = PASS, 1 = FAIL; full scores in <out>/results.json,
 # full-resolution crops of every failure in <out>/evidence/

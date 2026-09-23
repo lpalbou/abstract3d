@@ -4,7 +4,7 @@
 compensated-SSIM feature-lane headroom (tear-duct whites, lash-line
 dashes, lip-edge dark-red dash: FACE-03/04's protected-feature residue)
 to close FACE-14's compensated identity gate (comp >= 0.70 SSIM /
-<= 15.0 MAE). Repo `/Users/albou/abstract3d`, work under `/tmp/c4_2/`.
+<= 15.0 MAE). Repo `<workspace>/abstract3d`, work under `/tmp/c4_2/`.
 Date: 2026-07-06/07. Harnesses: `/tmp/c2d/qa_shadecomp.py` (comp + raw)
 and `scripts/texture_qa.py`.
 

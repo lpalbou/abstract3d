@@ -1,6 +1,6 @@
 # CRITIC 2 — cycle-2 mathematical review (mechanisms A/B/C/D)
 
-Date: 2026-07-06 05:07–06:0x. Repo `/Users/albou/abstract3d`. Prior review:
+Date: 2026-07-06 05:07–06:0x. Repo `<workspace>/abstract3d`. Prior review:
 /tmp/critic2/REVIEW.md (cycle 1). Tools for every reproduction below:
 `/tmp/critic2/tools/attack_a1_filmband.py`, `attack_a2_bistable.py`,
 `attack_a3_calibration.py`, `attack_a4_shading_floor.py`,

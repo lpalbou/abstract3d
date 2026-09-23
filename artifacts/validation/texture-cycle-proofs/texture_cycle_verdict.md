@@ -1,6 +1,6 @@
 # FINAL VERDICT — adversarial texture cycle, 2026-07-05 (tex4, QA/verdict agent)
 
-Scope: `/Users/albou/abstract3d`, assets `iter3-multiview-fixed/face-2mv`,
+Scope: `<workspace>/abstract3d`, assets `iter3-multiview-fixed/face-2mv`,
 `final-proof/hunyuan-starship` (owner-named), `final-proof/hunyuan-owl`
 (sanity third). Harnesses: `scripts/texture_qa.py` (new: material truth,
 viewer-truth renders, close-zoom gates — built and photo-calibrated this

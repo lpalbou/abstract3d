@@ -1,6 +1,6 @@
 # SOLVER 3 — CYCLE 3, ORDER 4: SHIP-03 "nose melt" — FIXED (root cause: source-frame registration, not stretch demotion)
 
-Repo: `/Users/albou/abstract3d`. Verdict-ready bundles: `/tmp/c3_3/final2/ship_{1024,2048}`
+Repo: `<workspace>/abstract3d`. Verdict-ready bundles: `/tmp/c3_3/final2/ship_{1024,2048}`
 (ship), `/tmp/c3_3/final3/{owl,face}_{1024,2048}` (canaries, final tree).
 Patches: `src/abstract3d/texturing.py` (+`projected_frame_center_px`,
 `recenter_to_canonical_frame(center_px=...)`, override-pose frame

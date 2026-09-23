@@ -1,6 +1,6 @@
 # CORRELATION AGENT A — MeshVault visual forensics of the certified assets
-Date: 2026-07-07. Repo: `/Users/albou/abstract3d`. Viewer: MeshVault MCP
-(stdio, headless Chromium; tools per `/Users/albou/MeshVault/docs/mcp.md`).
+Date: 2026-07-07. Repo: `<workspace>/abstract3d`. Viewer: MeshVault MCP
+(stdio, headless Chromium; tools per `~/MeshVault/docs/mcp.md`).
 All screenshots (186 PNGs at 1024 px, of which 54 are historical-state
 shots): `artifacts/validation/texture-cycle-proofs/meshvault/agentA/`
 (referenced below by file name only). Raw tool outputs: `/tmp/mva/t1_*.json`,

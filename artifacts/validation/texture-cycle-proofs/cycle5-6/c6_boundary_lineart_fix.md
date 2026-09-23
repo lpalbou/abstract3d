@@ -3,7 +3,7 @@
 **Scope:** Critic 1's single cycle-6 order — provenance of the thin
 line-art contours on the neck/chest (the az0 glyph cluster "ΔΔ|" and the
 az-22.5 closed chest contour), fix in the owning stage's vocabulary,
-re-publish under the full battery. Repo `/Users/albou/abstract3d`, work
+re-publish under the full battery. Repo `<workspace>/abstract3d`, work
 under `/tmp/c6/`. Date: 2026-07-07.
 
 ## VERDICT: three owners found by instrumented ablation; fixed in-mechanism; published

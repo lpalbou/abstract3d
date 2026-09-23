@@ -1,6 +1,6 @@
 # TEXTURE AGENT 1 — Material Factor Defects (D1/D2): Audit, Fix, Proof
 
-Repo: `/Users/albou/abstract3d`. All numbers below were produced by parsing GLB
+Repo: `<workspace>/abstract3d`. All numbers below were produced by parsing GLB
 JSON chunks / MTL text directly (no viewer, no trimesh interpretation unless
 stated). Working scripts: `/tmp/tex1/dump_factors.py`, `/tmp/tex1/patch_artifacts.py`,
 `/tmp/tex1/shading_proof.py`. Originals backed up at `/tmp/tex1/backup/`.

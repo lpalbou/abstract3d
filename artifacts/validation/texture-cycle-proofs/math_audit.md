@@ -1,6 +1,6 @@
 # FIXER AGENT 4 — Mathematical audit of the texture bake path
 
-Date: 2026-07-05. Repo: `/Users/albou/abstract3d` (read-only audit; no repository file modified).
+Date: 2026-07-05. Repo: `<workspace>/abstract3d` (read-only audit; no repository file modified).
 Audited state: snapshot at `/tmp/fixer4/snapshot/` — `texturing.py` md5 `6e836589…` (2464 lines),
 `triposr_runtime.py` md5 `8cc9c293…` (2770 lines), `rendering.py` md5 `02f592bc…`. The workspace
 files were being edited by other agents during the audit; the snapshot was re-verified identical

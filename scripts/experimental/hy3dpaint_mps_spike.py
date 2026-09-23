@@ -18,7 +18,7 @@ Every stage records worked/refused with the exact error; the final table is the
 spike report.
 
 Run:
-    /Users/albou/tmp/abstractframework/.venv/bin/python \
+    <workspace>/.venv/bin/python \
         scripts/experimental/hy3dpaint_mps_spike.py [--device mps|cpu] [--skip-download]
 """
 

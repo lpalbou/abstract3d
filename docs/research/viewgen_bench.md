@@ -282,8 +282,8 @@ What SHOULD change in abstract3d (ranked):
 ## 7. Reproduce
 
 ```bash
-cd /Users/albou/tmp/abstractframework/abstract3d
-PY=/Users/albou/tmp/abstractframework/.venv/bin/python
+cd <workspace>/abstract3d
+PY=<workspace>/.venv/bin/python
 
 nice -n 10 $PY scripts/viewgen_bench.py --smoke          # LoRA wiring proof (35 s)
 nice -n 10 $PY scripts/viewgen_bench.py --probe-c        # arm-C trigger probe

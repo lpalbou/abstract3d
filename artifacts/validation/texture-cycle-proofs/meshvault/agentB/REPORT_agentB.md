@@ -1,5 +1,5 @@
 # CORRELATION AGENT B — CODE-FIRST ADVERSARIAL AUDIT
-2026-07-07 · repo `/Users/albou/abstract3d` @ certified cycle-6 state · independent of agent A
+2026-07-07 · repo `<workspace>/abstract3d` @ certified cycle-6 state · independent of agent A
 
 Direction of this audit: **code → derivable defect classes → assets**. I read every
 mechanism in the certified pipeline, constructed its violation space from first

@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "kind": "rebake",
- "source_bundle": "/Users/albou/abstract3d/artifacts/validation/final-proof/hunyuan-starship",
+ "source_bundle": "<workspace>/abstract3d/artifacts/validation/final-proof/hunyuan-starship",
  "texture_resolution": 1024,
  "texture_completion": "auto",
  "projection_model": "orthographic",
