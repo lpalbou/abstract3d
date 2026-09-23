@@ -57,7 +57,22 @@ def test_prepare_observed_views_source_and_reference_roles(tmp_path) -> None:
     assert views[1]["label"] == "side_left"
 
 
-def test_rebake_bundle_writes_revision(tmp_path) -> None:
+@pytest.fixture
+def offline_matte(monkeypatch):
+    """Rebake tests exercise the bake/metadata contract, not the matte model.
+
+    `remove_background_robust` downloads rembg ONNX checkpoints (hundreds of
+    MB from github.com) on first use; on CI that made these tests network
+    flaky and let two "identical" rebakes use different matte models. Stub it
+    with a deterministic pass-through so the tests stay hermetic.
+    """
+    from abstract3d import segmentation
+
+    monkeypatch.setattr(segmentation, "remove_background_robust",
+                        lambda image: image.convert("RGBA"))
+
+
+def test_rebake_bundle_writes_revision(tmp_path, offline_matte) -> None:
     bundle_dir = make_bundle(tmp_path)
     out_dir = tmp_path / "rebake"
     _mesh, stats = bundle_api.rebake_bundle(
@@ -71,7 +86,7 @@ def test_rebake_bundle_writes_revision(tmp_path) -> None:
     assert stats.get("texture_image") is not None
 
 
-def test_rebake_bundle_is_deterministic(tmp_path) -> None:
+def test_rebake_bundle_is_deterministic(tmp_path, offline_matte) -> None:
     bundle_dir = make_bundle(tmp_path)
     hashes = []
     for name in ("a", "b"):

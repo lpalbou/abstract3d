@@ -8,6 +8,7 @@ import pytest
 trimesh = pytest.importorskip("trimesh")
 
 from abstract3d import tools as a3d_tools
+from abstract3d.errors import Abstract3DError
 
 
 @pytest.fixture()
@@ -181,6 +182,17 @@ def test_aligned_accessors_exist() -> None:
     # `abstract3d_*` is the ruled accessor naming (core, commons 2026-07-19).
     assert a3d_tools.abstract3d_tools() == list(a3d_tools.TOOL_FUNCTIONS)
     assert a3d_tools.get_tool_functions() == a3d_tools.abstract3d_tools()
+
+
+def test_tool_definitions_follow_abstractcore_availability() -> None:
+    # Definitions are attached by AbstractCore's @tool decorator at import
+    # time; without AbstractCore the accessor must fail loudly, not return [].
+    try:
+        import abstractcore.tools  # noqa: F401
+    except Exception:
+        with pytest.raises(Abstract3DError, match="require AbstractCore"):
+            a3d_tools.abstract3d_tool_definitions()
+        return
     defs = a3d_tools.abstract3d_tool_definitions()
     assert [d.name for d in defs] == [fn.__name__ for fn in a3d_tools.TOOL_FUNCTIONS]
 
